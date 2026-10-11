@@ -250,11 +250,11 @@ jobs:
           $missing = @{
             ANDROID_KEYSTORE_BASE64 = "${{ secrets.ANDROID_KEYSTORE_BASE64 }}"
             ANDROID_KEYSTORE_PASS   = "${{ secrets.ANDROID_KEYSTORE_PASS }}"
-            ANDROID_KEYALIAS_NAME   = "${{ secrets.ANDROID_KEYALIAS_NAME }}"
+            ANDROID_KEYALIAS_NAME   = "${{ vars.ANDROID_KEYALIAS_NAME || secrets.ANDROID_KEYALIAS_NAME }}"
             ANDROID_KEYALIAS_PASS   = "${{ secrets.ANDROID_KEYALIAS_PASS }}"
           }.GetEnumerator() | Where-Object { [string]::IsNullOrWhiteSpace($_.Value) } | ForEach-Object Key
           if ($missing) {
-            throw "Repository secret(s) not set: $($missing -join ', ')"
+            throw "Not set (ANDROID_KEYALIAS_NAME may be a variable or a secret, the rest must be secrets): $($missing -join ', ')"
           }
 
           $keystore = Join-Path $env:RUNNER_TEMP "phantom.keystore"
@@ -276,7 +276,7 @@ jobs:
             /p:AndroidBuildApk=true `
             /p:AndroidKeyStore=true `
             "/p:AndroidSigningKeyStore=${{ steps.keystore.outputs.path }}" `
-            "/p:AndroidSigningKeyAlias=${{ secrets.ANDROID_KEYALIAS_NAME }}" `
+            "/p:AndroidSigningKeyAlias=${{ vars.ANDROID_KEYALIAS_NAME || secrets.ANDROID_KEYALIAS_NAME }}" `
             "/p:AndroidSigningKeyPass=${{ secrets.ANDROID_KEYALIAS_PASS }}" `
             "/p:AndroidSigningStorePass=${{ secrets.ANDROID_KEYSTORE_PASS }}" `
             "/p:ApiBaseUrl=${{ vars.API_BASE_URL }}"
