@@ -1,0 +1,153 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:vm="clr-namespace:Phantom.Client.ViewModels"
+             xmlns:dto="clr-namespace:Phantom.Shared;assembly=Phantom.Shared"
+             x:Class="Phantom.Client.Views.AdminPage"
+             x:DataType="vm:AdminViewModel"
+             Title="Server dashboard">
+    <RefreshView IsRefreshing="{Binding IsBusy}" Command="{Binding LoadCommand}">
+        <ScrollView>
+            <VerticalStackLayout Padding="16" Spacing="14">
+                <Label Text="{Binding ErrorMessage}" TextColor="{StaticResource Danger}" IsVisible="{Binding ErrorMessage, Converter={StaticResource HasValue}}" />
+
+                <!-- Status -->
+                <Border Style="{StaticResource Card}">
+                    <Grid ColumnDefinitions="*,*,*" RowDefinitions="Auto,Auto" RowSpacing="2">
+                        <Label Text="{Binding Info.MovieCount}" Style="{StaticResource H1}" HorizontalOptions="Center" />
+                        <Label Grid.Row="1" Text="Movies" Style="{StaticResource Muted}" HorizontalOptions="Center" />
+                        <Label Grid.Column="1" Text="{Binding Info.ActiveTorrents}" Style="{StaticResource H1}" HorizontalOptions="Center" />
+                        <Label Grid.Column="1" Grid.Row="1" Text="Active torrents" Style="{StaticResource Muted}" HorizontalOptions="Center" />
+                        <Label Grid.Column="2" Text="{Binding Info.FreeDiskBytes, Converter={StaticResource Bytes}}" Style="{StaticResource H2}" HorizontalOptions="Center" VerticalOptions="Center" />
+                        <Label Grid.Column="2" Grid.Row="1" Text="Free disk" Style="{StaticResource Muted}" HorizontalOptions="Center" />
+                    </Grid>
+                </Border>
+                <Label Style="{StaticResource Muted}" FontSize="12">
+                    <Label.FormattedText>
+                        <FormattedString>
+                            <Span Text="↓ " />
+                            <Span Text="{Binding Info.DownloadRate, Converter={StaticResource Bytes}, ConverterParameter=rate}" />
+                            <Span Text="   ↑ " />
+                            <Span Text="{Binding Info.UploadRate, Converter={StaticResource Bytes}, ConverterParameter=rate}" />
+                            <Span Text="   ·   Transcoder: " />
+                            <Span Text="{Binding Info.TranscoderAvailable}" />
+                            <Span Text="   ·   TMDB: " />
+                            <Span Text="{Binding Info.MetadataProviderConfigured}" />
+                        </FormattedString>
+                    </Label.FormattedText>
+                </Label>
+
+                <!-- Now playing -->
+                <Grid ColumnDefinitions="*,Auto">
+                    <Label Text="Now playing" Style="{StaticResource H2}" VerticalOptions="Center" />
+                    <Button Grid.Column="1" Text="Refresh" Style="{StaticResource GhostButton}" Command="{Binding RefreshActivityCommand}" />
+                </Grid>
+                <Label Text="Nobody is watching right now." Style="{StaticResource Muted}" IsVisible="{Binding Sessions.Count, Converter={StaticResource HasValue}, ConverterParameter=invert}" />
+                <VerticalStackLayout BindableLayout.ItemsSource="{Binding Sessions}" Spacing="8">
+                    <BindableLayout.ItemTemplate>
+                        <DataTemplate x:DataType="dto:NowPlayingDto">
+                            <Border Style="{StaticResource Card}" Padding="10">
+                                <Grid ColumnDefinitions="44,*" ColumnSpacing="10">
+                                    <Border StrokeShape="RoundRectangle 4" HeightRequest="64">
+                                        <Image Source="{Binding PosterUrl, Converter={StaticResource Poster}}" Aspect="AspectFill" />
+                                    </Border>
+                                    <VerticalStackLayout Grid.Column="1" VerticalOptions="Center">
+                                        <Label Text="{Binding MovieTitle}" FontFamily="OpenSansSemibold" />
+                                        <Label Style="{StaticResource Muted}" FontSize="12">
+                                            <Label.FormattedText>
+                                                <FormattedString>
+                                                    <Span Text="{Binding Username}" />
+                                                    <Span Text=" on " />
+                                                    <Span Text="{Binding ClientName}" />
+                                                    <Span Text="  ·  " />
+                                                    <Span Text="{Binding State}" />
+                                                    <Span Text="  ·  " />
+                                                    <Span Text="{Binding PositionMs, Converter={StaticResource Time}}" />
+                                                </FormattedString>
+                                            </Label.FormattedText>
+                                        </Label>
+                                    </VerticalStackLayout>
+                                </Grid>
+                            </Border>
+                        </DataTemplate>
+                    </BindableLayout.ItemTemplate>
+                </VerticalStackLayout>
+
+                <!-- Sources -->
+                <Grid ColumnDefinitions="*,Auto">
+                    <Label Text="Sources" Style="{StaticResource H2}" VerticalOptions="Center" />
+                    <Button Grid.Column="1" Text="Sync all" Style="{StaticResource GhostButton}" Command="{Binding SyncAllCommand}" />
+                </Grid>
+                <Label Text="Phantom pulls new movies from these on a schedule. Only add indexers for content you have the right to download."
+                       Style="{StaticResource Muted}" FontSize="12" />
+                <VerticalStackLayout BindableLayout.ItemsSource="{Binding Sources}" Spacing="8">
+                    <BindableLayout.ItemTemplate>
+                        <DataTemplate x:DataType="dto:SourceDto">
+                            <Border Style="{StaticResource Card}">
+                                <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto,Auto,Auto">
+                                    <Label Text="{Binding Name}" FontFamily="OpenSansSemibold" />
+                                    <Switch Grid.Column="1" Grid.RowSpan="2" IsToggled="{Binding Enabled, Mode=OneWay}" IsEnabled="False" />
+                                    <Label Grid.Row="1" Style="{StaticResource Muted}" FontSize="12">
+                                        <Label.FormattedText>
+                                            <FormattedString>
+                                                <Span Text="{Binding Type}" />
+                                                <Span Text="  ·  every " />
+                                                <Span Text="{Binding SyncIntervalMinutes}" />
+                                                <Span Text=" min" />
+                                            </FormattedString>
+                                        </Label.FormattedText>
+                                    </Label>
+                                    <Label Grid.Row="2" Grid.ColumnSpan="2" Text="{Binding LastSyncResult}" Style="{StaticResource Muted}" FontSize="12" />
+                                    <HorizontalStackLayout Grid.Row="3" Grid.ColumnSpan="2" Spacing="4">
+                                        <Button Text="Sync now" Style="{StaticResource GhostButton}"
+                                                Command="{Binding Source={RelativeSource AncestorType={x:Type vm:AdminViewModel}}, Path=SyncCommand, x:DataType=vm:AdminViewModel}" CommandParameter="{Binding .}" />
+                                        <Button Text="Enable / disable" Style="{StaticResource GhostButton}"
+                                                Command="{Binding Source={RelativeSource AncestorType={x:Type vm:AdminViewModel}}, Path=ToggleSourceCommand, x:DataType=vm:AdminViewModel}" CommandParameter="{Binding .}" />
+                                        <Button Text="Remove" Style="{StaticResource GhostButton}" TextColor="{StaticResource Danger}"
+                                                Command="{Binding Source={RelativeSource AncestorType={x:Type vm:AdminViewModel}}, Path=DeleteSourceCommand, x:DataType=vm:AdminViewModel}" CommandParameter="{Binding .}" />
+                                    </HorizontalStackLayout>
+                                </Grid>
+                            </Border>
+                        </DataTemplate>
+                    </BindableLayout.ItemTemplate>
+                </VerticalStackLayout>
+                <Grid ColumnDefinitions="*,*" ColumnSpacing="10">
+                    <Button Text="+ Internet Archive" Style="{StaticResource SecondaryButton}" Command="{Binding AddArchiveCommand}" />
+                    <Button Grid.Column="1" Text="+ Torznab indexer" Style="{StaticResource SecondaryButton}" Command="{Binding AddTorznabCommand}" />
+                </Grid>
+
+                <!-- Settings -->
+                <Label Text="Server settings" Style="{StaticResource H2}" Margin="0,8,0,0" />
+                <Border Style="{StaticResource Card}">
+                    <VerticalStackLayout Spacing="10">
+                        <Label Text="Server name" Style="{StaticResource Muted}" />
+                        <Entry Text="{Binding ServerName}" />
+                        <Label Text="Preferred quality for new streams" Style="{StaticResource Muted}" />
+                        <Picker ItemsSource="{Binding QualityChoices}" SelectedItem="{Binding PreferredQuality}" />
+                        <Grid ColumnDefinitions="*,*" ColumnSpacing="10" RowDefinitions="Auto,Auto,Auto,Auto" RowSpacing="4">
+                            <Label Text="Max active downloads" Style="{StaticResource Muted}" />
+                            <Label Grid.Column="1" Text="Min seeders to import" Style="{StaticResource Muted}" />
+                            <Entry Grid.Row="1" Text="{Binding MaxActiveDownloads}" Keyboard="Numeric" />
+                            <Entry Grid.Row="1" Grid.Column="1" Text="{Binding MinSeeders}" Keyboard="Numeric" />
+                            <Label Grid.Row="2" Text="Download limit (KB/s, 0 = ∞)" Style="{StaticResource Muted}" />
+                            <Label Grid.Row="2" Grid.Column="1" Text="Upload limit (KB/s, 0 = ∞)" Style="{StaticResource Muted}" />
+                            <Entry Grid.Row="3" Text="{Binding MaxDownloadKbps}" Keyboard="Numeric" />
+                            <Entry Grid.Row="3" Grid.Column="1" Text="{Binding MaxUploadKbps}" Keyboard="Numeric" />
+                        </Grid>
+                        <Label Text="Keep streamed torrents cached for (hours)" Style="{StaticResource Muted}" />
+                        <Entry Text="{Binding StreamCacheHours}" Keyboard="Numeric" />
+                        <Grid ColumnDefinitions="*,Auto">
+                            <Label Text="Seed after downloading" VerticalOptions="Center" />
+                            <Switch Grid.Column="1" IsToggled="{Binding SeedAfterDownload}" />
+                        </Grid>
+                        <Grid ColumnDefinitions="*,Auto">
+                            <Label Text="Auto-download newly found movies" VerticalOptions="Center" />
+                            <Switch Grid.Column="1" IsToggled="{Binding AutoDownloadNewReleases}" />
+                        </Grid>
+                        <Button Text="Save settings" Command="{Binding SaveSettingsCommand}" />
+                    </VerticalStackLayout>
+                </Border>
+            </VerticalStackLayout>
+        </ScrollView>
+    </RefreshView>
+</ContentPage>

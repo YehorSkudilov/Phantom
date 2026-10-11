@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:vm="clr-namespace:Phantom.Client.ViewModels"
+             x:Class="Phantom.Client.Views.SearchPage"
+             x:DataType="vm:SearchViewModel"
+             Title="Search">
+    <Grid RowDefinitions="Auto,*">
+        <SearchBar x:Name="Box" Text="{Binding Query}" Placeholder="Movies, actors, directors, genres" Margin="8"
+                   SearchCommand="{Binding SearchCommand}" />
+        <ScrollView Grid.Row="1">
+            <VerticalStackLayout Spacing="10" Padding="0,0,0,24">
+                <Label Text="Search across titles, cast and genres." Style="{StaticResource Muted}" HorizontalOptions="Center" Margin="0,40"
+                       IsVisible="{Binding Query, Converter={StaticResource HasValue}, ConverterParameter=invert}" />
+                <Label Text="No results." Style="{StaticResource Muted}" HorizontalOptions="Center" Margin="0,40" IsVisible="{Binding NoResults}" />
+
+                <Label Text="People" Style="{StaticResource H2}" Margin="16,8,16,0" IsVisible="{Binding People.Count, Converter={StaticResource HasValue}}" />
+                <FlexLayout BindableLayout.ItemsSource="{Binding People}" Wrap="Wrap" Margin="12,0">
+                    <BindableLayout.ItemTemplate>
+                        <DataTemplate x:DataType="x:String">
+                            <Button Text="{Binding .}" Style="{StaticResource SecondaryButton}" Margin="4"
+                                    Command="{Binding Source={RelativeSource AncestorType={x:Type vm:SearchViewModel}}, Path=OpenPersonCommand, x:DataType=vm:SearchViewModel}"
+                                    CommandParameter="{Binding .}" />
+                        </DataTemplate>
+                    </BindableLayout.ItemTemplate>
+                </FlexLayout>
+
+                <Label Text="Genres" Style="{StaticResource H2}" Margin="16,8,16,0" IsVisible="{Binding Genres.Count, Converter={StaticResource HasValue}}" />
+                <FlexLayout BindableLayout.ItemsSource="{Binding Genres}" Wrap="Wrap" Margin="12,0">
+                    <BindableLayout.ItemTemplate>
+                        <DataTemplate x:DataType="x:String">
+                            <Button Text="{Binding .}" Style="{StaticResource SecondaryButton}" Margin="4"
+                                    Command="{Binding Source={RelativeSource AncestorType={x:Type vm:SearchViewModel}}, Path=OpenGenreCommand, x:DataType=vm:SearchViewModel}"
+                                    CommandParameter="{Binding .}" />
+                        </DataTemplate>
+                    </BindableLayout.ItemTemplate>
+                </FlexLayout>
+
+                <Label Text="Movies" Style="{StaticResource H2}" Margin="16,8,16,0" IsVisible="{Binding Movies.Count, Converter={StaticResource HasValue}}" />
+                <VerticalStackLayout BindableLayout.ItemsSource="{Binding Movies}" BindableLayout.ItemTemplate="{StaticResource MovieRow}" x:Name="MovieList" />
+            </VerticalStackLayout>
+        </ScrollView>
+    </Grid>
+</ContentPage>

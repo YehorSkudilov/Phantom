@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:vm="clr-namespace:Phantom.Client.ViewModels"
+             xmlns:dto="clr-namespace:Phantom.Shared;assembly=Phantom.Shared"
+             xmlns:controls="clr-namespace:Phantom.Client.Controls"
+             x:Class="Phantom.Client.Views.PlaylistPage"
+             x:DataType="vm:PlaylistViewModel"
+             Title="{Binding Title}">
+    <Grid RowDefinitions="Auto,*">
+        <VerticalStackLayout Padding="16,8" Spacing="10">
+            <Label Text="{Binding Summary}" Style="{StaticResource Muted}" />
+            <Grid ColumnDefinitions="*,*" ColumnSpacing="10">
+                <Button Text="▶  Play" Command="{Binding PlayAllCommand}" />
+                <Button Grid.Column="1" Text="⤨  Shuffle" Style="{StaticResource SecondaryButton}" Command="{Binding ShuffleCommand}" />
+            </Grid>
+        </VerticalStackLayout>
+        <CollectionView Grid.Row="1" ItemsSource="{Binding Items}" SelectionMode="None">
+            <CollectionView.ItemTemplate>
+                <DataTemplate x:DataType="dto:MovieSummaryDto">
+                    <SwipeView>
+                        <SwipeView.RightItems>
+                            <SwipeItems>
+                                <SwipeItem Text="Remove" BackgroundColor="{StaticResource Danger}"
+                                           Command="{Binding Source={RelativeSource AncestorType={x:Type vm:PlaylistViewModel}}, Path=RemoveCommand, x:DataType=vm:PlaylistViewModel}"
+                                           CommandParameter="{Binding .}" />
+                            </SwipeItems>
+                        </SwipeView.RightItems>
+                        <Grid ColumnDefinitions="*,Auto" BackgroundColor="{StaticResource Background}">
+                            <controls:MovieRowView>
+                                <controls:MovieRowView.GestureRecognizers>
+                                    <TapGestureRecognizer Command="{Binding Source={RelativeSource AncestorType={x:Type vm:PlaylistViewModel}}, Path=OpenMovieCommand, x:DataType=vm:PlaylistViewModel}"
+                                                          CommandParameter="{Binding .}" />
+                                </controls:MovieRowView.GestureRecognizers>
+                            </controls:MovieRowView>
+                            <VerticalStackLayout Grid.Column="1" VerticalOptions="Center" Padding="0,0,8,0">
+                                <Button Text="▲" Style="{StaticResource GhostButton}" SemanticProperties.Description="Move up"
+                                        Command="{Binding Source={RelativeSource AncestorType={x:Type vm:PlaylistViewModel}}, Path=MoveUpCommand, x:DataType=vm:PlaylistViewModel}"
+                                        CommandParameter="{Binding .}" />
+                                <Button Text="▼" Style="{StaticResource GhostButton}" SemanticProperties.Description="Move down"
+                                        Command="{Binding Source={RelativeSource AncestorType={x:Type vm:PlaylistViewModel}}, Path=MoveDownCommand, x:DataType=vm:PlaylistViewModel}"
+                                        CommandParameter="{Binding .}" />
+                            </VerticalStackLayout>
+                        </Grid>
+                    </SwipeView>
+                </DataTemplate>
+            </CollectionView.ItemTemplate>
+        </CollectionView>
+    </Grid>
+</ContentPage>

@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:vm="clr-namespace:Phantom.Client.ViewModels"
+             xmlns:toolkit="http://schemas.microsoft.com/dotnet/2022/maui/toolkit"
+             x:Class="Phantom.Client.Views.PlayerPage"
+             x:DataType="vm:PlayerViewModel"
+             Shell.NavBarIsVisible="False"
+             Shell.TabBarIsVisible="False"
+             BackgroundColor="Black">
+    <Grid>
+        <Grid.GestureRecognizers>
+            <TapGestureRecognizer Tapped="OnSurfaceTapped" />
+        </Grid.GestureRecognizers>
+
+        <toolkit:MediaElement x:Name="Media" ShouldShowPlaybackControls="False" ShouldAutoPlay="True" ShouldKeepScreenOn="True"
+                              Aspect="AspectFit" MetadataTitle="{Binding Title}" MetadataArtworkUrl="{Binding PosterUrl}"
+                              Speed="{Binding Speed}" />
+
+        <!-- Subtitles are rendered by Phantom (MediaElement has no subtitle support). -->
+        <Label Text="{Binding SubtitleText}" FontSize="{Binding SubtitleSize}" TextColor="White" BackgroundColor="#99000000"
+               Padding="10,4" HorizontalOptions="Center" VerticalOptions="End" Margin="24,0,24,96"
+               HorizontalTextAlignment="Center" IsVisible="{Binding SubtitleText, Converter={StaticResource HasValue}}" />
+
+        <ActivityIndicator x:Name="Buffering" IsRunning="True" HorizontalOptions="Center" VerticalOptions="Center" WidthRequest="56" HeightRequest="56" />
+        <Label Text="{Binding ErrorMessage}" TextColor="{StaticResource Danger}" HorizontalOptions="Center" VerticalOptions="Center" Margin="0,120,0,0"
+               IsVisible="{Binding ErrorMessage, Converter={StaticResource HasValue}}" />
+
+        <!-- Controls overlay -->
+        <Grid x:Name="Controls" RowDefinitions="Auto,*,Auto" BackgroundColor="#66000000" Padding="12">
+            <Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto" ColumnSpacing="6">
+                <Button Text="✕" Style="{StaticResource GhostButton}" TextColor="White" FontSize="20" Clicked="OnClose" SemanticProperties.Description="Close player" />
+                <VerticalStackLayout Grid.Column="1" VerticalOptions="Center">
+                    <Label Text="{Binding Title}" FontFamily="OpenSansSemibold" FontSize="16" LineBreakMode="TailTruncation" />
+                    <Label Text="Transcoding" Style="{StaticResource Muted}" FontSize="11" IsVisible="{Binding IsTranscoding}" />
+                </VerticalStackLayout>
+                <Button Grid.Column="2" Text="CC" Style="{StaticResource GhostButton}" TextColor="White" Clicked="OnSubtitles" SemanticProperties.Description="Subtitles" />
+                <Button Grid.Column="3" Text="HD" Style="{StaticResource GhostButton}" TextColor="White" Clicked="OnQuality" SemanticProperties.Description="Quality" />
+                <Button Grid.Column="4" x:Name="SpeedButton" Text="1x" Style="{StaticResource GhostButton}" TextColor="White" Clicked="OnSpeed" SemanticProperties.Description="Playback speed" />
+            </Grid>
+
+            <HorizontalStackLayout Grid.Row="1" HorizontalOptions="Center" VerticalOptions="Center" Spacing="36">
+                <Button x:Name="BackButton" Text="↺ 10" Style="{StaticResource GhostButton}" TextColor="White" FontSize="18" Clicked="OnSkipBack" />
+                <Button x:Name="PlayPause" Text="❚❚" FontSize="26" WidthRequest="72" HeightRequest="72" CornerRadius="36" Clicked="OnPlayPause"
+                        SemanticProperties.Description="Play or pause" />
+                <Button x:Name="ForwardButton" Text="30 ↻" Style="{StaticResource GhostButton}" TextColor="White" FontSize="18" Clicked="OnSkipForward" />
+            </HorizontalStackLayout>
+
+            <VerticalStackLayout Grid.Row="2" Spacing="2">
+                <Label Text="{Binding UpNextTitle, StringFormat='Up next: {0}'}" Style="{StaticResource Muted}" HorizontalOptions="End"
+                       IsVisible="{Binding UpNextTitle, Converter={StaticResource HasValue}}" />
+                <Slider x:Name="Seek" Minimum="0" Maximum="1" DragStarted="OnSeekStarted" DragCompleted="OnSeekCompleted" />
+                <Grid ColumnDefinitions="*,*">
+                    <Label x:Name="PositionLabel" Text="0:00" FontSize="12" />
+                    <Label Grid.Column="1" x:Name="DurationLabel" Text="0:00" FontSize="12" HorizontalOptions="End" />
+                </Grid>
+            </VerticalStackLayout>
+        </Grid>
+    </Grid>
+</ContentPage>

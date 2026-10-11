@@ -1,0 +1,241 @@
+using System.Collections.ObjectModel;
+using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
+using Phantom.Client.Services;
+using Phantom.Shared;
+
+namespace Phantom.Client.ViewModels;
+
+public record SubtitleChoice(string Label, SubtitleTrackDto? Track)
+{
+    public override string ToString() => Label;
+}
+
+/// <summary>
+/// Player state: source selection (direct / transcoded / offline file), resume, subtitles overlay,
+/// timeline reporting and the up-next queue. The page wires MediaElement events into it.
+/// </summary>
+public partial class PlayerViewModel(PhantomApi api, SettingsService settings, DownloadManager downloads) : BaseViewModel, IQueryAttributable
+{
+    private IReadOnlyList<SubtitleCue> _cues = [];
+    private DateTime _lastReport = DateTime.MinValue;
+    private bool _offline;
+    private bool _resume;
+    private int? _releaseId;
+    private List<int> _queue = [];
+    private TimeSpan _runtime;
+
+    public ObservableCollection<SubtitleChoice> SubtitleChoices { get; } = [];
+    public IReadOnlyList<QualityOption> Qualities => QualityOption.All;
+    public IReadOnlyList<double> Speeds { get; } = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0];
+
+    [ObservableProperty] private int movieId;
+    [ObservableProperty] private string? sourceUrl;
+    [ObservableProperty] private string? posterUrl;
+    [ObservableProperty] private string? subtitleText;
+    [ObservableProperty] private SubtitleChoice? selectedSubtitle;
+    [ObservableProperty] private QualityOption selectedQuality = settings.StreamingQuality;
+    [ObservableProperty] private double speed = 1.0;
+    [ObservableProperty] private double subtitleSize = settings.SubtitleSize;
+    [ObservableProperty] private string? upNextTitle;
+    [ObservableProperty] private bool isTranscoding;
+
+    /// <summary>When transcoding, the stream restarts at this offset on every seek.</summary>
+    public TimeSpan TranscodeOffset { get; private set; }
+
+    public TimeSpan ResumePosition { get; private set; }
+    public StreamInfoDto? Stream { get; private set; }
+
+    public int SkipForward => settings.SkipForwardSeconds;
+    public int SkipBack => settings.SkipBackSeconds;
+
+    public event EventHandler? SourceChanged;
+
+    public void ApplyQueryAttributes(IDictionary<string, object> query)
+    {
+        MovieId = int.Parse(query["id"].ToString()!);
+        _resume = query.TryGetValue("resume", out var r) && bool.TryParse(r.ToString(), out var b) && b;
+        _offline = query.TryGetValue("offline", out var o) && o.ToString() == "true";
+        _releaseId = query.TryGetValue("releaseId", out var rel) && int.TryParse(rel.ToString(), out var rid) ? rid : null;
+        _queue = query.TryGetValue("queue", out var q)
+            ? q.ToString()!.Split(',', StringSplitOptions.RemoveEmptyEntries).Select(int.Parse).ToList()
+            : [];
+        LoadCommand.Execute(null);
+    }
+
+    [RelayCommand]
+    private Task Load() => RunAsync(async () =>
+    {
+        TranscodeOffset = TimeSpan.Zero;
+        SubtitleText = null;
+        _cues = [];
+        SubtitleChoices.Clear();
+        SubtitleChoices.Add(new SubtitleChoice("Off", null));
+
+        var offline = downloads.Find(MovieId);
+        if (_offline && offline is { IsComplete: true })
+        {
+            Title = offline.Title;
+            PosterUrl = offline.PosterSource;
+            ResumePosition = _resume ? TimeSpan.FromMilliseconds(offline.OfflinePositionMs) : TimeSpan.Zero;
+            Stream = null;
+            IsTranscoding = false;
+            SourceUrl = offline.FilePath;
+            SourceChanged?.Invoke(this, EventArgs.Empty);
+            return;
+        }
+
+        var movie = await api.MovieAsync(MovieId);
+        Title = movie.Title;
+        _runtime = TimeSpan.FromMinutes(movie.RuntimeMinutes ?? 0);
+        PosterUrl = movie.BackdropUrl ?? movie.PosterUrl;
+        Stream = await api.StreamInfoAsync(MovieId, _releaseId);
+        _releaseId = Stream.ReleaseId;
+        ResumePosition = _resume ? TimeSpan.FromMilliseconds(Stream.ResumePositionMs) : TimeSpan.Zero;
+
+        foreach (var s in Stream.Subtitles) SubtitleChoices.Add(new SubtitleChoice($"{s.Label} ({s.Language})", s));
+        SelectedSubtitle = settings.SubtitlesByDefault
+            ? SubtitleChoices.FirstOrDefault(c => c.Track?.Language.StartsWith(settings.PreferredSubtitleLanguage, StringComparison.OrdinalIgnoreCase) == true) ?? SubtitleChoices[0]
+            : SubtitleChoices[0];
+
+        await UpdateUpNextAsync();
+        ApplySource(ResumePosition);
+    });
+
+    /// <summary>Chooses direct play or a transcode URL starting at <paramref name="start"/>.</summary>
+    private void ApplySource(TimeSpan start)
+    {
+        if (Stream is null) return;
+        var quality = SelectedQuality;
+        IsTranscoding = !quality.IsOriginal && Stream.TranscodeUrl is not null;
+        if (IsTranscoding)
+        {
+            TranscodeOffset = start;
+            var url = $"{Stream.TranscodeUrl}&start={start.TotalSeconds:0.###}";
+            if (quality.MaxKbps is { } kbps) url += $"&maxKbps={kbps}";
+            if (quality.MaxHeight is { } h) url += $"&maxHeight={h}";
+            SourceUrl = url;
+            ResumePosition = TimeSpan.Zero; // the transcode already starts there
+        }
+        else
+        {
+            TranscodeOffset = TimeSpan.Zero;
+            SourceUrl = Stream.DirectUrl;
+            ResumePosition = start;
+        }
+        SourceChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>Seeking a transcode means restarting ffmpeg at the new offset.</summary>
+    public bool TrySeekTranscode(TimeSpan target)
+    {
+        if (!IsTranscoding) return false;
+        ApplySource(target < TimeSpan.Zero ? TimeSpan.Zero : target);
+        return true;
+    }
+
+    public void ChangeQuality(QualityOption quality, TimeSpan currentPosition)
+    {
+        SelectedQuality = quality;
+        if (!_offline) ApplySource(currentPosition);
+    }
+
+    partial void OnSelectedSubtitleChanged(SubtitleChoice? value) => _ = LoadSubtitlesAsync(value);
+
+    private async Task LoadSubtitlesAsync(SubtitleChoice? choice)
+    {
+        _cues = [];
+        SubtitleText = null;
+        if (choice?.Track is not { } track) return;
+        for (var attempt = 0; attempt < 5; attempt++)
+        {
+            try
+            {
+                _cues = SubtitleParser.Parse(await api.SubtitleTextAsync(track.Url));
+                return;
+            }
+            catch (ApiException ex) when (ex.Status == System.Net.HttpStatusCode.Conflict)
+            {
+                await Task.Delay(2000); // still downloading from the swarm
+            }
+            catch (HttpRequestException)
+            {
+                return;
+            }
+        }
+    }
+
+    /// <summary>Called on every position tick: updates subtitles and reports progress periodically.</summary>
+    public void OnPosition(TimeSpan elementPosition, TimeSpan duration, bool playing)
+    {
+        var position = elementPosition + TranscodeOffset;
+        if (_cues.Count > 0) SubtitleText = SubtitleParser.CueAt(_cues, position)?.Text;
+        if (DateTime.UtcNow - _lastReport > TimeSpan.FromSeconds(10))
+            _ = ReportAsync(position, duration, playing ? PlayerState.Playing : PlayerState.Paused);
+    }
+
+    public TimeSpan ActualPosition(TimeSpan elementPosition) => elementPosition + TranscodeOffset;
+
+    /// <summary>Full length of the movie, even while a transcode only knows the remaining part.</summary>
+    public TimeSpan TotalDuration(TimeSpan elementDuration) =>
+        !IsTranscoding ? elementDuration
+        : elementDuration > TimeSpan.Zero ? elementDuration + TranscodeOffset
+        : _runtime;
+
+    public async Task ReportAsync(TimeSpan position, TimeSpan duration, PlayerState state)
+    {
+        _lastReport = DateTime.UtcNow;
+        // A live transcode often reports no duration (or only what's left), so fall back to metadata.
+        var total = !IsTranscoding ? duration
+            : duration > TimeSpan.Zero ? duration + TranscodeOffset
+            : _runtime;
+        var pos = (long)position.TotalMilliseconds;
+        var dur = (long)total.TotalMilliseconds;
+        if (dur <= 0) return;
+
+        if (_offline)
+        {
+            await downloads.RecordOfflineProgressAsync(MovieId, pos, dur);
+            return;
+        }
+        try
+        {
+            await api.ReportTimelineAsync(new TimelineUpdate(MovieId, _releaseId, pos, dur, state, settings.ClientName));
+        }
+        catch (Exception ex) when (ex is HttpRequestException or ApiException or TaskCanceledException)
+        {
+            // Lost connection mid-play; remember locally if downloaded.
+            await downloads.RecordOfflineProgressAsync(MovieId, pos, dur);
+        }
+    }
+
+    private async Task UpdateUpNextAsync()
+    {
+        UpNextTitle = null;
+        var index = _queue.IndexOf(MovieId);
+        if (index < 0 || index + 1 >= _queue.Count) return;
+        try
+        {
+            UpNextTitle = (await api.MovieAsync(_queue[index + 1])).Title;
+        }
+        catch (Exception ex) when (ex is HttpRequestException or ApiException)
+        {
+            UpNextTitle = null;
+        }
+    }
+
+    /// <summary>Advances the play queue (playlists / "play all"). Returns false at the end.</summary>
+    public bool TryPlayNext()
+    {
+        if (!settings.AutoPlayNext) return false;
+        var index = _queue.IndexOf(MovieId);
+        if (index < 0 || index + 1 >= _queue.Count) return false;
+        MovieId = _queue[index + 1];
+        _resume = false;
+        _releaseId = null;
+        LoadCommand.Execute(null);
+        return true;
+    }
+
+    partial void OnSubtitleSizeChanged(double value) => settings.SubtitleSize = value;
+}
