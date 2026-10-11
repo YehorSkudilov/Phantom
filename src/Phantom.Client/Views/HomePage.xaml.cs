@@ -5,7 +5,6 @@ namespace Phantom.Views;
 public partial class HomePage : TabView
 {
     private readonly HomeViewModel _vm;
-    private DateTime _lastLoad = DateTime.MinValue;
 
     public HomePage(HomeViewModel vm)
     {
@@ -13,14 +12,13 @@ public partial class HomePage : TabView
         BindingContext = _vm = vm;
     }
 
+    /// <summary>
+    /// Loads the first time Home is shown (or again if that didn't get anything, e.g. offline). After that it's only
+    /// reloaded by pulling down: reloading on every return (from a movie, the player...) kept redrawing it.
+    /// </summary>
     public override void Load()
     {
-        // Refresh when coming back (e.g. after playback) so Continue Watching is current.
-        if (DateTime.UtcNow - _lastLoad > TimeSpan.FromSeconds(5))
-        {
-            _lastLoad = DateTime.UtcNow;
-            _vm.RefreshCommand.Execute(null);
-        }
+        if (_vm.Hubs.Count == 0 && !_vm.IsBusy) _vm.RefreshCommand.Execute(null);
     }
 
     /// <summary>Clears the selection so tapping the same poster again still navigates.</summary>

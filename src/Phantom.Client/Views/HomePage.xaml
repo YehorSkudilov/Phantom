@@ -7,8 +7,11 @@
              x:Class="Phantom.Views.HomePage"
              x:DataType="vm:HomeViewModel">
     <RefreshView IsRefreshing="{Binding IsRefreshing}" Command="{Binding RefreshCommand}">
-        <ScrollView>
-            <VerticalStackLayout Padding="0,0,0,108" Spacing="8">
+        <!-- A CollectionView, not a ScrollView of rows: only the rows on screen are made, so posters further down load
+             as they're scrolled to rather than all at once. -->
+        <CollectionView ItemsSource="{Binding Hubs}" SelectionMode="None">
+            <CollectionView.Header>
+            <VerticalStackLayout Spacing="8">
                 <Grid ColumnDefinitions="Auto,*" Padding="16,18,16,4" ColumnSpacing="10">
                     <Image Source="logo_mark.png" HeightRequest="28" />
                     <Label Grid.Column="1" Text="{Binding Greeting}" Style="{StaticResource H2}" VerticalOptions="Center" />
@@ -46,11 +49,13 @@
                     </Grid>
                 </Border>
 
-                <!-- Hubs -->
-                <VerticalStackLayout BindableLayout.ItemsSource="{Binding Hubs}" Spacing="6">
-                    <BindableLayout.ItemTemplate>
+            </VerticalStackLayout>
+            </CollectionView.Header>
+
+            <!-- Hubs -->
+            <CollectionView.ItemTemplate>
                         <DataTemplate x:DataType="dto:HubDto">
-                            <VerticalStackLayout Spacing="8" Padding="0,8,0,0">
+                            <VerticalStackLayout Spacing="8" Padding="0,14,0,0">
                                 <Grid ColumnDefinitions="*,Auto" Padding="16,0,8,0">
                                     <Label Text="{Binding Title}" Style="{StaticResource H2}" VerticalOptions="Center" />
                                     <Button Grid.Column="1" Text="See all ›" Style="{StaticResource GhostButton}"
@@ -71,9 +76,10 @@
                                 </CollectionView>
                             </VerticalStackLayout>
                         </DataTemplate>
-                    </BindableLayout.ItemTemplate>
-                </VerticalStackLayout>
-            </VerticalStackLayout>
-        </ScrollView>
+            </CollectionView.ItemTemplate>
+            <CollectionView.Footer>
+                <BoxView HeightRequest="108" Color="Transparent" />
+            </CollectionView.Footer>
+        </CollectionView>
     </RefreshView>
 </views:TabView>

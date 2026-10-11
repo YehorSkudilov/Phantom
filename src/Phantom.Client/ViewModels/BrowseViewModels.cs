@@ -21,10 +21,16 @@ public partial class HomeViewModel(PhantomApi api, SettingsService settings, Dow
         try
         {
             var hubs = await api.HubsAsync();
-            Hubs.Clear();
-            foreach (var hub in hubs) Hubs.Add(hub);
-            Featured = hubs.FirstOrDefault(h => h.Key == "continue")?.Items.FirstOrDefault()
-                       ?? hubs.FirstOrDefault(h => h.Key == "recent")?.Items.FirstOrDefault();
+            // Only rows that changed are replaced: clearing and refilling redrew (and reloaded the posters of) them all.
+            for (var i = 0; i < hubs.Count; i++)
+            {
+                if (i >= Hubs.Count) Hubs.Add(hubs[i]);
+                else if (!SameRow(Hubs[i], hubs[i])) Hubs[i] = hubs[i];
+            }
+            while (Hubs.Count > hubs.Count) Hubs.RemoveAt(Hubs.Count - 1);
+            var featured = hubs.FirstOrDefault(h => h.Key == "continue")?.Items.FirstOrDefault()
+                           ?? hubs.FirstOrDefault(h => h.Key == "recent")?.Items.FirstOrDefault();
+            if (featured != Featured) Featured = featured;
             Greeting = settings.User is { } u ? $"Welcome back, {u.Username}" : "Welcome";
             await downloads.SyncOfflineProgressAsync();
         }
@@ -34,6 +40,8 @@ public partial class HomeViewModel(PhantomApi api, SettingsService settings, Dow
             throw;
         }
     });
+
+    private static bool SameRow(HubDto a, HubDto b) => a.Key == b.Key && a.Title == b.Title && a.Items.SequenceEqual(b.Items);
 
     [RelayCommand]
     private Task SeeAll(HubDto hub)
@@ -82,15 +90,18 @@ public partial class LibraryViewModel(PhantomApi api, SettingsService settings, 
 
     partial void OnSelectedTabChanged(int value) => LoadSelectedTab();
 
-    /// <summary>Refreshes the open sub-tab's list (the whole library loads itself as it scrolls).</summary>
+    /// <summary>
+    /// Loads the open sub-tab's list the first time it's shown (the whole library loads itself as it scrolls). After
+    /// that it's reloaded by pulling down, not every time the tab appears.
+    /// </summary>
     public void LoadSelectedTab()
     {
         switch (SelectedTab)
         {
-            case 1: Watchlist.LoadCommand.Execute(null); break;
-            case 2: History.LoadCommand.Execute(null); break;
-            case 3: Collections.LoadCommand.Execute(null); break;
-            case 4: Playlists.LoadCommand.Execute(null); break;
+            case 1 when Watchlist.Movies.Count == 0: Watchlist.LoadCommand.Execute(null); break;
+            case 2 when History.Movies.Count == 0: History.LoadCommand.Execute(null); break;
+            case 3 when Collections.Collections.Count == 0: Collections.LoadCommand.Execute(null); break;
+            case 4 when Playlists.Playlists.Count == 0: Playlists.LoadCommand.Execute(null); break;
         }
     }
 
