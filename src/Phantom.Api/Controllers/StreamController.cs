@@ -25,6 +25,9 @@ public class StreamController(
     Microsoft.Extensions.Options.IOptions<PhantomOptions> options,
     ILogger<StreamController> log) : ControllerBase
 {
+    /// <summary>How much video has to be downloaded ahead before playback starts (for the loading screen's estimate).</summary>
+    private static readonly TimeSpan StartBuffer = TimeSpan.FromSeconds(30);
+
     /// <summary>Seek previews are cached per this many seconds of the movie.</summary>
     private const int ThumbnailStepSeconds = 10;
 
@@ -160,7 +163,7 @@ public class StreamController(
     /// <see cref="Info"/> is still waiting for the torrent's metadata.
     /// </summary>
     [HttpGet("status")]
-    public async Task<ActionResult<StreamStatusDto>> Status(int movieId, [FromQuery] int? releaseId, CancellationToken ct)
+    public async Task<ActionResult<StreamStatusDto>> Status(int movieId, [FromQuery] int? releaseId, [FromQuery] double position, CancellationToken ct)
     {
         var release = await ResolveReleaseAsync(movieId, releaseId, ct);
         if (release is null) return NotFound();
@@ -176,10 +179,32 @@ public class StreamController(
 
         var stats = engine.Stats(release.InfoHash)!;
         if (stats.Complete) return new StreamStatusDto("Ready", stats.Peers, 100, 0, true);
+
+        // Playback starts once about StartBuffer of video is downloaded from where it starts (the bitrate comes from
+        // the file's size over the movie's length).
+        var runtime = await db.Movies.Where(m => m.Id == movieId).Select(m => m.RuntimeMinutes).FirstOrDefaultAsync(ct) is > 0 and var minutes
+            ? TimeSpan.FromMinutes(minutes) : TimeSpan.FromMinutes(110);
+        var buffer = engine.BufferedFrom(release.InfoHash, position / runtime.TotalSeconds);
+        double? bufferProgress = null;
+        int? secondsToStart = null;
+        var tooSlow = false;
+        long neededRate = 0;
+        if (buffer is var (buffered, length) && length > 0)
+        {
+            neededRate = (long)(length / runtime.TotalSeconds);
+            var target = Math.Max(4L << 20, (long)(neededRate * StartBuffer.TotalSeconds));
+            bufferProgress = Math.Clamp((double)buffered / target, 0, 1);
+            if (stats.DownloadRate > 0) secondsToStart = (int)Math.Ceiling(Math.Max(0, target - buffered) / (double)stats.DownloadRate);
+            // Judged once it's had a fair chance to get going.
+            tooSlow = engine.Age(release.InfoHash) > TimeSpan.FromSeconds(20)
+                      && (stats.DownloadRate < neededRate * 0.9 || secondsToStart is null or > 120);
+        }
+
         var message = stats.Peers == 0
             ? "Connecting to peers…"
-            : $"Downloading from {stats.Peers} peers · {FormatRate(stats.DownloadRate)}";
-        return new StreamStatusDto(message, stats.Peers, Math.Round(stats.Progress, 1), stats.DownloadRate, false);
+            : bufferProgress >= 1 ? "Almost ready…" : $"Downloading from {stats.Peers} peers · {FormatRate(stats.DownloadRate)}";
+        return new StreamStatusDto(message, stats.Peers, Math.Round(stats.Progress, 1), stats.DownloadRate, false,
+            bufferProgress, secondsToStart, tooSlow, neededRate);
 
         static string FormatRate(long bytesPerSecond) => bytesPerSecond >= 1 << 20
             ? $"{bytesPerSecond / (double)(1 << 20):0.#} MB/s"

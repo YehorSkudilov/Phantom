@@ -54,6 +54,23 @@ public partial class PlayerViewModel(PhantomApi api, SettingsService settings, D
 
     private CancellationTokenSource? _statusPoll;
 
+    /// <summary>Where playback will start (or carry on) from, so the loading estimate is for that point.</summary>
+    public TimeSpan StatusPosition { get; set; }
+
+    /// <summary>The download is slower than the movie plays: the loading screen offers saving it on the server.</summary>
+    [ObservableProperty] private bool isTooSlow;
+    [ObservableProperty] private string? tooSlowText;
+
+    /// <summary>Has the server download the whole movie, to watch from Downloads → On the server when it's ready.</summary>
+    [RelayCommand]
+    private Task SaveOnServerInstead() => RunAsync(async () =>
+    {
+        await api.QueueServerDownloadAsync(MovieId, _releaseId);
+        StopLoadingStatus();
+        await ToastAsync("Saving it on the server. Watch it from Downloads → On the server when it's ready.");
+        await Shell.Current.GoToAsync("..");
+    }, showBusy: false);
+
     /// <summary>Keeps the loading screen up to date from the server while the movie opens or buffers.</summary>
     public void StartLoadingStatus()
     {
@@ -66,6 +83,7 @@ public partial class PlayerViewModel(PhantomApi api, SettingsService settings, D
     {
         _statusPoll?.Cancel();
         _statusPoll = null;
+        IsTooSlow = false;
     }
 
     private async Task PollStatusAsync(CancellationToken ct)
@@ -74,11 +92,19 @@ public partial class PlayerViewModel(PhantomApi api, SettingsService settings, D
         {
             try
             {
-                var status = await api.StreamStatusAsync(MovieId, _releaseId, ct);
+                var status = await api.StreamStatusAsync(MovieId, _releaseId, StatusPosition, ct);
                 if (ct.IsCancellationRequested) return;
                 LoadingText = status.Ready ? "Buffering…" : status.Message;
-                LoadingProgress = status.Ready || status.Progress <= 0 ? -1 : status.Progress / 100;
-                LoadingDetail = status.Ready ? null : status.Progress > 0 ? $"{status.Progress:0.#}% of the movie on the server" : null;
+                // The bar is the wait until playback starts, not the whole movie.
+                LoadingProgress = status.Ready ? -1 : status.BufferProgress ?? -1;
+                LoadingDetail = status.Ready ? null
+                    : status.BufferProgress >= 1 ? "Starting…"
+                    : status.SecondsToStart is { } s ? $"Ready to play in about {FormatWait(s)}"
+                    : null;
+                IsTooSlow = !status.Ready && status.TooSlow;
+                TooSlowText = IsTooSlow
+                    ? $"Downloading at {BytesConverter.Format(status.DownloadRate)}/s, but this movie needs about {BytesConverter.Format(status.NeededRate)}/s to play without pausing."
+                    : null;
             }
             catch (Exception ex) when (ex is HttpRequestException or ApiException)
             {
@@ -91,6 +117,13 @@ public partial class PlayerViewModel(PhantomApi api, SettingsService settings, D
             try { await Task.Delay(TimeSpan.FromSeconds(1.5), ct); } catch (OperationCanceledException) { return; }
         }
     }
+
+    private static string FormatWait(int seconds) => seconds switch
+    {
+        < 60 => $"{Math.Max(1, seconds)} s",
+        < 3600 => $"{(seconds + 30) / 60} min",
+        _ => $"{seconds / 3600} h {seconds % 3600 / 60} min",
+    };
 
     /// <summary>The seek bar's preview frame at <paramref name="at"/>, or null when the server can't make one.</summary>
     public string? ThumbnailUrl(TimeSpan at) =>
@@ -158,6 +191,7 @@ public partial class PlayerViewModel(PhantomApi api, SettingsService settings, D
         Stream = await api.StreamInfoAsync(MovieId, _releaseId);
         _releaseId = Stream.ReleaseId;
         ResumePosition = _resume ? TimeSpan.FromMilliseconds(Stream.ResumePositionMs) : TimeSpan.Zero;
+        StatusPosition = ResumePosition;
 
         foreach (var s in Stream.Subtitles) SubtitleChoices.Add(new SubtitleChoice($"{s.Label} ({s.Language})", s));
         SelectedSubtitle = settings.SubtitlesByDefault

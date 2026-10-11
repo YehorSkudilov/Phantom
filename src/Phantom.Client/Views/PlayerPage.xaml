@@ -36,6 +36,17 @@
                        IsVisible="{Binding LoadingDetail, Converter={StaticResource HasValue}}" />
             </VerticalStackLayout>
         </Border>
+
+        <!-- Too slow to stream smoothly: suggest letting the server download it all first. -->
+        <Border IsVisible="{Binding IsTooSlow}" HorizontalOptions="Center" VerticalOptions="End" Margin="16,0,16,40" Padding="18,14" MaximumWidthRequest="460"
+                BackgroundColor="#E60B0B12" StrokeShape="RoundRectangle 14">
+            <VerticalStackLayout Spacing="10">
+                <Label Text="This connection is too slow to stream it smoothly" TextColor="White" FontFamily="OpenSansSemibold" HorizontalTextAlignment="Center" />
+                <Label Text="{Binding TooSlowText}" Style="{StaticResource Muted}" FontSize="12" HorizontalTextAlignment="Center" />
+                <Button Text="Save on server and watch later" Command="{Binding SaveOnServerInsteadCommand}" HorizontalOptions="Center"
+                        ImageSource="{controls:Icon cloud_download, Color=White, Size=20}" ContentLayout="Left,8" />
+            </VerticalStackLayout>
+        </Border>
         <Label Text="{Binding ErrorMessage}" TextColor="{StaticResource Danger}" HorizontalOptions="Center" VerticalOptions="Center" Margin="0,120,0,0"
                IsVisible="{Binding ErrorMessage, Converter={StaticResource HasValue}}" />
 

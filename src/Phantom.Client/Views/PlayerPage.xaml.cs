@@ -167,6 +167,8 @@ public partial class PlayerPage : ContentPage
         SubtitlesButton.IsVisible = QualityButton.IsVisible = SpeedButton.IsVisible = !loading;
         if (loading)
         {
+            // The estimate is for where playback will carry on from.
+            if (Media.Position > TimeSpan.Zero) _vm.StatusPosition = _vm.ActualPosition(Media.Position);
             _vm.StartLoadingStatus();
             Controls.IsVisible = true; // keep the close button reachable
         }

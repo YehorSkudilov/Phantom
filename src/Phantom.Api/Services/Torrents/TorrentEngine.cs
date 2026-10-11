@@ -26,6 +26,7 @@ public sealed class TorrentEngine : IHostedService, IAsyncDisposable
     private readonly SemaphoreSlim _addLock = new(1, 1);
     private readonly ConcurrentDictionary<string, DateTime> _lastAccess = new();
     private readonly ConcurrentDictionary<string, bool> _pinned = new();
+    private readonly ConcurrentDictionary<string, DateTime> _addedAt = new();
     private readonly ConcurrentDictionary<string, SharedTorrentStream> _streams = new();
     private ClientEngine? _engine;
 
@@ -105,6 +106,7 @@ public sealed class TorrentEngine : IHostedService, IAsyncDisposable
             try
             {
                 manager = Find(release.InfoHash) ?? await AddAsync(release, keep, ct);
+                _addedAt.TryAdd(release.InfoHash.ToLowerInvariant(), DateTime.UtcNow);
             }
             finally
             {
@@ -239,6 +241,7 @@ public sealed class TorrentEngine : IHostedService, IAsyncDisposable
 
     public async Task RemoveAsync(string infoHash, bool deleteData)
     {
+        _addedAt.TryRemove(infoHash.ToLowerInvariant(), out _);
         _pinned.TryRemove(infoHash, out _);
         _lastAccess.TryRemove(infoHash, out _);
         DropStream(infoHash);
@@ -273,6 +276,26 @@ public sealed class TorrentEngine : IHostedService, IAsyncDisposable
         var progress = video is null ? m.PartialProgress : video.BitField.PercentComplete;
         return new TorrentStats(infoHash, m.Name, m.State, progress, m.Monitor.DownloadRate, m.Monitor.UploadRate,
             m.Peers.Available + m.OpenConnections, video?.Length ?? 0, video is not null && IsFileComplete(video));
+    }
+
+    /// <summary>How long the torrent has been downloading in this run of the server.</summary>
+    public TimeSpan Age(string infoHash) =>
+        _addedAt.TryGetValue(infoHash.ToLowerInvariant(), out var at) ? DateTime.UtcNow - at : TimeSpan.Zero;
+
+    /// <summary>
+    /// How much of the main video is downloaded unbroken from <paramref name="fraction"/> of the way in (where playback
+    /// will start), and the video's size. Null until the torrent's metadata is in.
+    /// </summary>
+    public (long Buffered, long Length)? BufferedFrom(string infoHash, double fraction)
+    {
+        if (Find(infoHash) is not { HasMetadata: true } manager || MainVideo(manager) is not { } file || manager.Torrent is not { } torrent) return null;
+        var pieceLength = (long)torrent.PieceLength;
+        var offset = (long)(file.Length * Math.Clamp(fraction, 0, 1));
+        var first = (int)((file.OffsetInTorrent + offset) / pieceLength) - file.StartPieceIndex;
+        var pieces = file.BitField;
+        var count = 0;
+        for (var i = Math.Max(0, first); i < pieces.Length && pieces[i]; i++) count++;
+        return (Math.Clamp(count * pieceLength, 0, file.Length - offset), file.Length);
     }
 
     /// <summary>Free space on the disk holding the stream cache.</summary>

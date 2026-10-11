@@ -41,8 +41,48 @@ public class PhantomApi(HttpClient http, SettingsService settings)
         var text = await res.Content.ReadAsStringAsync(ct);
         if (res.StatusCode == HttpStatusCode.Unauthorized && !path.StartsWith("/api/auth") && !path.StartsWith("/api/profiles/switch"))
             Unauthorized?.Invoke(this, EventArgs.Empty);
-        var message = string.IsNullOrWhiteSpace(text) || text.StartsWith('{') ? res.ReasonPhrase ?? res.StatusCode.ToString() : text.Trim('"');
-        throw new ApiException(res.StatusCode, message);
+        throw new ApiException(res.StatusCode, Describe(res.StatusCode, text));
+    }
+
+    /// <summary>
+    /// A failed response as a sentence for people: the server's own message when it sent one (plain text, a JSON string or
+    /// a problem's "detail"), otherwise what the status means. Never the HTML error page a proxy answers with when the
+    /// server is down ("502 Bad Gateway").
+    /// </summary>
+    internal static string Describe(HttpStatusCode status, string body)
+    {
+        var text = body.Trim();
+        if (text.StartsWith('"') && text.EndsWith('"') && text.Length > 1)
+        {
+            try { text = JsonSerializer.Deserialize<string>(text) ?? ""; } catch (JsonException) { }
+        }
+        else if (text.StartsWith('{'))
+        {
+            try
+            {
+                using var doc = JsonDocument.Parse(text);
+                text = doc.RootElement.TryGetProperty("detail", out var d) && d.ValueKind == JsonValueKind.String ? d.GetString() ?? ""
+                    : doc.RootElement.TryGetProperty("message", out var m) && m.ValueKind == JsonValueKind.String ? m.GetString() ?? ""
+                    : "";
+            }
+            catch (JsonException) { text = ""; }
+        }
+        // Something the server wrote for people: short, and not markup.
+        if (text.Length is > 0 and < 300 && !text.Contains('<')) return text;
+
+        return (int)status switch
+        {
+            400 => "That didn't work. Check what you entered and try again.",
+            401 => "Your sign-in has expired. Sign in again.",
+            403 => "You don't have permission to do that.",
+            404 => "That couldn't be found. It may have been removed.",
+            409 => "That already exists.",
+            429 => "The server is busy. Try again in a moment.",
+            500 => "Something went wrong on the server. Try again, and if it keeps happening, check the server's logs.",
+            501 => "The server can't do that: the feature isn't set up there.",
+            502 or 503 or 504 => "The Phantom server isn't responding right now. It may be restarting — try again in a minute.",
+            _ => $"The server couldn't do that (error {(int)status}).",
+        };
     }
 
     private async Task<T> GetAsync<T>(string path, CancellationToken ct = default)
@@ -77,8 +117,8 @@ public class PhantomApi(HttpClient http, SettingsService settings)
     public Task<AuthResponse> RegisterAsync(string user, string password) => SendAsync<AuthResponse>(HttpMethod.Post, "/api/auth/register", new RegisterRequest(user, password));
     public Task<UserDto> MeAsync() => GetAsync<UserDto>("/api/auth/me");
 
-    public Task<StreamStatusDto> StreamStatusAsync(int movieId, int? releaseId, CancellationToken ct = default) =>
-        GetAsync<StreamStatusDto>($"/api/stream/{movieId}/status{(releaseId is { } r ? $"?releaseId={r}" : "")}", ct);
+    public Task<StreamStatusDto> StreamStatusAsync(int movieId, int? releaseId, TimeSpan position, CancellationToken ct = default) =>
+        GetAsync<StreamStatusDto>($"/api/stream/{movieId}/status?position={position.TotalSeconds:0}{(releaseId is { } r ? $"&releaseId={r}" : "")}", ct);
     public Task<UserDto> UpdateAccountAsync(UpdateAccountRequest req) => SendAsync<UserDto>(HttpMethod.Put, "/api/auth/account", req);
 
     // Pairing: a TV shows a code, a signed-in device approves it (see PairingController on the server).

@@ -155,7 +155,19 @@ public record StreamInfoDto(
 /// What the server is doing to get a movie playing, for the player's loading screen: <see cref="Message"/> in words,
 /// the numbers behind it, and <see cref="Ready"/> once the file is complete.
 /// </summary>
-public record StreamStatusDto(string Message, int Peers, double Progress, long DownloadRate, bool Ready);
+public record StreamStatusDto(
+    string Message,
+    int Peers,
+    double Progress,
+    long DownloadRate,
+    bool Ready,
+    // Towards starting playback (not the whole movie): how much of the opening buffer is in (0-1), and about how long
+    // the rest will take at the current speed.
+    double? BufferProgress = null,
+    int? SecondsToStart = null,
+    // Downloading slower than the movie plays, so it would keep pausing: worth saving on the server instead.
+    bool TooSlow = false,
+    long NeededRate = 0);
 
 public record SubtitleTrackDto(string Id, string Language, string Label, string Url);
 
