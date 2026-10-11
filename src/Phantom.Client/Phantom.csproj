@@ -21,8 +21,8 @@
 		<ApplicationId>com.yehorskudilov.phantom</ApplicationId>
 
 		<!-- Versions. The Publish App workflow bumps both (version code = major*1000000 + minor*1000 + patch). -->
-		<ApplicationDisplayVersion>1.0.12</ApplicationDisplayVersion>
-		<ApplicationVersion>1000012</ApplicationVersion>
+		<ApplicationDisplayVersion>1.0.13</ApplicationDisplayVersion>
+		<ApplicationVersion>1000013</ApplicationVersion>
 		<!-- Pin Version for every TFM, or MAUI sets it per platform and NuGet restore fails with NU1105. -->
 		<Version>$(ApplicationDisplayVersion)</Version>
 
