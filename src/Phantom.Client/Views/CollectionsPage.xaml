@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:vm="clr-namespace:Phantom.Client.ViewModels"
+             xmlns:dto="clr-namespace:Phantom.Shared;assembly=Phantom.Shared"
+             x:Class="Phantom.Client.Views.CollectionsPage"
+             x:DataType="vm:CollectionsViewModel"
+             Title="Collections">
+    <RefreshView IsRefreshing="{Binding IsBusy}" Command="{Binding LoadCommand}">
+        <CollectionView ItemsSource="{Binding Collections}" SelectionMode="None" Margin="12,8">
+            <CollectionView.ItemsLayout>
+                <GridItemsLayout Orientation="Vertical" Span="2" HorizontalItemSpacing="12" VerticalItemSpacing="12" />
+            </CollectionView.ItemsLayout>
+            <CollectionView.EmptyView>
+                <Label Text="Collections appear automatically when TMDB metadata is enabled on the server." Style="{StaticResource Muted}"
+                       HorizontalTextAlignment="Center" Margin="32,48" />
+            </CollectionView.EmptyView>
+            <CollectionView.ItemTemplate>
+                <DataTemplate x:DataType="dto:CollectionDto">
+                    <VerticalStackLayout Spacing="4">
+                        <VerticalStackLayout.GestureRecognizers>
+                            <TapGestureRecognizer Command="{Binding Source={RelativeSource AncestorType={x:Type vm:CollectionsViewModel}}, Path=OpenCommand, x:DataType=vm:CollectionsViewModel}"
+                                                  CommandParameter="{Binding .}" />
+                        </VerticalStackLayout.GestureRecognizers>
+                        <Border StrokeShape="RoundRectangle 10" HeightRequest="230" BackgroundColor="{StaticResource Surface}">
+                            <Image Source="{Binding PosterUrl, Converter={StaticResource Poster}}" Aspect="AspectFill" />
+                        </Border>
+                        <Label Text="{Binding Name}" FontFamily="OpenSansSemibold" LineBreakMode="TailTruncation" />
+                        <Label Text="{Binding Count, StringFormat='{0} movies'}" Style="{StaticResource Muted}" />
+                    </VerticalStackLayout>
+                </DataTemplate>
+            </CollectionView.ItemTemplate>
+        </CollectionView>
+    </RefreshView>
+</ContentPage>

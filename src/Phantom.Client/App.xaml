@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<Application xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:local="clr-namespace:Phantom.Client"
+             xmlns:controls="clr-namespace:Phantom.Client.Controls"
+             xmlns:dto="clr-namespace:Phantom.Shared;assembly=Phantom.Shared"
+             x:Class="Phantom.Client.App">
+    <Application.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="Resources/Styles/Colors.xaml" />
+                <ResourceDictionary Source="Resources/Styles/Styles.xaml" />
+            </ResourceDictionary.MergedDictionaries>
+
+            <local:InvertBoolConverter x:Key="Not" />
+            <local:HasValueConverter x:Key="HasValue" />
+            <local:BytesConverter x:Key="Bytes" />
+            <local:PercentToProgressConverter x:Key="Percent" />
+            <local:MinutesConverter x:Key="Minutes" />
+            <local:TimeSpanConverter x:Key="Time" />
+            <local:PosterConverter x:Key="Poster" />
+            <local:EqualsConverter x:Key="Equals" />
+            <local:InitialConverter x:Key="Initial" />
+
+            <!-- Poster card used by every movie row/grid: artwork, watched tick, resume bar. -->
+            <DataTemplate x:Key="PosterCard" x:DataType="dto:MovieSummaryDto">
+                <Grid RowDefinitions="Auto,Auto,Auto" WidthRequest="124" Padding="0,0,0,6" RowSpacing="4">
+                    <Border StrokeShape="RoundRectangle 8" HeightRequest="184" BackgroundColor="{StaticResource Surface}">
+                        <Grid>
+                            <Image Source="{Binding PosterUrl, Converter={StaticResource Poster}}" Aspect="AspectFill" />
+                            <!-- Unwatched marker, like Plex's corner triangle -->
+                            <Border IsVisible="{Binding Watched, Converter={StaticResource Not}}"
+                                    HorizontalOptions="End" VerticalOptions="Start"
+                                    WidthRequest="10" HeightRequest="10" Margin="6"
+                                    StrokeShape="RoundRectangle 5" BackgroundColor="{StaticResource Primary}" />
+                            <Label IsVisible="{Binding Watched}" Text="✓" FontSize="13" FontAttributes="Bold"
+                                   HorizontalOptions="End" VerticalOptions="Start" Margin="0,4,6,0"
+                                   TextColor="{StaticResource Success}" />
+                            <ProgressBar Progress="{Binding ProgressPercent, Converter={StaticResource Percent}}"
+                                         IsVisible="{Binding ProgressPercent, Converter={StaticResource HasValue}}"
+                                         VerticalOptions="End" HeightRequest="4" ProgressColor="{StaticResource Primary}"
+                                         BackgroundColor="#66000000" />
+                        </Grid>
+                    </Border>
+                    <Label Grid.Row="1" Text="{Binding Title}" FontSize="13" LineBreakMode="TailTruncation" MaxLines="1" />
+                    <Label Grid.Row="2" Text="{Binding Year}" Style="{StaticResource Muted}" FontSize="12" />
+                </Grid>
+            </DataTemplate>
+
+            <!-- Compact list row used in list mode and search -->
+            <DataTemplate x:Key="MovieRow" x:DataType="dto:MovieSummaryDto">
+                <controls:MovieRowView />
+            </DataTemplate>
+        </ResourceDictionary>
+    </Application.Resources>
+</Application>

@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<Shell
+    x:Class="Phantom.Client.AppShell"
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    xmlns:views="clr-namespace:Phantom.Client.Views"
+    Title="Phantom"
+    FlyoutBehavior="Disabled">
+
+    <ShellContent x:Name="ConnectItem" Route="connect" ContentTemplate="{DataTemplate views:ConnectPage}" Shell.NavBarIsVisible="False" Shell.TabBarIsVisible="False" />
+    <ShellContent Route="profiles" ContentTemplate="{DataTemplate views:ProfilesPage}" Shell.NavBarIsVisible="False" Shell.TabBarIsVisible="False" />
+
+    <TabBar x:Name="MainTabs" Route="main">
+        <ShellContent Title="Home" Icon="tab_home.png" Route="home" ContentTemplate="{DataTemplate views:HomePage}" />
+        <ShellContent Title="Library" Icon="tab_library.png" Route="library" ContentTemplate="{DataTemplate views:LibraryPage}" />
+        <ShellContent Title="Search" Icon="tab_search.png" Route="search" ContentTemplate="{DataTemplate views:SearchPage}" />
+        <ShellContent Title="Downloads" Icon="tab_downloads.png" Route="downloads" ContentTemplate="{DataTemplate views:DownloadsPage}" />
+        <ShellContent Title="More" Icon="tab_more.png" Route="more" ContentTemplate="{DataTemplate views:MorePage}" />
+    </TabBar>
+</Shell>

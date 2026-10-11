@@ -1,0 +1,103 @@
+name: Publish API
+
+on:
+  workflow_dispatch:
+  # Lets Publish.yml call this as a reusable workflow instead of keeping its own copy
+  # of the deploy script - see that file's deploy-api job.
+  workflow_call:
+
+jobs:
+
+# ==================================================
+# DEPLOY API
+# ==================================================
+  deploy-api:
+    runs-on: ubuntu-latest
+
+    # Only deploy from the main branch
+    if: github.ref == 'refs/heads/main'
+
+    steps:
+      - name: Deploy over SSH
+        uses: appleboy/ssh-action@v1.2.2
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          command_timeout: 20m
+          script: |
+            set -e
+
+            echo "Deploying Phantom API..."
+
+            # One-time setup on the server: git clone the repo to /opt/Phantom.
+            cd /opt/Phantom
+
+            echo "Pulling latest code..."
+            # The lock keeps deploys running side by side from resetting it at the same time.
+            flock /tmp/phantom-deploy-git.lock -c "git fetch origin && git reset --hard origin/main"
+
+            cd src/Phantom.Api
+
+            # Every API setting lives here (there are no appsettings files) - see src/Phantom.Api/.env.example.
+            # The data volume, torrent port and trusted proxy network are set by docker-compose.yml itself.
+            echo "Writing .env..."
+            cat > .env <<'ENVEOF'
+            # Logging
+            Logging__LogLevel__Default=Information
+            Logging__LogLevel__Microsoft.AspNetCore=Warning
+            Logging__LogLevel__Microsoft.EntityFrameworkCore=Warning
+            Logging__LogLevel__System.Net.Http.HttpClient=Warning
+
+            # JWT (signing key at least 32 characters; leave the secret unset to generate one in the data volume)
+            Phantom__JwtSigningKey=${{ secrets.JWT_SIGNING_KEY }}
+            Phantom__TokenLifetimeDays=${{ vars.TOKEN_LIFETIME_DAYS || '30' }}
+
+            # Open sign-up after the owner account exists
+            Phantom__AllowRegistration=${{ vars.ALLOW_REGISTRATION || 'false' }}
+
+            # TMDB metadata: posters, cast, trailers, collections (leave the secret unset to turn it off)
+            Phantom__TmdbApiKey=${{ secrets.TMDB_API_KEY }}
+
+            # Transcoder (installed in the image) and the built-in public-domain source
+            Phantom__FfmpegPath=ffmpeg
+            Phantom__SeedDefaultSources=true
+
+            # Swagger UI basic auth
+            SwaggerAuth__Username=${{ vars.SWAGGER_AUTH_USERNAME }}
+            SwaggerAuth__Password=${{ secrets.SWAGGER_AUTH_PASSWORD }}
+
+            # Host-side port the reverse proxy forwards to (consumed by docker-compose.yml)
+            API_PORT=${{ vars.API_PORT }}
+
+            # BitTorrent/DHT port, TCP and UDP (consumed by docker-compose.yml); open it in the server's firewall
+            TORRENT_PORT=${{ vars.TORRENT_PORT || '55125' }}
+            ENVEOF
+
+            echo "Building latest image..."
+            docker compose build --pull
+
+            echo "Restarting containers..."
+            docker compose up -d --remove-orphans
+
+            echo "Waiting for the API to report healthy..."
+            PORT=$(grep '^API_PORT=' .env | cut -d= -f2)
+            for i in $(seq 1 30); do
+              if curl -fsS "http://127.0.0.1:$PORT/health" > /dev/null; then
+                echo "API is up."
+                break
+              fi
+              if [ "$i" = 30 ]; then
+                echo "API did not become healthy; recent logs:"
+                docker compose logs --tail 100 api
+                exit 1
+              fi
+              sleep 2
+            done
+
+            echo "Removing dangling images..."
+            # Deploys running side by side take turns (Docker runs one prune at a time), and a failed cleanup doesn't fail
+            # a deploy that already succeeded.
+            flock /tmp/phantom-docker-prune.lock docker image prune -f || echo "Couldn't remove dangling images; skipped."
+
+            echo "Deployment complete!"

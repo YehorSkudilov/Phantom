@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:vm="clr-namespace:Phantom.Client.ViewModels"
+             xmlns:dto="clr-namespace:Phantom.Shared;assembly=Phantom.Shared"
+             x:Class="Phantom.Client.Views.ServerDownloadsPage"
+             x:DataType="vm:ServerDownloadsViewModel"
+             Title="Server downloads">
+    <Grid RowDefinitions="Auto,Auto,*">
+        <Label Text="Movies the server is saving to its own disk. They keep playing instantly and survive cache cleanup."
+               Style="{StaticResource Muted}" Margin="16,8,16,0" />
+        <Label Grid.Row="1" Text="{Binding Totals}" Margin="16,8" FontSize="13" TextColor="{StaticResource Accent}" />
+        <CollectionView Grid.Row="2" ItemsSource="{Binding Items}" SelectionMode="None">
+            <CollectionView.EmptyView>
+                <Label Text="Nothing queued. Use ⬇ Server on a movie to keep it on the server." Style="{StaticResource Muted}"
+                       HorizontalTextAlignment="Center" Margin="32,48" />
+            </CollectionView.EmptyView>
+            <CollectionView.ItemTemplate>
+                <DataTemplate x:DataType="dto:ServerDownloadDto">
+                    <Border Style="{StaticResource Card}" Margin="16,6">
+                        <Grid RowDefinitions="Auto,Auto,Auto,Auto" ColumnDefinitions="*,Auto" RowSpacing="4">
+                            <Label Text="{Binding MovieTitle}" FontFamily="OpenSansSemibold" FontSize="15" LineBreakMode="TailTruncation">
+                                <Label.GestureRecognizers>
+                                    <TapGestureRecognizer Command="{Binding Source={RelativeSource AncestorType={x:Type vm:ServerDownloadsViewModel}}, Path=OpenCommand, x:DataType=vm:ServerDownloadsViewModel}"
+                                                          CommandParameter="{Binding .}" />
+                                </Label.GestureRecognizers>
+                            </Label>
+                            <Label Grid.Row="1" Text="{Binding ReleaseName}" Style="{StaticResource Muted}" FontSize="11" LineBreakMode="MiddleTruncation" />
+                            <ProgressBar Grid.Row="2" Progress="{Binding Progress, Converter={StaticResource Percent}}" Margin="0,4" />
+                            <Label Grid.Row="3" Style="{StaticResource Muted}" FontSize="12">
+                                <Label.FormattedText>
+                                    <FormattedString>
+                                        <Span Text="{Binding Status}" />
+                                        <Span Text="  ·  " />
+                                        <Span Text="{Binding Progress, StringFormat='{0:0.#}%'}" />
+                                        <Span Text="  ·  " />
+                                        <Span Text="{Binding SizeBytes, Converter={StaticResource Bytes}}" />
+                                        <Span Text="  ·  ↓ " />
+                                        <Span Text="{Binding DownloadRate, Converter={StaticResource Bytes}, ConverterParameter=rate}" />
+                                        <Span Text="  ·  " />
+                                        <Span Text="{Binding Peers, StringFormat='{0} peers'}" />
+                                    </FormattedString>
+                                </Label.FormattedText>
+                            </Label>
+                            <HorizontalStackLayout Grid.Column="1" Grid.RowSpan="2" IsVisible="{Binding Source={RelativeSource AncestorType={x:Type vm:ServerDownloadsViewModel}}, Path=IsAdmin, x:DataType=vm:ServerDownloadsViewModel}">
+                                <Button Text="⏯" Style="{StaticResource GhostButton}" SemanticProperties.Description="Pause or resume"
+                                        Command="{Binding Source={RelativeSource AncestorType={x:Type vm:ServerDownloadsViewModel}}, Path=ToggleCommand, x:DataType=vm:ServerDownloadsViewModel}"
+                                        CommandParameter="{Binding .}" />
+                                <Button Text="✕" Style="{StaticResource GhostButton}" SemanticProperties.Description="Remove"
+                                        Command="{Binding Source={RelativeSource AncestorType={x:Type vm:ServerDownloadsViewModel}}, Path=RemoveCommand, x:DataType=vm:ServerDownloadsViewModel}"
+                                        CommandParameter="{Binding .}" />
+                            </HorizontalStackLayout>
+                            <Label Grid.Row="3" Grid.Column="1" Text="{Binding Error}" TextColor="{StaticResource Danger}" FontSize="11"
+                                   IsVisible="{Binding Error, Converter={StaticResource HasValue}}" />
+                        </Grid>
+                    </Border>
+                </DataTemplate>
+            </CollectionView.ItemTemplate>
+        </CollectionView>
+    </Grid>
+</ContentPage>

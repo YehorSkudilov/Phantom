@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:vm="clr-namespace:Phantom.Client.ViewModels"
+             x:Class="Phantom.Client.Views.LibraryPage"
+             x:DataType="vm:LibraryViewModel"
+             Title="Library">
+    <ContentPage.ToolbarItems>
+        <ToolbarItem Text="Filter" Command="{Binding ToggleFiltersCommand}" />
+        <ToolbarItem Text="View" Command="{Binding ToggleViewCommand}" />
+    </ContentPage.ToolbarItems>
+
+    <Grid RowDefinitions="Auto,Auto,Auto,*">
+        <!-- Sort + summary -->
+        <Grid ColumnDefinitions="*,Auto" Padding="16,8" ColumnSpacing="10">
+            <Label Text="{Binding Summary}" Style="{StaticResource Muted}" VerticalOptions="Center" />
+            <Picker Grid.Column="1" Title="Sort" ItemsSource="{Binding SortOptions}" SelectedItem="{Binding SelectedSort}"
+                    WidthRequest="160" SemanticProperties.Description="Sort by" />
+        </Grid>
+
+        <!-- Filters panel -->
+        <Border Grid.Row="1" Style="{StaticResource Card}" Margin="16,0,16,8" IsVisible="{Binding ShowFilters}">
+            <VerticalStackLayout Spacing="8">
+                <Grid ColumnDefinitions="*,*" ColumnSpacing="10" RowDefinitions="Auto,Auto,Auto" RowSpacing="8">
+                    <Picker Title="Genre" ItemsSource="{Binding Genres}" SelectedItem="{Binding SelectedGenre}" />
+                    <Picker Grid.Column="1" Title="Decade" ItemsSource="{Binding Decades}" SelectedItem="{Binding SelectedDecade}" />
+                    <Picker Grid.Row="1" Title="Quality" ItemsSource="{Binding Qualities}" SelectedItem="{Binding SelectedQuality}" />
+                    <Picker Grid.Row="1" Grid.Column="1" Title="Content rating" ItemsSource="{Binding Ratings}" SelectedItem="{Binding SelectedRating}" />
+                    <Picker Grid.Row="2" Title="Watched" ItemsSource="{Binding WatchStates}" SelectedItem="{Binding SelectedWatchState}" />
+                    <Button Grid.Row="2" Grid.Column="1" Text="Clear filters" Style="{StaticResource SecondaryButton}" Command="{Binding ClearFiltersCommand}" />
+                </Grid>
+            </VerticalStackLayout>
+        </Border>
+
+        <!-- A–Z jump bar -->
+        <CollectionView Grid.Row="2" ItemsSource="{Binding Letters}" HeightRequest="36" SelectionMode="None" Margin="8,0,8,6">
+            <CollectionView.ItemsLayout>
+                <LinearItemsLayout Orientation="Horizontal" ItemSpacing="2" />
+            </CollectionView.ItemsLayout>
+            <CollectionView.ItemTemplate>
+                <DataTemplate x:DataType="x:String">
+                    <Border Padding="10,6" StrokeShape="RoundRectangle 8" BackgroundColor="{StaticResource Surface}">
+                        <Border.GestureRecognizers>
+                            <TapGestureRecognizer Command="{Binding Source={RelativeSource AncestorType={x:Type vm:LibraryViewModel}}, Path=PickLetterCommand, x:DataType=vm:LibraryViewModel}"
+                                                  CommandParameter="{Binding .}" />
+                        </Border.GestureRecognizers>
+                        <Label Text="{Binding .}" FontSize="13" />
+                    </Border>
+                </DataTemplate>
+            </CollectionView.ItemTemplate>
+        </CollectionView>
+
+        <RefreshView Grid.Row="3" IsRefreshing="{Binding IsRefreshing}" Command="{Binding ReloadCommand}">
+            <Grid>
+                <CollectionView x:Name="Grid" ItemsSource="{Binding Movies}" IsVisible="{Binding IsGrid}"
+                                ItemTemplate="{StaticResource PosterCard}" SelectionMode="Single"
+                                SelectionChanged="OnSelected"
+                                RemainingItemsThreshold="12" RemainingItemsThresholdReachedCommand="{Binding LoadMoreCommand}">
+                    <CollectionView.ItemsLayout>
+                        <GridItemsLayout x:Name="GridLayout" Orientation="Vertical" Span="3" HorizontalItemSpacing="10" VerticalItemSpacing="6" />
+                    </CollectionView.ItemsLayout>
+                    <CollectionView.EmptyView>
+                        <Label Text="No movies match these filters." Style="{StaticResource Muted}" HorizontalOptions="Center" Margin="0,40" />
+                    </CollectionView.EmptyView>
+                </CollectionView>
+                <CollectionView ItemsSource="{Binding Movies}" IsVisible="{Binding IsGrid, Converter={StaticResource Not}}"
+                                ItemTemplate="{StaticResource MovieRow}" SelectionMode="Single" SelectionChanged="OnSelected"
+                                RemainingItemsThreshold="12" RemainingItemsThresholdReachedCommand="{Binding LoadMoreCommand}" />
+            </Grid>
+        </RefreshView>
+    </Grid>
+</ContentPage>

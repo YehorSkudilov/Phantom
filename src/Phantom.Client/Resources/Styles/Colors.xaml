@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<?xaml-comp compile="true" ?>
+<ResourceDictionary
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml">
+
+    <!-- Phantom brand palette (see docs/brand/README.md). Android: Platforms/Android/Resources/values/colors.xml -->
+    <Color x:Key="Primary">#8B5CF6</Color>
+    <Color x:Key="PrimaryLight">#A78BFA</Color>
+    <Color x:Key="Accent">#22D3EE</Color>
+    <Color x:Key="Background">#0B0B12</Color>
+    <Color x:Key="Surface">#161622</Color>
+    <Color x:Key="SurfaceRaised">#20202F</Color>
+    <Color x:Key="Outline">#2E2E42</Color>
+    <Color x:Key="TextPrimary">#F4F4F8</Color>
+    <Color x:Key="TextSecondary">#9A9AB0</Color>
+    <Color x:Key="Success">#34D399</Color>
+    <Color x:Key="Warning">#FBBF24</Color>
+    <Color x:Key="Danger">#F87171</Color>
+    <Color x:Key="White">White</Color>
+    <Color x:Key="Black">Black</Color>
+    <Color x:Key="Scrim">#CC0B0B12</Color>
+
+    <SolidColorBrush x:Key="PrimaryBrush" Color="{StaticResource Primary}" />
+    <SolidColorBrush x:Key="SurfaceBrush" Color="{StaticResource Surface}" />
+    <SolidColorBrush x:Key="BackgroundBrush" Color="{StaticResource Background}" />
+
+    <LinearGradientBrush x:Key="BrandGradient" StartPoint="0,0" EndPoint="1,1">
+        <GradientStop Color="#A78BFA" Offset="0" />
+        <GradientStop Color="#8B5CF6" Offset="0.55" />
+        <GradientStop Color="#22D3EE" Offset="1" />
+    </LinearGradientBrush>
+
+    <!-- Fades the bottom of backdrops into the page background on the detail screen. -->
+    <LinearGradientBrush x:Key="BackdropFade" StartPoint="0,0" EndPoint="0,1">
+        <GradientStop Color="#000B0B12" Offset="0" />
+        <GradientStop Color="#990B0B12" Offset="0.6" />
+        <GradientStop Color="#FF0B0B12" Offset="1" />
+    </LinearGradientBrush>
+</ResourceDictionary>

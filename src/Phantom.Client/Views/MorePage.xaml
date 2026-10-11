@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:vm="clr-namespace:Phantom.Client.ViewModels"
+             x:Class="Phantom.Client.Views.MorePage"
+             x:DataType="vm:MoreViewModel"
+             Title="More">
+    <ContentPage.Resources>
+        <Style x:Key="MenuRow" TargetType="Button" BasedOn="{StaticResource SecondaryButton}">
+            <Setter Property="HorizontalOptions" Value="Fill" />
+            <Setter Property="CornerRadius" Value="12" />
+            <Setter Property="Padding" Value="16,14" />
+            <Setter Property="FontFamily" Value="OpenSansRegular" />
+            <Setter Property="FontSize" Value="15" />
+        </Style>
+    </ContentPage.Resources>
+    <ScrollView>
+        <VerticalStackLayout Padding="16" Spacing="10">
+            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="14" Padding="0,8,0,12">
+                <Border WidthRequest="56" HeightRequest="56" StrokeShape="RoundRectangle 16" BackgroundColor="{Binding AvatarColor}">
+                    <Label Text="{Binding Initial}" FontSize="24" FontFamily="OpenSansSemibold" HorizontalOptions="Center" VerticalOptions="Center" />
+                </Border>
+                <VerticalStackLayout Grid.Column="1" VerticalOptions="Center">
+                    <Label Text="{Binding Username}" Style="{StaticResource H2}" />
+                    <Label Text="{Binding ServerText}" Style="{StaticResource Muted}" />
+                </VerticalStackLayout>
+            </Grid>
+
+            <Label Text="Your library" Style="{StaticResource Muted}" Margin="4,8,0,0" />
+            <Button Text="☆  Watchlist" Style="{StaticResource MenuRow}" Command="{Binding NavigateCommand}" CommandParameter="MovieListPage?kind=watchlist" />
+            <Button Text="≡  Playlists" Style="{StaticResource MenuRow}" Command="{Binding NavigateCommand}" CommandParameter="PlaylistsPage" />
+            <Button Text="▤  Collections" Style="{StaticResource MenuRow}" Command="{Binding NavigateCommand}" CommandParameter="CollectionsPage" />
+            <Button Text="⟲  Recently watched" Style="{StaticResource MenuRow}" Command="{Binding NavigateCommand}" CommandParameter="MovieListPage?kind=history" />
+
+            <Label Text="Server" Style="{StaticResource Muted}" Margin="4,8,0,0" />
+            <Button Text="⬇  Server downloads" Style="{StaticResource MenuRow}" Command="{Binding NavigateCommand}" CommandParameter="ServerDownloadsPage" />
+            <Button Text="⚙  Server dashboard" Style="{StaticResource MenuRow}" Command="{Binding NavigateCommand}" CommandParameter="AdminPage" IsVisible="{Binding IsAdmin}" />
+
+            <Label Text="App" Style="{StaticResource Muted}" Margin="4,8,0,0" />
+            <Button Text="⚙  Settings" Style="{StaticResource MenuRow}" Command="{Binding NavigateCommand}" CommandParameter="SettingsPage" />
+            <Button Text="⇄  Switch profile" Style="{StaticResource MenuRow}" Command="{Binding SwitchProfileCommand}" />
+            <Button Text="Sign out" Style="{StaticResource MenuRow}" TextColor="{StaticResource Danger}" Command="{Binding SignOutCommand}" />
+        </VerticalStackLayout>
+    </ScrollView>
+</ContentPage>

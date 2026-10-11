@@ -1,0 +1,170 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:vm="clr-namespace:Phantom.Client.ViewModels"
+             xmlns:dto="clr-namespace:Phantom.Shared;assembly=Phantom.Shared"
+             x:Class="Phantom.Client.Views.MovieDetailPage"
+             x:DataType="vm:MovieDetailViewModel"
+             Title="{Binding Title}">
+    <ContentPage.ToolbarItems>
+        <ToolbarItem Text="•••" Command="{Binding MoreCommand}" />
+    </ContentPage.ToolbarItems>
+
+    <Grid>
+        <ScrollView>
+            <VerticalStackLayout Padding="0,0,0,32" Spacing="16">
+                <!-- Backdrop + poster header -->
+                <Grid HeightRequest="300">
+                    <Image Source="{Binding Movie.BackdropUrl, Converter={StaticResource Poster}}" Aspect="AspectFill" Opacity="0.7"
+                           IsVisible="{Binding Movie.BackdropUrl, Converter={StaticResource HasValue}}" />
+                    <Image Source="{Binding Movie.PosterUrl, Converter={StaticResource Poster}}" Aspect="AspectFill" Opacity="0.35"
+                           IsVisible="{Binding Movie.BackdropUrl, Converter={StaticResource HasValue}, ConverterParameter=invert}" />
+                    <BoxView Background="{StaticResource BackdropFade}" />
+                    <Grid ColumnDefinitions="120,*" ColumnSpacing="16" Padding="16" VerticalOptions="End">
+                        <Border StrokeShape="RoundRectangle 10" HeightRequest="180">
+                            <Image Source="{Binding Movie.PosterUrl, Converter={StaticResource Poster}}" Aspect="AspectFill" />
+                        </Border>
+                        <VerticalStackLayout Grid.Column="1" VerticalOptions="End" Spacing="6">
+                            <Label Text="{Binding Movie.Title}" Style="{StaticResource H1}" MaxLines="3" />
+                            <Label Text="{Binding Meta}" Style="{StaticResource Muted}" />
+                            <Label Text="{Binding GenreText}" Style="{StaticResource Muted}" />
+                            <Label Text="{Binding Movie.Studio}" Style="{StaticResource Muted}" IsVisible="{Binding Movie.Studio, Converter={StaticResource HasValue}}" />
+                        </VerticalStackLayout>
+                    </Grid>
+                </Grid>
+
+                <ActivityIndicator IsRunning="{Binding IsBusy}" IsVisible="{Binding IsBusy}" />
+                <Label Text="{Binding ErrorMessage}" TextColor="{StaticResource Danger}" Margin="16,0"
+                       IsVisible="{Binding ErrorMessage, Converter={StaticResource HasValue}}" />
+
+                <!-- Primary actions -->
+                <VerticalStackLayout Padding="16,0" Spacing="10">
+                    <Button Text="{Binding PlayLabel}" Command="{Binding PlayCommand}" FontSize="16" />
+                    <ProgressBar Progress="{Binding Movie.Playback.ProgressPercent, Converter={StaticResource Percent}}" IsVisible="{Binding CanResume}" />
+                    <Button Text="Play from beginning" Style="{StaticResource SecondaryButton}" Command="{Binding PlayFromStartCommand}" IsVisible="{Binding CanResume}" />
+                    <Grid ColumnDefinitions="*,*,*,*" ColumnSpacing="8">
+                        <Button Text="{Binding WatchlistIcon}" Style="{StaticResource SecondaryButton}" Command="{Binding ToggleWatchlistCommand}" FontSize="12" Padding="4" />
+                        <Button Grid.Column="1" Text="{Binding WatchedLabel}" Style="{StaticResource SecondaryButton}" Command="{Binding ToggleWatchedCommand}" FontSize="12" Padding="4" />
+                        <Button Grid.Column="2" Text="⬇ Device" Style="{StaticResource SecondaryButton}" Command="{Binding DownloadToDeviceCommand}" FontSize="12" Padding="4"
+                                SemanticProperties.Description="Download to this device" />
+                        <Button Grid.Column="3" Text="⬇ Server" Style="{StaticResource SecondaryButton}" Command="{Binding DownloadOnServerCommand}" FontSize="12" Padding="4"
+                                SemanticProperties.Description="Download on the server" />
+                    </Grid>
+
+                    <!-- Device download status -->
+                    <Border Style="{StaticResource Card}" Padding="12" IsVisible="{Binding OfflineItem, Converter={StaticResource HasValue}}">
+                        <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto" RowSpacing="6">
+                            <Label Text="{Binding OfflineItem.Status, StringFormat='On this device: {0}'}" FontSize="13" />
+                            <Label Grid.Column="1" Text="{Binding OfflineItem.DownloadedBytes, Converter={StaticResource Bytes}}" Style="{StaticResource Muted}" />
+                            <ProgressBar Grid.Row="1" Grid.ColumnSpan="2" Progress="{Binding OfflineItem.Progress}" />
+                        </Grid>
+                    </Border>
+
+                    <Button Text="▶ Watch trailer" Style="{StaticResource GhostButton}" HorizontalOptions="Start"
+                            Command="{Binding PlayTrailerCommand}" IsVisible="{Binding Movie.TrailerUrl, Converter={StaticResource HasValue}}" />
+                </VerticalStackLayout>
+
+                <!-- Overview -->
+                <VerticalStackLayout Padding="16,0" Spacing="8">
+                    <Label Text="{Binding Movie.Tagline}" FontAttributes="Italic" TextColor="{StaticResource PrimaryLight}"
+                           IsVisible="{Binding Movie.Tagline, Converter={StaticResource HasValue}}" />
+                    <Label Text="{Binding Movie.Overview}" LineHeight="1.3" />
+                    <Label IsVisible="{Binding Directors, Converter={StaticResource HasValue}}">
+                        <Label.FormattedText>
+                            <FormattedString>
+                                <Span Text="Directed by " TextColor="{StaticResource TextSecondary}" />
+                                <Span Text="{Binding Directors}" TextColor="{StaticResource PrimaryLight}">
+                                    <Span.GestureRecognizers>
+                                        <TapGestureRecognizer Command="{Binding OpenDirectorCommand}" />
+                                    </Span.GestureRecognizers>
+                                </Span>
+                            </FormattedString>
+                        </Label.FormattedText>
+                    </Label>
+                    <Label IsVisible="{Binding Writers, Converter={StaticResource HasValue}}">
+                        <Label.FormattedText>
+                            <FormattedString>
+                                <Span Text="Written by " TextColor="{StaticResource TextSecondary}" />
+                                <Span Text="{Binding Writers}" />
+                            </FormattedString>
+                        </Label.FormattedText>
+                    </Label>
+                </VerticalStackLayout>
+
+                <!-- Version (torrent release) picker -->
+                <VerticalStackLayout Padding="16,0" Spacing="6" IsVisible="{Binding Releases.Count, Converter={StaticResource HasValue}}">
+                    <Label Text="Version" Style="{StaticResource H2}" />
+                    <Picker ItemsSource="{Binding Releases}" SelectedItem="{Binding SelectedRelease}" ItemDisplayBinding="{Binding Name, x:DataType=dto:ReleaseDto}" />
+                    <Label Style="{StaticResource Muted}">
+                        <Label.FormattedText>
+                            <FormattedString>
+                                <Span Text="{Binding SelectedRelease.Quality}" />
+                                <Span Text="  ·  " />
+                                <Span Text="{Binding SelectedRelease.Codec}" />
+                                <Span Text="  ·  " />
+                                <Span Text="{Binding SelectedRelease.SizeBytes, Converter={StaticResource Bytes}}" />
+                                <Span Text="  ·  " />
+                                <Span Text="{Binding SelectedRelease.Seeders, StringFormat='{0} seeders'}" />
+                                <Span Text="  ·  " />
+                                <Span Text="{Binding SelectedRelease.Source}" />
+                            </FormattedString>
+                        </Label.FormattedText>
+                    </Label>
+                </VerticalStackLayout>
+
+                <!-- Cast -->
+                <VerticalStackLayout Spacing="8" IsVisible="{Binding Movie.Cast.Count, Converter={StaticResource HasValue}}">
+                    <Label Text="Cast" Style="{StaticResource H2}" Margin="16,0" />
+                    <CollectionView ItemsSource="{Binding Movie.Cast}" HeightRequest="170" SelectionMode="None">
+                        <CollectionView.ItemsLayout>
+                            <LinearItemsLayout Orientation="Horizontal" ItemSpacing="12" />
+                        </CollectionView.ItemsLayout>
+                        <CollectionView.Header>
+                            <BoxView WidthRequest="4" Color="Transparent" />
+                        </CollectionView.Header>
+                        <CollectionView.ItemTemplate>
+                            <DataTemplate x:DataType="dto:CastMemberDto">
+                                <VerticalStackLayout WidthRequest="92" Spacing="4">
+                                    <VerticalStackLayout.GestureRecognizers>
+                                        <TapGestureRecognizer Command="{Binding Source={RelativeSource AncestorType={x:Type vm:MovieDetailViewModel}}, Path=OpenPersonCommand, x:DataType=vm:MovieDetailViewModel}"
+                                                              CommandParameter="{Binding Name}" />
+                                    </VerticalStackLayout.GestureRecognizers>
+                                    <Border WidthRequest="84" HeightRequest="84" StrokeShape="RoundRectangle 42" BackgroundColor="{StaticResource SurfaceRaised}">
+                                        <Image Source="{Binding ProfileUrl, Converter={StaticResource Poster}}" Aspect="AspectFill" />
+                                    </Border>
+                                    <Label Text="{Binding Name}" FontSize="12" HorizontalTextAlignment="Center" MaxLines="2" />
+                                    <Label Text="{Binding Character}" FontSize="11" Style="{StaticResource Muted}" HorizontalTextAlignment="Center" MaxLines="1" LineBreakMode="TailTruncation" />
+                                </VerticalStackLayout>
+                            </DataTemplate>
+                        </CollectionView.ItemTemplate>
+                    </CollectionView>
+                </VerticalStackLayout>
+
+                <!-- Genres as chips -->
+                <FlexLayout BindableLayout.ItemsSource="{Binding Movie.Genres}" Wrap="Wrap" Margin="12,0">
+                    <BindableLayout.ItemTemplate>
+                        <DataTemplate x:DataType="x:String">
+                            <Button Text="{Binding .}" Style="{StaticResource SecondaryButton}" Margin="4" FontSize="12" Padding="12,4"
+                                    Command="{Binding Source={RelativeSource AncestorType={x:Type vm:MovieDetailViewModel}}, Path=OpenGenreCommand, x:DataType=vm:MovieDetailViewModel}"
+                                    CommandParameter="{Binding .}" />
+                        </DataTemplate>
+                    </BindableLayout.ItemTemplate>
+                </FlexLayout>
+
+                <!-- More like this -->
+                <VerticalStackLayout Spacing="8" IsVisible="{Binding Related.Count, Converter={StaticResource HasValue}}">
+                    <Label Text="More Like This" Style="{StaticResource H2}" Margin="16,0" />
+                    <CollectionView ItemsSource="{Binding Related}" HeightRequest="236" SelectionMode="Single"
+                                    ItemTemplate="{StaticResource PosterCard}" SelectionChanged="OnRelatedSelected">
+                        <CollectionView.ItemsLayout>
+                            <LinearItemsLayout Orientation="Horizontal" ItemSpacing="12" />
+                        </CollectionView.ItemsLayout>
+                        <CollectionView.Header>
+                            <BoxView WidthRequest="4" Color="Transparent" />
+                        </CollectionView.Header>
+                    </CollectionView>
+                </VerticalStackLayout>
+            </VerticalStackLayout>
+        </ScrollView>
+    </Grid>
+</ContentPage>

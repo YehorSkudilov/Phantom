@@ -1,0 +1,92 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+	<PropertyGroup>
+		<TargetFrameworks>net10.0-android</TargetFrameworks>
+		<TargetFrameworks Condition="!$([MSBuild]::IsOSPlatform('linux'))">$(TargetFrameworks);net10.0-ios;net10.0-maccatalyst</TargetFrameworks>
+		<TargetFrameworks Condition="$([MSBuild]::IsOSPlatform('windows'))">$(TargetFrameworks);net10.0-windows10.0.19041.0</TargetFrameworks>
+
+		<OutputType>Exe</OutputType>
+		<RootNamespace>Phantom.Client</RootNamespace>
+		<UseMaui>true</UseMaui>
+		<SingleProject>true</SingleProject>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<Nullable>enable</Nullable>
+		<NoWarn>$(NoWarn);MVVMTK0045</NoWarn>
+		<MauiEnableXamlCBindingWithSourceCompilation>true</MauiEnableXamlCBindingWithSourceCompilation>
+
+		<!-- Display name -->
+		<ApplicationTitle>Phantom</ApplicationTitle>
+
+		<!-- App Identifier -->
+		<ApplicationId>com.yehorskudilov.phantom</ApplicationId>
+
+		<!-- Versions. The Publish App workflow bumps both (version code = major*1000000 + minor*1000 + patch). -->
+		<ApplicationDisplayVersion>1.0.0</ApplicationDisplayVersion>
+		<ApplicationVersion>1000000</ApplicationVersion>
+		<!-- Pin Version for every TFM, or MAUI sets it per platform and NuGet restore fails with NU1105. -->
+		<Version>$(ApplicationDisplayVersion)</Version>
+
+		<!-- Local builds stay unpackaged; CI packages Windows as MSIX for the Store (see PublishApp.yml). -->
+		<WindowsPackageType>None</WindowsPackageType>
+
+		<SupportedOSPlatformVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'ios'">15.0</SupportedOSPlatformVersion>
+		<SupportedOSPlatformVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'maccatalyst'">15.0</SupportedOSPlatformVersion>
+		<SupportedOSPlatformVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'android'">26.0</SupportedOSPlatformVersion>
+		<SupportedOSPlatformVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'windows'">10.0.17763.0</SupportedOSPlatformVersion>
+		<TargetPlatformMinVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'windows'">10.0.17763.0</TargetPlatformMinVersion>
+	</PropertyGroup>
+
+	<!-- App icon per platform. The stores reject icons with transparency on Apple platforms, so those get the brand
+	     background colour filled in. -->
+	<ItemGroup Condition="'$(TargetPlatformIdentifier)' == 'android'">
+		<MauiIcon Include="Resources\AppIcon\appicon.svg" ForegroundFile="Resources\AppIcon\appiconfg.svg" Color="#0B0B12" />
+	</ItemGroup>
+	<ItemGroup Condition="'$(TargetPlatformIdentifier)' == 'ios' or '$(TargetPlatformIdentifier)' == 'maccatalyst'">
+		<MauiIcon Include="Resources\AppIcon\appicon.svg" ForegroundFile="Resources\AppIcon\appiconfg.svg" Color="#0B0B12" />
+	</ItemGroup>
+	<ItemGroup Condition="'$(TargetPlatformIdentifier)' == 'windows'">
+		<MauiIcon Include="Resources\AppIcon\appicon.svg" ForegroundFile="Resources\AppIcon\appiconfg.svg" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<!-- Splash Screen -->
+		<MauiSplashScreen Include="Resources\Splash\splash.svg" Color="#0B0B12" BaseSize="160,160" />
+
+		<!-- Images -->
+		<MauiImage Include="Resources\Images\*" />
+
+		<!-- Custom Fonts -->
+		<MauiFont Include="Resources\Fonts\*" />
+
+		<!-- Raw Assets (also remove the "Resources\Raw" prefix) -->
+		<MauiAsset Include="Resources\Raw\**" LogicalName="%(RecursiveDir)%(Filename)%(Extension)" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<PackageReference Include="Microsoft.Maui.Controls" Version="10.0.110" />
+		<PackageReference Include="Microsoft.Extensions.Logging.Debug" Version="10.0.12" />
+		<PackageReference Include="CommunityToolkit.Maui" Version="15.0.1" />
+		<PackageReference Include="CommunityToolkit.Maui.MediaElement" Version="10.0.0" />
+		<PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.0" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<ProjectReference Include="..\Phantom.Shared\Phantom.Shared.csproj" />
+	</ItemGroup>
+
+	<!-- The Phantom server the sign-in screen starts with (see Services/ApiConfig.cs). Pass it with
+	     -p:ApiBaseUrl=https://..., an API_BASE_URL environment variable, or API_BASE_URL in src/Phantom.Client/.env
+	     (see .env.example), in that order; CI sets it from the API_BASE_URL variable. Optional: Phantom is self-hosted,
+	     so users can always type another server's address. -->
+	<PropertyGroup>
+		<ApiBaseUrl Condition="'$(ApiBaseUrl)' == ''">$(API_BASE_URL)</ApiBaseUrl>
+		<_EnvFile>$(MSBuildProjectDirectory)\.env</_EnvFile>
+		<_EnvFileContent Condition="Exists('$(_EnvFile)')">$([System.IO.File]::ReadAllText('$(_EnvFile)'))</_EnvFileContent>
+		<ApiBaseUrl Condition="'$(ApiBaseUrl)' == '' and '$(_EnvFileContent)' != ''">$([System.Text.RegularExpressions.Regex]::Match('$(_EnvFileContent)', '(?m)^API_BASE_URL=(.*?)\r?$').Groups[1].Value)</ApiBaseUrl>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<AssemblyMetadata Include="ApiBaseUrl" Value="$(ApiBaseUrl)" />
+	</ItemGroup>
+
+</Project>

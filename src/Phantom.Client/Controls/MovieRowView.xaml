@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<!-- Compact movie row used in list mode, search results and playlists. -->
+<ContentView xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:dto="clr-namespace:Phantom.Shared;assembly=Phantom.Shared"
+             x:Class="Phantom.Client.Controls.MovieRowView"
+             x:DataType="dto:MovieSummaryDto">
+    <Grid ColumnDefinitions="60,*,Auto" ColumnSpacing="12" Padding="16,6">
+        <Border StrokeShape="RoundRectangle 6" HeightRequest="88">
+            <Image Source="{Binding PosterUrl, Converter={StaticResource Poster}}" Aspect="AspectFill" />
+        </Border>
+        <VerticalStackLayout Grid.Column="1" VerticalOptions="Center" Spacing="2">
+            <Label Text="{Binding Title}" FontFamily="OpenSansSemibold" FontSize="15" LineBreakMode="TailTruncation" />
+            <Label Style="{StaticResource Muted}">
+                <Label.FormattedText>
+                    <FormattedString>
+                        <Span Text="{Binding Year}" />
+                        <Span Text="   " />
+                        <Span Text="{Binding RuntimeMinutes, Converter={StaticResource Minutes}}" />
+                        <Span Text="   " />
+                        <Span Text="{Binding BestQuality}" />
+                    </FormattedString>
+                </Label.FormattedText>
+            </Label>
+            <ProgressBar Progress="{Binding ProgressPercent, Converter={StaticResource Percent}}"
+                         IsVisible="{Binding ProgressPercent, Converter={StaticResource HasValue}}" WidthRequest="120" HorizontalOptions="Start" />
+        </VerticalStackLayout>
+        <Label Grid.Column="2" Text="✓" IsVisible="{Binding Watched}" TextColor="{StaticResource Success}" VerticalOptions="Center" />
+    </Grid>
+</ContentView>

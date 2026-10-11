@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:vm="clr-namespace:Phantom.Client.ViewModels"
+             x:Class="Phantom.Client.Views.SettingsPage"
+             x:DataType="vm:SettingsViewModel"
+             Title="Settings">
+    <ContentPage.Resources>
+        <Style x:Key="Row" TargetType="Grid">
+            <Setter Property="ColumnDefinitions" Value="*,Auto" />
+            <Setter Property="MinimumHeightRequest" Value="48" />
+        </Style>
+    </ContentPage.Resources>
+    <ScrollView>
+        <VerticalStackLayout Padding="16" Spacing="14">
+            <Border Style="{StaticResource Card}">
+                <VerticalStackLayout Spacing="10">
+                    <Label Text="Playback" Style="{StaticResource H2}" />
+                    <Label Text="Streaming quality" Style="{StaticResource Muted}" />
+                    <Picker ItemsSource="{Binding Qualities}" SelectedItem="{Binding Quality}" />
+                    <Grid Style="{StaticResource Row}">
+                        <Label Text="Auto-play next in playlists" VerticalOptions="Center" />
+                        <Switch Grid.Column="1" IsToggled="{Binding AutoPlayNext}" />
+                    </Grid>
+                    <Grid Style="{StaticResource Row}">
+                        <Label Text="Resume without asking" VerticalOptions="Center" />
+                        <Switch Grid.Column="1" IsToggled="{Binding ResumeAutomatically}" />
+                    </Grid>
+                    <Grid ColumnDefinitions="*,*" ColumnSpacing="10">
+                        <VerticalStackLayout>
+                            <Label Text="Skip back (s)" Style="{StaticResource Muted}" />
+                            <Picker ItemsSource="{Binding SkipOptions}" SelectedItem="{Binding SkipBack}" />
+                        </VerticalStackLayout>
+                        <VerticalStackLayout Grid.Column="1">
+                            <Label Text="Skip forward (s)" Style="{StaticResource Muted}" />
+                            <Picker ItemsSource="{Binding SkipOptions}" SelectedItem="{Binding SkipForward}" />
+                        </VerticalStackLayout>
+                    </Grid>
+                </VerticalStackLayout>
+            </Border>
+
+            <Border Style="{StaticResource Card}">
+                <VerticalStackLayout Spacing="10">
+                    <Label Text="Subtitles" Style="{StaticResource H2}" />
+                    <Grid Style="{StaticResource Row}">
+                        <Label Text="Show subtitles automatically" VerticalOptions="Center" />
+                        <Switch Grid.Column="1" IsToggled="{Binding SubtitlesByDefault}" />
+                    </Grid>
+                    <Label Text="Preferred language" Style="{StaticResource Muted}" />
+                    <Picker ItemsSource="{Binding Languages}" SelectedItem="{Binding SubtitleLanguage}" />
+                    <Label Text="{Binding SubtitleSize, StringFormat='Text size: {0:0}'}" Style="{StaticResource Muted}" />
+                    <Slider Minimum="12" Maximum="40" Value="{Binding SubtitleSize}" />
+                </VerticalStackLayout>
+            </Border>
+
+            <Border Style="{StaticResource Card}">
+                <VerticalStackLayout Spacing="10">
+                    <Label Text="Downloads" Style="{StaticResource H2}" />
+                    <Grid Style="{StaticResource Row}">
+                        <Label Text="Download over Wi-Fi only" VerticalOptions="Center" />
+                        <Switch Grid.Column="1" IsToggled="{Binding WifiOnly}" />
+                    </Grid>
+                </VerticalStackLayout>
+            </Border>
+
+            <VerticalStackLayout Spacing="4" Padding="4,8">
+                <Label Text="{Binding ServerUrl, StringFormat='Server: {0}'}" Style="{StaticResource Muted}" />
+                <Label Text="{Binding AppVersion}" Style="{StaticResource Muted}" />
+            </VerticalStackLayout>
+        </VerticalStackLayout>
+    </ScrollView>
+</ContentPage>

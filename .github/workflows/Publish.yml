@@ -1,0 +1,84 @@
+name: Publish
+
+# Thin orchestrator - all the actual work (API deploy, and version bump/build/release for the MAUI app) lives in
+# PublishApi.yml and PublishApp.yml respectively, called here as reusable workflows so there's exactly one copy of
+# each to maintain.
+permissions:
+  contents: write
+
+on:
+  workflow_dispatch:
+    inputs:
+      # GitHub's Run workflow form has no section titles, so this do-nothing dropdown stands in for one.
+      # Nothing reads it.
+      section_app:
+        description: "═══════════  App  ═══════════"
+        type: choice
+        options:
+          - "Phantom app: version, Play channel and stores below"
+
+      version_bump:
+        description: "Version bump"
+        required: true
+        default: x.x.1
+        type: choice
+        options:
+          - none
+          - x.x.1
+          - x.1.0
+          - 1.0.0
+
+      release_channel:
+        description: "Google Play release channel"
+        required: true
+        default: internal
+        type: choice
+        options:
+          - internal
+          - alpha
+          - beta
+          - production
+
+      publish_android:
+        description: "Android (Google Play)"
+        type: boolean
+        default: true
+
+      publish_windows:
+        description: "Windows (Microsoft Store)"
+        type: boolean
+        default: true
+
+      publish_ios:
+        description: "iOS (TestFlight)"
+        type: boolean
+        default: true
+
+      publish_macos:
+        description: "macOS (Mac App Store / TestFlight)"
+        type: boolean
+        default: false
+
+jobs:
+
+  # ==================================================
+  # DEPLOY API
+  # ==================================================
+  # Runs independently of the app build/release below - PublishApi.yml's own branch check still applies.
+  deploy-api:
+    uses: ./.github/workflows/PublishApi.yml
+    secrets: inherit
+
+  # ==================================================
+  # VERSION BUMP + BUILD ANDROID/WINDOWS/IOS/MACOS + RELEASE
+  # ==================================================
+  publish-app:
+    uses: ./.github/workflows/PublishApp.yml
+    with:
+      version_bump: ${{ inputs.version_bump }}
+      release_channel: ${{ inputs.release_channel }}
+      publish_android: ${{ inputs.publish_android }}
+      publish_windows: ${{ inputs.publish_windows }}
+      publish_ios: ${{ inputs.publish_ios }}
+      publish_macos: ${{ inputs.publish_macos }}
+    secrets: inherit

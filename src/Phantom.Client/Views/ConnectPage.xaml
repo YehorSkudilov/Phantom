@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:vm="clr-namespace:Phantom.Client.ViewModels"
+             x:Class="Phantom.Client.Views.ConnectPage"
+             x:DataType="vm:ConnectViewModel">
+    <Grid>
+        <!-- Soft brand glow behind the sign-in card -->
+        <Ellipse Fill="{StaticResource BrandGradient}" Opacity="0.18" WidthRequest="520" HeightRequest="520"
+                 HorizontalOptions="Center" VerticalOptions="Start" Margin="0,-220,0,0" />
+        <ScrollView>
+            <VerticalStackLayout Padding="28,72,28,28" Spacing="18" MaximumWidthRequest="440">
+                <Image Source="logo_mark.png" HeightRequest="88" />
+                <Image Source="logo_wordmark.png" HeightRequest="40" />
+                <Label Text="Your movies, streamed from the swarm." Style="{StaticResource Muted}" HorizontalOptions="Center" />
+
+                <Border Style="{StaticResource Card}" Padding="18" Margin="0,16,0,0">
+                    <VerticalStackLayout Spacing="12">
+                        <!-- Step 1: find the server -->
+                        <VerticalStackLayout Spacing="12" IsVisible="{Binding IsConnected, Converter={StaticResource Not}}">
+                            <Label Text="Connect to your server" Style="{StaticResource H2}" />
+                            <Label Text="Enter the address of the machine running Phantom.Api." Style="{StaticResource Muted}" />
+                            <Entry Text="{Binding ServerUrl}" Placeholder="http://192.168.1.10:5180" Keyboard="Url"
+                                   ReturnCommand="{Binding ConnectCommand}" SemanticProperties.Description="Server address" />
+                            <Button Text="Connect" Command="{Binding ConnectCommand}" IsEnabled="{Binding IsNotBusy}" />
+                        </VerticalStackLayout>
+
+                        <!-- Step 2: sign in (or create the owner account on first run) -->
+                        <VerticalStackLayout Spacing="12" IsVisible="{Binding IsConnected}">
+                            <Grid ColumnDefinitions="*,Auto">
+                                <Label Text="{Binding ServerName}" Style="{StaticResource Muted}" VerticalOptions="Center" />
+                                <Button Grid.Column="1" Text="Change" Style="{StaticResource GhostButton}" Command="{Binding ChangeServerCommand}" />
+                            </Grid>
+                            <Label Text="Create the owner account" Style="{StaticResource H2}" IsVisible="{Binding IsFirstRun}" />
+                            <Label Text="This server is new. The first account becomes the administrator." Style="{StaticResource Muted}" IsVisible="{Binding IsFirstRun}" />
+                            <Label Text="Sign in" Style="{StaticResource H2}" IsVisible="{Binding IsFirstRun, Converter={StaticResource Not}}" />
+                            <Entry Text="{Binding Username}" Placeholder="Username" SemanticProperties.Description="Username" />
+                            <Entry Text="{Binding Password}" Placeholder="Password" IsPassword="True"
+                                   ReturnCommand="{Binding SignInCommand}" SemanticProperties.Description="Password" />
+                            <Button Text="Continue" Command="{Binding SignInCommand}" IsEnabled="{Binding IsNotBusy}" />
+                        </VerticalStackLayout>
+
+                        <ActivityIndicator IsRunning="{Binding IsBusy}" IsVisible="{Binding IsBusy}" />
+                        <Label Text="{Binding ErrorMessage}" TextColor="{StaticResource Danger}"
+                               IsVisible="{Binding ErrorMessage, Converter={StaticResource HasValue}}" />
+                    </VerticalStackLayout>
+                </Border>
+            </VerticalStackLayout>
+        </ScrollView>
+    </Grid>
+</ContentPage>
