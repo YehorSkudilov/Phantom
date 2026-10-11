@@ -80,7 +80,7 @@ public partial class ConnectViewModel(PhantomApi api, SettingsService settings) 
                     }
                 }
             }
-            catch (ApiException ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound)
+            catch (ApiException ex) when (ex.Status == System.Net.HttpStatusCode.NotFound)
             {
                 // Expired: loop round for a new code.
             }

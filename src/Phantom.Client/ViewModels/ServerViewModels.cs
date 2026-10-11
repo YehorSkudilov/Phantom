@@ -90,7 +90,7 @@ public partial class MoreViewModel(PhantomApi api, SettingsService settings) : B
             var approved = await api.ApprovePairingAsync(code);
             await Shell.Current.DisplayAlertAsync("Sign in a TV", $"{approved.DeviceName} is now signed in to your account.", "OK");
         }
-        catch (ApiException ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound)
+        catch (ApiException ex) when (ex.Status == System.Net.HttpStatusCode.NotFound)
         {
             await Shell.Current.DisplayAlertAsync("Sign in a TV", ex.Message, "OK");
         }

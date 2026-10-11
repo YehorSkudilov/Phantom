@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The Android TV launcher's 320x180 tile: the wordmark on the brand background. -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android"
+            android:width="320dp" android:height="180dp">
+    <item>
+        <shape android:shape="rectangle">
+            <solid android:color="#0B0B12" />
+        </shape>
+    </item>
+    <item android:gravity="center" android:width="200dp" android:height="64dp" android:drawable="@drawable/logo_wordmark" />
+</layer-list>
