@@ -89,6 +89,7 @@ public partial class MovieDetailViewModel(PhantomApi api, SettingsService settin
         Releases.Clear();
         foreach (var r in Movie.Releases) Releases.Add(r);
         SelectedRelease = Releases.FirstOrDefault();
+        OnPropertyChanged(nameof(HasPlayChoices));
 
         Related.Clear();
         foreach (var m in await api.RelatedAsync(_id)) Related.Add(m);
@@ -101,11 +102,39 @@ public partial class MovieDetailViewModel(PhantomApi api, SettingsService settin
     [RelayCommand]
     private Task PlayFromStart() => StartPlayback(resume: false);
 
-    private Task StartPlayback(bool resume)
+    /// <summary>Plays the best copy there is: this device's download, then the server's saved copy, then streaming.</summary>
+    private Task StartPlayback(bool resume) =>
+        OfflineItem is { IsComplete: true } ? Open(resume, offline: true, SelectedRelease)
+        : Open(resume, offline: false, Releases.FirstOrDefault(r => r.AvailableOffline) ?? SelectedRelease);
+
+    private Task Open(bool resume, bool offline, ReleaseDto? release) =>
+        GoToAsync($"{nameof(Views.PlayerPage)}?id={Movie!.Id}&resume={resume}"
+                  + (release is { } r ? $"&releaseId={r.Id}" : "") + (offline ? "&offline=true" : ""));
+
+    private const string FromDevice = "Downloaded copy on this device";
+    private const string FromServer = "Saved copy on the server";
+
+    /// <summary>More than one way to play: a downloaded or server-saved copy as well as streaming.</summary>
+    public bool HasPlayChoices => OfflineItem is { IsComplete: true } || Releases.Any(r => r.AvailableOffline);
+
+    partial void OnOfflineItemChanged(OfflineDownload? value) => OnPropertyChanged(nameof(HasPlayChoices));
+
+    [RelayCommand]
+    private async Task ChoosePlaySource()
     {
-        var offline = OfflineItem is { IsComplete: true } ? "&offline=true" : "";
-        var release = SelectedRelease is { } r ? $"&releaseId={r.Id}" : "";
-        return GoToAsync($"{nameof(Views.PlayerPage)}?id={Movie!.Id}&resume={resume}{release}{offline}");
+        if (Movie is null) return;
+        var stream = Releases.FirstOrDefault(r => !r.AvailableOffline && r == SelectedRelease)
+                     ?? Releases.FirstOrDefault(r => !r.AvailableOffline) ?? SelectedRelease;
+        var streamLabel = stream?.Quality is { } q ? $"Stream it ({q})" : "Stream it";
+        var choices = new List<string>();
+        if (OfflineItem is { IsComplete: true }) choices.Add(FromDevice);
+        if (Releases.Any(r => r.AvailableOffline)) choices.Add(FromServer);
+        choices.Add(streamLabel);
+
+        var choice = await Shell.Current.DisplayActionSheetAsync("Play from", "Cancel", null, [.. choices]);
+        if (choice == FromDevice) await Open(CanResume, offline: true, SelectedRelease);
+        else if (choice == FromServer) await Open(CanResume, offline: false, Releases.First(r => r.AvailableOffline));
+        else if (choice == streamLabel) await Open(CanResume, offline: false, stream);
     }
 
     [RelayCommand]

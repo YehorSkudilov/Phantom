@@ -4,19 +4,38 @@ using Phantom.Shared;
 namespace Phantom.Services;
 
 /// <summary>Streaming quality presets offered in settings and the player, like Plex's quality menu.</summary>
-public record QualityOption(string Name, int? MaxKbps, int? MaxHeight)
+public record QualityOption(string Name, int? MaxKbps, int? MaxHeight, bool IsAuto = false)
 {
-    public bool IsOriginal => MaxKbps is null && MaxHeight is null;
+    public bool IsOriginal => !IsAuto && MaxKbps is null && MaxHeight is null;
     public override string ToString() => Name;
+
+    public static readonly QualityOption Auto = new("Auto (by connection)", null, null, IsAuto: true);
 
     public static readonly IReadOnlyList<QualityOption> All =
     [
+        Auto,
         new("Original (Direct Play)", null, null),
         new("1080p · 8 Mbps", 8000, 1080),
         new("720p · 4 Mbps", 4000, 720),
         new("480p · 1.5 Mbps", 1500, 480),
         new("360p · 0.7 Mbps", 700, 360),
     ];
+
+    /// <summary>
+    /// What Auto means on the current connection: the original on Wi-Fi or a wired network, 720p on mobile data, 480p
+    /// on a metered or limited connection.
+    /// </summary>
+    public static QualityOption ForConnection()
+    {
+        var access = Connectivity.Current.NetworkAccess;
+        var profiles = Connectivity.Current.ConnectionProfiles;
+        if (access == NetworkAccess.ConstrainedInternet) return All.First(q => q.MaxHeight == 480);
+        if (profiles.Any(p => p is ConnectionProfile.WiFi or ConnectionProfile.Ethernet) || !profiles.Any()) return All.First(q => q.IsOriginal);
+        return All.First(q => q.MaxHeight == 720);
+    }
+
+    /// <summary>This option, with Auto turned into the concrete quality for the current connection.</summary>
+    public QualityOption Resolve() => IsAuto ? ForConnection() : this;
 }
 
 /// <summary>Device-local preferences and the signed-in session.</summary>
@@ -47,13 +66,12 @@ public class SettingsService
         }
     }
 
-    public int StreamingQualityIndex
+    /// <summary>Kept by name (not position) so new choices like Auto don't shift what people picked.</summary>
+    public QualityOption StreamingQuality
     {
-        get => Math.Clamp(_prefs.Get(nameof(StreamingQualityIndex), 0), 0, QualityOption.All.Count - 1);
-        set => _prefs.Set(nameof(StreamingQualityIndex), value);
+        get => QualityOption.All.FirstOrDefault(q => q.Name == _prefs.Get<string?>("StreamingQualityName", null)) ?? QualityOption.Auto;
+        set => _prefs.Set("StreamingQualityName", value.Name);
     }
-
-    public QualityOption StreamingQuality => QualityOption.All[StreamingQualityIndex];
 
     public bool AutoPlayNext
     {

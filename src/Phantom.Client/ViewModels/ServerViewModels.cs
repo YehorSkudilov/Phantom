@@ -121,7 +121,7 @@ public partial class SettingsViewModel(SettingsService settings) : BaseViewModel
     [ObservableProperty] private int skipForward = settings.SkipForwardSeconds;
     [ObservableProperty] private int skipBack = settings.SkipBackSeconds;
 
-    partial void OnQualityChanged(QualityOption value) => settings.StreamingQualityIndex = QualityOption.All.ToList().IndexOf(value);
+    partial void OnQualityChanged(QualityOption value) => settings.StreamingQuality = value;
     partial void OnAutoPlayNextChanged(bool value) => settings.AutoPlayNext = value;
     partial void OnSubtitlesByDefaultChanged(bool value) => settings.SubtitlesByDefault = value;
     partial void OnSubtitleLanguageChanged(string value) => settings.PreferredSubtitleLanguage = value;

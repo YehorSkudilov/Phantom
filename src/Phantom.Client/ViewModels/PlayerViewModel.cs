@@ -40,6 +40,11 @@ public partial class PlayerViewModel(PhantomApi api, SettingsService settings, D
     [ObservableProperty] private string? upNextTitle;
     [ObservableProperty] private bool isTranscoding;
 
+    /// <summary>The quality in play, for the player's quality button ("Auto · 720p", "Original"...).</summary>
+    [ObservableProperty] private string qualityLabel = "";
+
+    private static string ShortName(QualityOption q) => q.IsOriginal ? "Original" : q.Name.Split(' ')[0];
+
     // The loading screen: what the server is doing, and how far along (0-1, or -1 while there's no figure yet).
     [ObservableProperty] private string loadingText = "Opening…";
     [ObservableProperty] private string? loadingDetail;
@@ -161,7 +166,8 @@ public partial class PlayerViewModel(PhantomApi api, SettingsService settings, D
     private void ApplySource(TimeSpan start)
     {
         if (Stream is null) return;
-        var quality = SelectedQuality;
+        var quality = SelectedQuality.Resolve();
+        QualityLabel = SelectedQuality.IsAuto ? $"Auto · {ShortName(quality)}" : ShortName(quality);
         IsTranscoding = !quality.IsOriginal && Stream.TranscodeUrl is not null;
         if (IsTranscoding)
         {

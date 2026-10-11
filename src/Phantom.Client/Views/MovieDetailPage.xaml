@@ -37,7 +37,7 @@
                 <!-- Primary actions -->
                 <VerticalStackLayout Padding="16,0" Spacing="10">
                     <!-- Trailer, then Start over (when there's a place to resume from), then Play/Resume taking the rest. -->
-                    <Grid ColumnDefinitions="Auto,Auto,*">
+                    <Grid ColumnDefinitions="Auto,Auto,*,Auto">
                         <Button Text="Trailer" Style="{StaticResource SecondaryButton}" HeightRequest="52" Margin="0,0,10,0"
                                 ImageSource="{controls:Icon smart_display, Size=20}" ContentLayout="Left,8"
                                 Command="{Binding PlayTrailerCommand}" IsVisible="{Binding Movie.TrailerUrl, Converter={StaticResource HasValue}}" />
@@ -46,8 +46,18 @@
                                 Command="{Binding PlayFromStartCommand}" IsVisible="{Binding CanResume}" />
                         <Button Grid.Column="2" Text="{Binding PlayLabel}" Command="{Binding PlayCommand}" FontSize="16" HeightRequest="52"
                                 ImageSource="{controls:Icon play_arrow, Color=White, Size=20}" ContentLayout="Left,8" />
+                        <!-- Where to play from, when there's a downloaded or server-saved copy as well as streaming -->
+                        <Button Grid.Column="3" HeightRequest="52" WidthRequest="52" Padding="0" Margin="6,0,0,0"
+                                ImageSource="{controls:Icon expand_more, Color=White, Size=24}" Command="{Binding ChoosePlaySourceCommand}"
+                                IsVisible="{Binding HasPlayChoices}" SemanticProperties.Description="Play from" ToolTipProperties.Text="Play from…" />
                     </Grid>
                     <ProgressBar Progress="{Binding Movie.Playback.ProgressPercent, Converter={StaticResource Percent}}" IsVisible="{Binding CanResume}" />
+                    <!-- Version (torrent release), next to Play -->
+                    <Grid ColumnDefinitions="Auto,*" ColumnSpacing="10" IsVisible="{Binding Releases.Count, Converter={StaticResource HasValue}}">
+                        <Label Text="Version" Style="{StaticResource Muted}" VerticalOptions="Center" />
+                        <Picker Grid.Column="1" ItemsSource="{Binding Releases}" SelectedItem="{Binding SelectedRelease}" ItemDisplayBinding="{Binding Name, x:DataType=dto:ReleaseDto}" />
+                    </Grid>
+                    <Label Text="{Binding ReleaseDetails}" Style="{StaticResource Muted}" FontSize="12" Margin="0,-4,0,0" />
                     <Grid ColumnDefinitions="*,*,*" RowDefinitions="Auto,Auto" ColumnSpacing="8" RowSpacing="8">
                         <controls:ActionTile Glyph="{Binding WatchlistGlyph}"
                                              Text="{Binding WatchlistLabel}" IsActive="{Binding IsOnWatchlist}" Command="{Binding ToggleWatchlistCommand}" />
@@ -99,12 +109,6 @@
                     </Label>
                 </VerticalStackLayout>
 
-                <!-- Version (torrent release) picker -->
-                <VerticalStackLayout Padding="16,0" Spacing="6" IsVisible="{Binding Releases.Count, Converter={StaticResource HasValue}}">
-                    <Label Text="Version" Style="{StaticResource H2}" />
-                    <Picker ItemsSource="{Binding Releases}" SelectedItem="{Binding SelectedRelease}" ItemDisplayBinding="{Binding Name, x:DataType=dto:ReleaseDto}" />
-                    <Label Text="{Binding ReleaseDetails}" Style="{StaticResource Muted}" />
-                </VerticalStackLayout>
 
                 <!-- Cast -->
                 <VerticalStackLayout Spacing="8" IsVisible="{Binding Movie.Cast.Count, Converter={StaticResource HasValue}}">
