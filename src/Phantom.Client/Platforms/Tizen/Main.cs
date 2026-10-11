@@ -2,7 +2,7 @@ using System;
 using Microsoft.Maui;
 using Microsoft.Maui.Hosting;
 
-namespace Phantom.Client;
+namespace Phantom;
 
 class Program : MauiApplication
 {

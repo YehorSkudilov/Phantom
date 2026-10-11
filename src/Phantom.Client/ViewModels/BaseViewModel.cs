@@ -1,9 +1,9 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
-using Phantom.Client.Services;
+using Phantom.Services;
 using Phantom.Shared;
 
-namespace Phantom.Client.ViewModels;
+namespace Phantom.ViewModels;
 
 public abstract partial class BaseViewModel : ObservableObject
 {
@@ -50,8 +50,18 @@ public abstract partial class BaseViewModel : ObservableObject
     protected static Task GoToAsync(string route, IDictionary<string, object>? parameters = null) =>
         parameters is null ? Shell.Current.GoToAsync(route) : Shell.Current.GoToAsync(route, parameters);
 
-    protected static Task ToastAsync(string message) =>
-        CommunityToolkit.Maui.Alerts.Toast.Make(message).Show();
+    /// <summary>Shows a toast. Best effort: on Windows the toolkit posts an app notification, which throws
+    /// ("Element not found") in unpackaged local builds that have no package identity.</summary>
+    protected static async Task ToastAsync(string message)
+    {
+        try
+        {
+            await CommunityToolkit.Maui.Alerts.Toast.Make(message).Show();
+        }
+        catch (System.Runtime.InteropServices.COMException)
+        {
+        }
+    }
 
     [RelayCommand]
     protected static Task OpenMovie(MovieSummaryDto? movie) =>

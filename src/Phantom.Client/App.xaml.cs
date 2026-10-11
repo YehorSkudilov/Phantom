@@ -1,6 +1,6 @@
-using Phantom.Client.Services;
+using Phantom.Services;
 
-namespace Phantom.Client;
+namespace Phantom;
 
 public partial class App : Application
 {

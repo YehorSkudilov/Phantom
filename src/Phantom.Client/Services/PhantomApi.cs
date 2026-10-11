@@ -5,7 +5,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using Phantom.Shared;
 
-namespace Phantom.Client.Services;
+namespace Phantom.Services;
 
 public class ApiException(HttpStatusCode status, string message) : Exception(message)
 {
@@ -23,7 +23,7 @@ public class PhantomApi(HttpClient http, SettingsService settings)
     /// <summary>Raised when the server rejects the token, so the app can return to sign-in.</summary>
     public event EventHandler? Unauthorized;
 
-    private string Base => settings.ServerUrl ?? throw new InvalidOperationException("No server configured.");
+    private string Base => settings.ServerUrl;
 
     private HttpRequestMessage Request(HttpMethod method, string path, object? body = null)
     {

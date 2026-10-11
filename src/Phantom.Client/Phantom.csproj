@@ -74,10 +74,9 @@
 		<ProjectReference Include="..\Phantom.Shared\Phantom.Shared.csproj" />
 	</ItemGroup>
 
-	<!-- The Phantom server the sign-in screen starts with (see Services/ApiConfig.cs). Pass it with
-	     -p:ApiBaseUrl=https://..., an API_BASE_URL environment variable, or API_BASE_URL in src/Phantom.Client/.env
-	     (see .env.example), in that order; CI sets it from the API_BASE_URL variable. Optional: Phantom is self-hosted,
-	     so users can always type another server's address. -->
+	<!-- The Phantom server the app talks to (see Services/ApiConfig.cs). Pass it with -p:ApiBaseUrl=https://...,
+	     an API_BASE_URL environment variable, or API_BASE_URL in src/Phantom.Client/.env (see .env.example), in that
+	     order; CI sets it from the API_BASE_URL variable. Required: the build fails without it. -->
 	<PropertyGroup>
 		<ApiBaseUrl Condition="'$(ApiBaseUrl)' == ''">$(API_BASE_URL)</ApiBaseUrl>
 		<_EnvFile>$(MSBuildProjectDirectory)\.env</_EnvFile>
@@ -88,5 +87,10 @@
 	<ItemGroup>
 		<AssemblyMetadata Include="ApiBaseUrl" Value="$(ApiBaseUrl)" />
 	</ItemGroup>
+
+	<!-- There is no server picker in the app, so a build without a server address is useless. -->
+	<Target Name="RequireApiBaseUrl" BeforeTargets="BeforeBuild" Condition="'$(DesignTimeBuild)' != 'true'">
+		<Error Condition="'$(ApiBaseUrl)' == ''" Text="API_BASE_URL is not set. Set it in src/Phantom.Client/.env (see .env.example), as an environment variable, or with -p:ApiBaseUrl=https://..." />
+	</Target>
 
 </Project>

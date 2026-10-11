@@ -18,7 +18,7 @@ The **client** (.NET MAUI) gives you a Plex-like experience on Android, iOS, mac
 └────────────────────┘                               │  Source sync · TMDB metadata     │
                                                      └──────────────┬───────────────────┘
                                                                     │ BitTorrent / web seeds
-                                                      Internet Archive · Torznab indexers
+                                                      Internet Archive · YTS · TPB · Torznab
 ```
 
 ## Projects
@@ -37,9 +37,13 @@ Phantom pulls movies automatically, but **you decide where from**:
 
 - **Internet Archive – Feature Films** is enabled out of the box. These are public-domain films,
   and every archive.org torrent carries HTTP web seeds, so playback starts even with no peers.
-- **Torznab** (Jackett, Prowlarr, …) lets an admin add any indexer they run. Phantom ships with
-  none configured. Only add indexers for content you have the right to download and stream;
-  you are responsible for complying with copyright law where you live.
+- **YTS** and **The Pirate Bay** are built in. Add them from *Admin → + Add source* in one tap;
+  no Jackett or Prowlarr needed. YTS brings posters, genres and IMDb ids with every movie; the
+  Pirate Bay source pulls the top 100 of Movies, HD Movies and UHD Movies (or a search query).
+- **Torznab** (Jackett, Prowlarr, …) is still there for any other indexer you run.
+
+Only add sources for content you have the right to download and stream; you are responsible
+for complying with copyright law where you live.
 
 ## Features
 
@@ -83,7 +87,7 @@ Phantom pulls movies automatically, but **you decide where from**:
   that sync back to the server when you reconnect
 
 **Server admin**
-- Sources (Internet Archive queries, Torznab indexers), sync status, enable/disable
+- Sources (YTS, The Pirate Bay, Internet Archive queries, Torznab indexers), sync status, enable/disable
 - Settings: server name, preferred quality, download/upload limits, max active downloads,
   stream cache lifetime, seeding, minimum seeders, auto-download
 - Idle stream caches are evicted automatically
@@ -129,7 +133,7 @@ Requirements: .NET 10 SDK with the MAUI workload (`dotnet workload install maui`
 
 ```bash
 cd src/Phantom.Client
-cp .env.example .env           # optional: API_BASE_URL pre-fills the server address
+cp .env.example .env           # required: set API_BASE_URL to your server
 dotnet build -t:Run -f net10.0-android        # Android device or emulator
 dotnet build -t:Run -f net10.0-ios            # macOS only
 dotnet build -t:Run -f net10.0-maccatalyst    # macOS only

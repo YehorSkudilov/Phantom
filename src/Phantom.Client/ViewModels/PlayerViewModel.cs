@@ -1,10 +1,10 @@
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
-using Phantom.Client.Services;
+using Phantom.Services;
 using Phantom.Shared;
 
-namespace Phantom.Client.ViewModels;
+namespace Phantom.ViewModels;
 
 public record SubtitleChoice(string Label, SubtitleTrackDto? Track)
 {

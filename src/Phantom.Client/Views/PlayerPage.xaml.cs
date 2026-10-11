@@ -1,10 +1,10 @@
 using CommunityToolkit.Maui.Core;
 using CommunityToolkit.Maui.Views;
-using Phantom.Client.Services;
-using Phantom.Client.ViewModels;
+using Phantom.Services;
+using Phantom.ViewModels;
 using Phantom.Shared;
 
-namespace Phantom.Client.Views;
+namespace Phantom.Views;
 
 public partial class PlayerPage : ContentPage
 {

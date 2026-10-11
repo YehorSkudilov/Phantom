@@ -1,7 +1,7 @@
 ﻿using ObjCRuntime;
 using UIKit;
 
-namespace Phantom.Client;
+namespace Phantom;
 
 public class Program
 {

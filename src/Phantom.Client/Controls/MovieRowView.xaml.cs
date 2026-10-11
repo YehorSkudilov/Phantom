@@ -1,4 +1,4 @@
-namespace Phantom.Client.Controls;
+namespace Phantom.Controls;
 
 public partial class MovieRowView : ContentView
 {

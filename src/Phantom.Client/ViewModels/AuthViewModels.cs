@@ -1,27 +1,24 @@
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
-using Phantom.Client.Services;
+using Phantom.Services;
 using Phantom.Shared;
 
-namespace Phantom.Client.ViewModels;
+namespace Phantom.ViewModels;
 
 public partial class ConnectViewModel(PhantomApi api, SettingsService settings) : BaseViewModel
 {
-    [ObservableProperty] private string serverUrl = settings.ServerUrl ?? ApiConfig.DefaultServerUrl ?? "http://192.168.1.10:5180";
     [ObservableProperty] private string username = "";
     [ObservableProperty] private string password = "";
     [ObservableProperty] private bool isConnected;
     [ObservableProperty] private bool isFirstRun;
     [ObservableProperty] private string? serverName;
 
+    /// <summary>Reaches the server baked into this build; the page runs it on appearing and on Retry.</summary>
     [RelayCommand]
-    private Task Connect() => RunAsync(async () =>
+    public Task Connect() => RunAsync(async () =>
     {
-        var url = ServerUrl.Trim().TrimEnd('/');
-        if (!url.StartsWith("http", StringComparison.OrdinalIgnoreCase)) url = "http://" + url;
-        var info = await api.ProbeAsync(url);
-        settings.ServerUrl = ServerUrl = url;
+        var info = await api.ProbeAsync(settings.ServerUrl);
         ServerName = $"{info.Name} · {info.MovieCount} movies";
         IsFirstRun = await api.SetupRequiredAsync();
         IsConnected = true;
@@ -43,13 +40,6 @@ public partial class ConnectViewModel(PhantomApi api, SettingsService settings) 
         var profiles = await api.ProfilesAsync();
         await GoToAsync(profiles.Count > 1 ? "//profiles" : "//main/home");
     });
-
-    [RelayCommand]
-    private void ChangeServer()
-    {
-        IsConnected = false;
-        ErrorMessage = null;
-    }
 }
 
 /// <summary>"Who's watching?" — Plex Home profile picker.</summary>

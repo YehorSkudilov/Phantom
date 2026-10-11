@@ -1,7 +1,7 @@
-using Phantom.Client.Services;
-using Phantom.Client.Views;
+using Phantom.Services;
+using Phantom.Views;
 
-namespace Phantom.Client;
+namespace Phantom;
 
 public partial class AppShell : Shell
 {

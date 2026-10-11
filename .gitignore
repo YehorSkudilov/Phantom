@@ -36,8 +36,10 @@ ScaffoldingReadMe.txt
 # NuGet Symbol Packages
 *.snupkg
 
-# dotenv environment variables file
+# dotenv environment variables files (the .env.example templates stay tracked)
 .env
+.env.*
+!.env.example
 
 # Others
 ~$*
@@ -56,5 +58,16 @@ CodeCoverage/
 TestResult.xml
 nunit-*.xml
 
-# Phantom runtime data (database, torrent cache, downloads, signing key)
+# Phantom runtime data (database, torrent cache, downloads, signing key). DataDirectory is relative to
+# wherever the API was started, so also catch it at the repo root.
 src/Phantom.Api/data/
+/data/
+
+# Visual Studio / Rider / VS Code local state
+.vs/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+.idea/
+.vscode/

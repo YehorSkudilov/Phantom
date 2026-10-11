@@ -1,7 +1,7 @@
 using System.Globalization;
 using System.Text.RegularExpressions;
 
-namespace Phantom.Client.Services;
+namespace Phantom.Services;
 
 public record SubtitleCue(TimeSpan Start, TimeSpan End, string Text);
 

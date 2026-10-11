@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="utf-8" ?>
 <ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
-             xmlns:vm="clr-namespace:Phantom.Client.ViewModels"
+             xmlns:vm="clr-namespace:Phantom.ViewModels"
              xmlns:dto="clr-namespace:Phantom.Shared;assembly=Phantom.Shared"
-             x:Class="Phantom.Client.Views.AdminPage"
+             x:Class="Phantom.Views.AdminPage"
              x:DataType="vm:AdminViewModel"
              Title="Server dashboard">
     <RefreshView IsRefreshing="{Binding IsBusy}" Command="{Binding LoadCommand}">
@@ -111,10 +111,7 @@
                         </DataTemplate>
                     </BindableLayout.ItemTemplate>
                 </VerticalStackLayout>
-                <Grid ColumnDefinitions="*,*" ColumnSpacing="10">
-                    <Button Text="+ Internet Archive" Style="{StaticResource SecondaryButton}" Command="{Binding AddArchiveCommand}" />
-                    <Button Grid.Column="1" Text="+ Torznab indexer" Style="{StaticResource SecondaryButton}" Command="{Binding AddTorznabCommand}" />
-                </Grid>
+                <Button Text="+ Add source" Style="{StaticResource SecondaryButton}" Command="{Binding AddSourceCommand}" />
 
                 <!-- Settings -->
                 <Label Text="Server settings" Style="{StaticResource H2}" Margin="0,8,0,0" />

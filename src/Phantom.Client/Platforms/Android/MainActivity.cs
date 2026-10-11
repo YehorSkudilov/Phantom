@@ -2,7 +2,7 @@ using Android.App;
 using Android.Content.PM;
 using Android.OS;
 
-namespace Phantom.Client;
+namespace Phantom;
 
 // ResizeableActivity + SupportsPictureInPicture let the player keep running in a PiP window.
 [Activity(Theme = "@style/Maui.SplashTheme", MainLauncher = true, LaunchMode = LaunchMode.SingleTask,

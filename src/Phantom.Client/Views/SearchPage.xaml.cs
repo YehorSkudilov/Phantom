@@ -1,7 +1,7 @@
-using Phantom.Client.ViewModels;
+using Phantom.ViewModels;
 using Phantom.Shared;
 
-namespace Phantom.Client.Views;
+namespace Phantom.Views;
 
 public partial class SearchPage : ContentPage
 {

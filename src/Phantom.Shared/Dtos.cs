@@ -193,7 +193,8 @@ public record CreateServerDownloadRequest(int MovieId, int? ReleaseId);
 
 // ---------- Sources ----------
 
-public enum SourceType { InternetArchive, Torznab }
+// Stored as integers: append new types, never reorder.
+public enum SourceType { InternetArchive, Torznab, Yts, PirateBay }
 
 public record SourceDto(
     int Id,

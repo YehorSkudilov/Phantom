@@ -1,7 +1,7 @@
 using System.Text.Json;
 using Phantom.Shared;
 
-namespace Phantom.Client.Services;
+namespace Phantom.Services;
 
 /// <summary>Streaming quality presets offered in settings and the player, like Plex's quality menu.</summary>
 public record QualityOption(string Name, int? MaxKbps, int? MaxHeight)
@@ -25,11 +25,7 @@ public class SettingsService
     private const string UserKey = "user";
     private readonly IPreferences _prefs = Preferences.Default;
 
-    public string? ServerUrl
-    {
-        get => _prefs.Get<string?>(nameof(ServerUrl), null);
-        set => _prefs.Set(nameof(ServerUrl), value?.TrimEnd('/'));
-    }
+    public string ServerUrl => ApiConfig.ServerUrl;
 
     public string? Token
     {
@@ -115,7 +111,7 @@ public class SettingsService
 
     public string ClientName => $"{DeviceInfo.Current.Name} ({DeviceInfo.Current.Platform})";
 
-    public bool IsSignedIn => !string.IsNullOrEmpty(ServerUrl) && !string.IsNullOrEmpty(Token);
+    public bool IsSignedIn => !string.IsNullOrEmpty(Token);
 
     public void SignOut()
     {

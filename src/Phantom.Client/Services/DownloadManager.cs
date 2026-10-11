@@ -5,7 +5,7 @@ using System.Text.Json;
 using CommunityToolkit.Mvvm.ComponentModel;
 using Phantom.Shared;
 
-namespace Phantom.Client.Services;
+namespace Phantom.Services;
 
 public enum OfflineStatus { Queued, Downloading, Paused, Completed, Failed, WaitingForWifi }
 

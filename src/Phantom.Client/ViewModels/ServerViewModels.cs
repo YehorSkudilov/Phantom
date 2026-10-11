@@ -1,10 +1,10 @@
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
-using Phantom.Client.Services;
+using Phantom.Services;
 using Phantom.Shared;
 
-namespace Phantom.Client.ViewModels;
+namespace Phantom.ViewModels;
 
 /// <summary>Torrents the server is downloading to its own disk.</summary>
 public partial class ServerDownloadsViewModel(PhantomApi api, SettingsService settings) : BaseViewModel
@@ -103,7 +103,7 @@ public partial class SettingsViewModel(SettingsService settings) : BaseViewModel
     [ObservableProperty] private int skipBack = settings.SkipBackSeconds;
     [ObservableProperty] private bool wifiOnly = settings.DownloadOnWifiOnly;
 
-    public string ServerUrl => settings.ServerUrl ?? "";
+    public string ServerUrl => settings.ServerUrl;
     public string AppVersion => $"Phantom {AppInfo.Current.VersionString} ({AppInfo.Current.BuildString})";
 
     partial void OnQualityChanged(QualityOption value) => settings.StreamingQualityIndex = QualityOption.All.ToList().IndexOf(value);
@@ -200,28 +200,41 @@ public partial class AdminViewModel(PhantomApi api) : BaseViewModel
         Sources.Remove(s);
     }, showBusy: false);
 
-    /// <summary>Adds a Torznab indexer (Jackett/Prowlarr) the admin runs and is responsible for.</summary>
+    /// <summary>Adds a built-in source in one tap, or a custom Torznab indexer.</summary>
     [RelayCommand]
-    private Task AddTorznab() => RunAsync(async () =>
+    private Task AddSource() => RunAsync(async () =>
     {
-        var page = Shell.Current;
-        var name = await page.DisplayPromptAsync("Torznab indexer", "Display name", initialValue: "Prowlarr");
-        if (string.IsNullOrWhiteSpace(name)) return;
-        var url = await page.DisplayPromptAsync("Torznab indexer", "Feed base URL (the part before /api)", initialValue: "http://localhost:9696/1", keyboard: Keyboard.Url);
-        if (string.IsNullOrWhiteSpace(url)) return;
-        var key = await page.DisplayPromptAsync("Torznab indexer", "API key");
-        var cats = await page.DisplayPromptAsync("Torznab indexer", "Categories", initialValue: "2000");
-        var query = await page.DisplayPromptAsync("Torznab indexer", "Optional search query (empty = latest)");
-        var created = await api.CreateSourceAsync(new UpsertSourceRequest(name, SourceType.Torznab, url, key, cats, query, true, 360));
-        Sources.Add(created);
+        const string yts = "YTS", tpb = "The Pirate Bay", archive = "Internet Archive", torznab = "Custom Torznab indexer";
+        var choice = await Shell.Current.DisplayActionSheetAsync("Add source", "Cancel", null, yts, tpb, archive, torznab);
+        var request = choice switch
+        {
+            yts => new UpsertSourceRequest("YTS", SourceType.Yts, null, null, "4", null, true, 180),
+            tpb => new UpsertSourceRequest("The Pirate Bay", SourceType.PirateBay, null, null, "201,207,211", null, true, 180),
+            archive => await ArchiveRequest(),
+            torznab => await TorznabRequest(),
+            _ => null,
+        };
+        if (request is not null) Sources.Add(await api.CreateSourceAsync(request));
     });
 
-    [RelayCommand]
-    private Task AddArchive() => RunAsync(async () =>
+    private static async Task<UpsertSourceRequest?> ArchiveRequest()
     {
         var query = await Shell.Current.DisplayPromptAsync("Internet Archive", "Archive.org search query",
             initialValue: "collection:(feature_films) AND mediatype:(movies)");
-        if (string.IsNullOrWhiteSpace(query)) return;
-        Sources.Add(await api.CreateSourceAsync(new UpsertSourceRequest("Internet Archive", SourceType.InternetArchive, null, null, "100", query, true, 720)));
-    });
+        return string.IsNullOrWhiteSpace(query) ? null
+            : new UpsertSourceRequest("Internet Archive", SourceType.InternetArchive, null, null, "100", query, true, 720);
+    }
+
+    private static async Task<UpsertSourceRequest?> TorznabRequest()
+    {
+        var page = Shell.Current;
+        var name = await page.DisplayPromptAsync("Torznab indexer", "Display name", initialValue: "Jackett");
+        if (string.IsNullOrWhiteSpace(name)) return null;
+        var url = await page.DisplayPromptAsync("Torznab indexer", "Feed base URL (the part before /api)", keyboard: Keyboard.Url);
+        if (string.IsNullOrWhiteSpace(url)) return null;
+        var key = await page.DisplayPromptAsync("Torznab indexer", "API key");
+        var cats = await page.DisplayPromptAsync("Torznab indexer", "Categories", initialValue: "2000");
+        var query = await page.DisplayPromptAsync("Torznab indexer", "Optional search query (empty = latest)");
+        return new UpsertSourceRequest(name, SourceType.Torznab, url, key, cats, query, true, 360);
+    }
 }

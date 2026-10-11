@@ -1,6 +1,6 @@
 using System.Globalization;
 
-namespace Phantom.Client;
+namespace Phantom;
 
 public class InvertBoolConverter : IValueConverter
 {

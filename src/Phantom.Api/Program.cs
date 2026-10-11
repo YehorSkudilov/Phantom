@@ -45,6 +45,8 @@ builder.Services.AddHostedService(sp => sp.GetRequiredService<SourceSyncService>
 // Sources & metadata
 builder.Services.AddHttpClient<IMovieSource, InternetArchiveSource>(c => c.Timeout = TimeSpan.FromSeconds(30));
 builder.Services.AddHttpClient<IMovieSource, TorznabSource>(c => c.Timeout = TimeSpan.FromSeconds(60));
+builder.Services.AddHttpClient<IMovieSource, YtsSource>(SourceClient);
+builder.Services.AddHttpClient<IMovieSource, PirateBaySource>(SourceClient);
 builder.Services.AddHttpClient<IMetadataProvider, TmdbMetadataProvider>(c => c.Timeout = TimeSpan.FromSeconds(15));
 
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme).AddJwtBearer();
@@ -106,6 +108,13 @@ app.MapGet("/health", () => Results.Ok()).AllowAnonymous();
 
 app.Run();
 
+// Public torrent sites turn away requests with no browser-like user agent.
+static void SourceClient(HttpClient c)
+{
+    c.Timeout = TimeSpan.FromSeconds(30);
+    c.DefaultRequestHeaders.UserAgent.ParseAdd("Mozilla/5.0 (Windows NT 10.0; Win64; x64) Phantom");
+}
+
 static async Task SeedAsync(IServiceProvider services)
 {
     using var scope = services.CreateScope();
@@ -132,3 +141,4 @@ static async Task SeedAsync(IServiceProvider services)
 }
 
 public partial class Program;
+

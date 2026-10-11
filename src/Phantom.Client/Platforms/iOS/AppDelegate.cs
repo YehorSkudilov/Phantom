@@ -1,6 +1,6 @@
 ﻿using Foundation;
 
-namespace Phantom.Client;
+namespace Phantom;
 
 [Register("AppDelegate")]
 public class AppDelegate : MauiUIApplicationDelegate

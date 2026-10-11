@@ -1,6 +1,6 @@
-using Phantom.Client.ViewModels;
+using Phantom.ViewModels;
 
-namespace Phantom.Client.Views;
+namespace Phantom.Views;
 
 public partial class PlaylistPage : ContentPage
 {

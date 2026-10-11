@@ -96,6 +96,62 @@ public class TorznabSourceTests
             TorznabSource.Parse("""<?xml version="1.0"?><error code="100" description="Invalid API Key" />"""));
 }
 
+public class YtsSourceTests
+{
+    private const string Page = """
+        {"status":"ok","data":{"movie_count":1,"movies":[{
+          "title":"Night of the Living Dead","title_english":"Night of the Living Dead","year":1968,"runtime":96,
+          "imdb_code":"tt0063350","genres":["Horror","Thriller"],"summary":"Ghouls.","large_cover_image":"https://img/x.jpg",
+          "torrents":[
+            {"hash":"ABCDEF0123456789ABCDEF0123456789ABCDEF01","quality":"1080p","type":"bluray","video_codec":"x264","seeds":120,"peers":8,"size_bytes":1825361101},
+            {"hash":"","quality":"720p"}]}]}}
+        """;
+
+    [Fact]
+    public void Parses_movies_and_their_torrents()
+    {
+        var (releases, count) = YtsSource.Parse(Page);
+        Assert.Equal(1, count);
+        var r = Assert.Single(releases);
+        Assert.Equal("Night of the Living Dead", r.Title);
+        Assert.Equal(1968, r.Year);
+        Assert.Equal("abcdef0123456789abcdef0123456789abcdef01", r.InfoHash);
+        Assert.StartsWith("magnet:?xt=urn:btih:abcdef0123456789abcdef0123456789abcdef01", r.MagnetUri);
+        Assert.Equal("1080p", r.Quality);
+        Assert.Equal(120, r.Seeders);
+        Assert.Equal("tt0063350", r.ImdbId);
+        Assert.Equal(["Horror", "Thriller"], r.Genres);
+        Assert.Equal(96, r.RuntimeMinutes);
+    }
+
+    [Fact]
+    public void Empty_page_has_no_movies() =>
+        Assert.Empty(YtsSource.Parse("""{"status":"ok","data":{"movie_count":0}}""").Releases);
+}
+
+public class PirateBaySourceTests
+{
+    [Fact]
+    public void Parses_search_results_with_string_numbers()
+    {
+        var r = Assert.Single(PirateBaySource.Parse("""
+            [{"id":"1","name":"Night.of.the.Living.Dead.1968.1080p.BluRay.x264","info_hash":"ABCDEF0123456789ABCDEF0123456789ABCDEF01",
+              "seeders":"42","leechers":"3","size":"2147483648","imdb":"tt0063350"}]
+            """));
+        Assert.Equal("Night of the Living Dead", r.Title);
+        Assert.Equal(1968, r.Year);
+        Assert.Equal(42, r.Seeders);
+        Assert.Equal(2147483648, r.SizeBytes);
+        Assert.Equal("tt0063350", r.ImdbId);
+    }
+
+    [Fact]
+    public void Skips_the_no_results_placeholder() =>
+        Assert.Empty(PirateBaySource.Parse("""
+            [{"id":"0","name":"No results returned","info_hash":"0000000000000000000000000000000000000000","seeders":"0"}]
+            """));
+}
+
 public class SubtitleConverterTests
 {
     [Fact]

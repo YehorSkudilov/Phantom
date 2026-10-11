@@ -1,10 +1,10 @@
 using CommunityToolkit.Maui;
 using Microsoft.Extensions.Logging;
-using Phantom.Client.Services;
-using Phantom.Client.ViewModels;
-using Phantom.Client.Views;
+using Phantom.Services;
+using Phantom.ViewModels;
+using Phantom.Views;
 
-namespace Phantom.Client;
+namespace Phantom;
 
 public static class MauiProgram
 {

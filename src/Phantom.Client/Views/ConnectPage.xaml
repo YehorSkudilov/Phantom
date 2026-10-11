@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8" ?>
 <ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
-             xmlns:vm="clr-namespace:Phantom.Client.ViewModels"
-             x:Class="Phantom.Client.Views.ConnectPage"
+             xmlns:vm="clr-namespace:Phantom.ViewModels"
+             x:Class="Phantom.Views.ConnectPage"
              x:DataType="vm:ConnectViewModel">
     <Grid>
         <!-- Soft brand glow behind the sign-in card -->
@@ -16,21 +16,16 @@
 
                 <Border Style="{StaticResource Card}" Padding="18" Margin="0,16,0,0">
                     <VerticalStackLayout Spacing="12">
-                        <!-- Step 1: find the server -->
+                        <!-- Step 1: reach the server (connects automatically; Retry if it was unreachable) -->
                         <VerticalStackLayout Spacing="12" IsVisible="{Binding IsConnected, Converter={StaticResource Not}}">
-                            <Label Text="Connect to your server" Style="{StaticResource H2}" />
-                            <Label Text="Enter the address of the machine running Phantom.Api." Style="{StaticResource Muted}" />
-                            <Entry Text="{Binding ServerUrl}" Placeholder="http://192.168.1.10:5180" Keyboard="Url"
-                                   ReturnCommand="{Binding ConnectCommand}" SemanticProperties.Description="Server address" />
-                            <Button Text="Connect" Command="{Binding ConnectCommand}" IsEnabled="{Binding IsNotBusy}" />
+                            <Label Text="Connecting to Phantom…" Style="{StaticResource H2}" />
+                            <Button Text="Retry" Command="{Binding ConnectCommand}" IsEnabled="{Binding IsNotBusy}"
+                                    IsVisible="{Binding ErrorMessage, Converter={StaticResource HasValue}}" />
                         </VerticalStackLayout>
 
                         <!-- Step 2: sign in (or create the owner account on first run) -->
                         <VerticalStackLayout Spacing="12" IsVisible="{Binding IsConnected}">
-                            <Grid ColumnDefinitions="*,Auto">
-                                <Label Text="{Binding ServerName}" Style="{StaticResource Muted}" VerticalOptions="Center" />
-                                <Button Grid.Column="1" Text="Change" Style="{StaticResource GhostButton}" Command="{Binding ChangeServerCommand}" />
-                            </Grid>
+                            <Label Text="{Binding ServerName}" Style="{StaticResource Muted}" />
                             <Label Text="Create the owner account" Style="{StaticResource H2}" IsVisible="{Binding IsFirstRun}" />
                             <Label Text="This server is new. The first account becomes the administrator." Style="{StaticResource Muted}" IsVisible="{Binding IsFirstRun}" />
                             <Label Text="Sign in" Style="{StaticResource H2}" IsVisible="{Binding IsFirstRun, Converter={StaticResource Not}}" />

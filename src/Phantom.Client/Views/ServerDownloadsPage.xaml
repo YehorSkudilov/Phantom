@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="utf-8" ?>
 <ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
-             xmlns:vm="clr-namespace:Phantom.Client.ViewModels"
+             xmlns:vm="clr-namespace:Phantom.ViewModels"
              xmlns:dto="clr-namespace:Phantom.Shared;assembly=Phantom.Shared"
-             x:Class="Phantom.Client.Views.ServerDownloadsPage"
+             x:Class="Phantom.Views.ServerDownloadsPage"
              x:DataType="vm:ServerDownloadsViewModel"
              Title="Server downloads">
     <Grid RowDefinitions="Auto,Auto,*">
