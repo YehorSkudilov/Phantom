@@ -12,6 +12,7 @@ public partial class PlayerPage : ContentPage
     private readonly PlayerViewModel _vm;
     private bool _seeking;
     private bool _pendingResume;
+    private bool _started; // the current source has actually played, so a Paused state is the user's, not loading
     private IDispatcherTimer? _hideTimer;
 
     public PlayerPage(PlayerViewModel vm)
@@ -194,6 +195,7 @@ public partial class PlayerPage : ContentPage
     {
         if (_vm.SourceUrl is not { } url) return;
         _upNextCancelled = false;
+        _started = false;
         UpNextCard.IsVisible = false;
         _pendingResume = _vm.ResumePosition > TimeSpan.Zero;
         SetLoading(true);
@@ -201,9 +203,10 @@ public partial class PlayerPage : ContentPage
         ShowControls();
     }
 
+    // The loading panel stays until it's Playing (see OnStateChanged): on iOS this fires as soon as the file's header is
+    // read, well before the first frame.
     private async void OnOpened()
     {
-        SetLoading(false);
         if (_pendingResume)
         {
             _pendingResume = false;
@@ -227,7 +230,21 @@ public partial class PlayerPage : ContentPage
 
     private void OnStateChanged(MediaElementState state)
     {
-        SetLoading(state is MediaElementState.Buffering or MediaElementState.Opening);
+        // iOS reports Stopped and then Paused while the item is still loading (AVPlayer's status, not playback), so until
+        // it has actually played only Playing ends the loading panel.
+        switch (state)
+        {
+            case MediaElementState.Buffering or MediaElementState.Opening:
+                SetLoading(true);
+                break;
+            case MediaElementState.Playing:
+                _started = true;
+                SetLoading(false);
+                break;
+            case MediaElementState.Paused or MediaElementState.Stopped when _started:
+                SetLoading(false);
+                break;
+        }
         PlayPause.Source = IconExtension.Create(state == MediaElementState.Playing ? "pause" : "play_arrow", Colors.White, size: 40);
         if (state == MediaElementState.Paused) _ = Report(PlayerState.Paused);
     }
