@@ -28,7 +28,7 @@ public partial class MainPage : ContentPage
         [
             new() { Glyph = "explore", PageName = "Discover", Page = home, Color = color, SelectedColor = selected },
             new() { Glyph = "search", PageName = "Search", Page = library, Color = color, SelectedColor = selected },
-            new() { Glyph = "bookmarks", PageName = "My Stuff", Page = myStuff, Color = color, SelectedColor = selected },
+            new() { Glyph = "bookmarks", PageName = "My Library", Page = myStuff, Color = color, SelectedColor = selected },
             new() { Glyph = "download_for_offline", PageName = "Downloads", Page = downloads, Color = color, SelectedColor = selected },
             new() { Glyph = "account_circle", PageName = "Profile", Page = more, Color = color, SelectedColor = selected },
         ];
@@ -149,7 +149,7 @@ public partial class MainPage : ContentPage
         }
     }
 
-    /// <summary>The RefreshView showing on a tab (My Stuff has one per list, only one of them visible).</summary>
+    /// <summary>The RefreshView showing on a tab (My Library has one per list, only one of them visible).</summary>
     private static RefreshView? ActiveRefreshView(IVisualTreeElement element)
     {
         foreach (var child in element.GetVisualChildren())

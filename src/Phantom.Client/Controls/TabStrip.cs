@@ -41,9 +41,9 @@ public class TabStrip : ContentView
             var button = new Button
             {
                 Text = Tabs[i]?.ToString(),
-                FontSize = 15,
+                FontSize = 14,
                 FontFamily = "OpenSansSemibold",
-                Padding = new Thickness(12, 10),
+                Padding = new Thickness(10, 10),
                 MinimumHeightRequest = 44,
                 CornerRadius = 0,
                 BackgroundColor = Colors.Transparent,

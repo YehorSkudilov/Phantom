@@ -76,15 +76,13 @@ public record SortOption(string Name, MovieSort Sort, bool Descending)
 }
 
 /// <summary>
-/// The profile's own lists, in the My Stuff tab: the watchlist, what was watched lately, collections and playlists.
+/// The profile's own lists, in the My Library tab: the watchlist, what was watched lately, and playlists.
 /// </summary>
-public partial class MyStuffViewModel(MovieListViewModel watchlist, MovieListViewModel history, CollectionsViewModel collections,
-    PlaylistsViewModel playlists) : BaseViewModel
+public partial class MyStuffViewModel(MovieListViewModel watchlist, MovieListViewModel history, PlaylistsViewModel playlists) : BaseViewModel
 {
-    public IReadOnlyList<string> Tabs { get; } = ["Watchlist", "Recently watched", "Collections", "Playlists"];
+    public IReadOnlyList<string> Tabs { get; } = ["Watchlist", "Recently watched", "Playlists"];
     public MovieListViewModel Watchlist { get; } = watchlist.Use("watchlist");
     public MovieListViewModel History { get; } = history.Use("history");
-    public CollectionsViewModel Collections => collections;
     public PlaylistsViewModel Playlists => playlists;
 
     [ObservableProperty] private int selectedTab;
@@ -100,7 +98,6 @@ public partial class MyStuffViewModel(MovieListViewModel watchlist, MovieListVie
     {
         Watchlist.Movies.Clear();
         History.Movies.Clear();
-        Collections.Collections.Clear();
         Playlists.Playlists.Clear();
     }
 
@@ -110,8 +107,7 @@ public partial class MyStuffViewModel(MovieListViewModel watchlist, MovieListVie
         {
             case 0 when !onlyIfEmpty || Watchlist.Movies.Count == 0: Watchlist.LoadCommand.Execute(null); break;
             case 1 when !onlyIfEmpty || History.Movies.Count == 0: History.LoadCommand.Execute(null); break;
-            case 2 when !onlyIfEmpty || Collections.Collections.Count == 0: Collections.LoadCommand.Execute(null); break;
-            case 3 when !onlyIfEmpty || Playlists.Playlists.Count == 0: Playlists.LoadCommand.Execute(null); break;
+            case 2 when !onlyIfEmpty || Playlists.Playlists.Count == 0: Playlists.LoadCommand.Execute(null); break;
         }
     }
 }

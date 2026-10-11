@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8" ?>
-<!-- The profile's own things: its watchlist, what it watched lately, collections and playlists, as tabs. -->
+<!-- The profile's own things: its watchlist, what it watched lately, and its playlists, as tabs. -->
 <views:TabView xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
              xmlns:controls="clr-namespace:Phantom.Controls"
@@ -9,7 +9,7 @@
              x:Class="Phantom.Views.MyStuffPage"
              x:DataType="vm:MyStuffViewModel">
     <Grid RowDefinitions="Auto,Auto,*">
-        <Label Text="My Stuff" Style="{StaticResource H1}" Padding="16,18,16,0" MinimumHeightRequest="62" VerticalTextAlignment="Center" />
+        <Label Text="My Library" Style="{StaticResource H1}" Padding="16,18,16,0" MinimumHeightRequest="62" VerticalTextAlignment="Center" />
 
         <controls:TabStrip Grid.Row="1" Tabs="{Binding Tabs}" SelectedIndex="{Binding SelectedTab}" Margin="0,4,0,0" />
 
@@ -17,9 +17,7 @@
                              IsVisible="{Binding Source={RelativeSource AncestorType={x:Type vm:MyStuffViewModel}}, Path=SelectedTab, Converter={StaticResource Equals}, ConverterParameter=0, x:DataType=vm:MyStuffViewModel}" />
         <parts:MovieGridView Grid.Row="2" BindingContext="{Binding History}"
                              IsVisible="{Binding Source={RelativeSource AncestorType={x:Type vm:MyStuffViewModel}}, Path=SelectedTab, Converter={StaticResource Equals}, ConverterParameter=1, x:DataType=vm:MyStuffViewModel}" />
-        <parts:CollectionsView Grid.Row="2" BindingContext="{Binding Collections}"
-                               IsVisible="{Binding Source={RelativeSource AncestorType={x:Type vm:MyStuffViewModel}}, Path=SelectedTab, Converter={StaticResource Equals}, ConverterParameter=2, x:DataType=vm:MyStuffViewModel}" />
         <parts:PlaylistsView Grid.Row="2" BindingContext="{Binding Playlists}"
-                             IsVisible="{Binding Source={RelativeSource AncestorType={x:Type vm:MyStuffViewModel}}, Path=SelectedTab, Converter={StaticResource Equals}, ConverterParameter=3, x:DataType=vm:MyStuffViewModel}" />
+                             IsVisible="{Binding Source={RelativeSource AncestorType={x:Type vm:MyStuffViewModel}}, Path=SelectedTab, Converter={StaticResource Equals}, ConverterParameter=2, x:DataType=vm:MyStuffViewModel}" />
     </Grid>
 </views:TabView>

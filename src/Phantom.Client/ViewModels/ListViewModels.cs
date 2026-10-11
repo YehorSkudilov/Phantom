@@ -41,7 +41,7 @@ public partial class MovieListViewModel(PhantomApi api) : BaseViewModel, IQueryA
 
     protected override bool ShowsOfflineState => true;
 
-    /// <summary>Picks what this list shows without loading it yet (the My Stuff tab loads it when its tab opens).</summary>
+    /// <summary>Picks what this list shows without loading it yet (the My Library tab loads it when its tab opens).</summary>
     public MovieListViewModel Use(string kind)
     {
         _kind = kind;
