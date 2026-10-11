@@ -34,8 +34,11 @@ public class MetadataRefreshService(IServiceScopeFactory scopes, PlaybackActivit
     {
         var cutoff = DateTime.UtcNow - RefreshAfter;
         var airingCutoff = DateTime.UtcNow - AiringRefreshAfter;
+        // One still without a poster is tried again daily: it may have been looked up before TVmaze was used.
+        var posterCutoff = DateTime.UtcNow - TimeSpan.FromDays(1);
         return db.Shows.Where(s => s.MetadataRefreshedAt == null || s.MetadataRefreshedAt < cutoff
-                                   || (s.Status != "Ended" && s.Status != "Canceled" && s.MetadataRefreshedAt < airingCutoff));
+                                   || (s.Status != "Ended" && s.Status != "Canceled" && s.MetadataRefreshedAt < airingCutoff)
+                                   || (s.PosterUrl == null && s.MetadataRefreshedAt < posterCutoff));
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -62,11 +65,13 @@ public class MetadataRefreshService(IServiceScopeFactory scopes, PlaybackActivit
         List<int> movieIds, showIds;
         using (var scope = scopes.CreateScope())
         {
-            if (!scope.ServiceProvider.GetRequiredService<IMetadataProvider>().IsConfigured) return false;
             var db = scope.ServiceProvider.GetRequiredService<PhantomDbContext>();
-            // Titles never looked up (just imported) first.
-            movieIds = await Due(db).OrderBy(m => m.MetadataRefreshedAt != null).ThenBy(m => m.MetadataRefreshedAt)
-                .Select(m => m.Id).Take(BatchSize).ToListAsync(ct);
+            // Movies need TMDB; shows get TVmaze without it (see TmdbMetadataProvider). Titles never looked up (just
+            // imported) first.
+            movieIds = scope.ServiceProvider.GetRequiredService<IMetadataProvider>().IsConfigured
+                ? await Due(db).OrderBy(m => m.MetadataRefreshedAt != null).ThenBy(m => m.MetadataRefreshedAt)
+                    .Select(m => m.Id).Take(BatchSize).ToListAsync(ct)
+                : [];
             // Shows take a request per season, so fewer at a time.
             showIds = await DueShows(db).OrderBy(s => s.MetadataRefreshedAt != null).ThenBy(s => s.MetadataRefreshedAt)
                 .Select(s => s.Id).Take(BatchSize / 6).ToListAsync(ct);

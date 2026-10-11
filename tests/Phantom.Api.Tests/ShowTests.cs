@@ -37,6 +37,14 @@ public class EpisodeParsingTests
     }
 
     [Theory]
+    [InlineData("The Office US", "The Office")]
+    [InlineData("Doctor Who 2005", "Doctor Who")]
+    [InlineData("Shameless (UK)", "Shameless")]
+    [InlineData("Severance", null)]
+    public void Metadata_lookups_also_try_the_name_without_a_country_or_year(string title, string? shorter) =>
+        Assert.Equal(shorter is null ? [title] : [title, shorter], Phantom.Api.Services.Metadata.TvMazeClient.TitleVariants(title));
+
+    [Theory]
     [InlineData("The.Matrix.1999.1080p.BluRay.x264-GROUP")]
     [InlineData("S01E02")] // no show name
     [InlineData("1920x1080 Wallpaper Pack")]

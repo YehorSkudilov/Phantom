@@ -329,7 +329,34 @@ public record SourceDto(
     DateTime? LastSyncAt,
     string? LastSyncResult,
     bool IsSyncing = false,
-    double? CatalogueProgress = null);
+    double? CatalogueProgress = null)
+{
+    /// <summary>How the server starts <see cref="LastSyncResult"/> when the last check failed.</summary>
+    public const string FailedPrefix = "Failed: ";
+
+    // Older servers wrote "Error: ".
+    public bool LastSyncFailed => LastSyncResult?.StartsWith(FailedPrefix) == true || LastSyncResult?.StartsWith("Error: ") == true;
+
+    /// <summary>
+    /// The last check, with when it was ("5 min ago · Checked 300 torrents: 2 new movies."). Empty while a check is
+    /// running: what's showing then is that it's checking, not how an earlier one went.
+    /// </summary>
+    public string StatusText =>
+        IsSyncing || string.IsNullOrWhiteSpace(LastSyncResult) ? ""
+        : LastSyncAt is { } at ? $"{Ago(at)} · {LastSyncResult}" : LastSyncResult;
+
+    private static string Ago(DateTime at)
+    {
+        var age = DateTime.UtcNow - DateTime.SpecifyKind(at, DateTimeKind.Utc);
+        return age.TotalMinutes switch
+        {
+            < 1 => "Just now",
+            < 60 => $"{(int)age.TotalMinutes} min ago",
+            < 60 * 24 => $"{(int)age.TotalHours} h ago",
+            _ => $"{(int)age.TotalDays} d ago",
+        };
+    }
+}
 
 
 // ---------- Server ----------

@@ -18,7 +18,7 @@ public interface IMetadataProvider
 /// Fills movie metadata (art, cast, crew, trailer, certification, collection) and show metadata (the same, plus every
 /// season's episodes) from TMDB.
 /// </summary>
-public class TmdbMetadataProvider(HttpClient http, IOptions<PhantomOptions> options, ILogger<TmdbMetadataProvider> log) : IMetadataProvider
+public class TmdbMetadataProvider(HttpClient http, IOptions<PhantomOptions> options, TvMazeClient tvMaze, ILogger<TmdbMetadataProvider> log) : IMetadataProvider
 {
     private const string Api = "https://api.themoviedb.org/3";
     private const string Images = "https://image.tmdb.org/t/p/";
@@ -162,9 +162,21 @@ public class TmdbMetadataProvider(HttpClient http, IOptions<PhantomOptions> opti
 
     // ---------- Shows ----------
 
+    /// <summary>
+    /// From TMDB when there's a key and it knows the show; TVmaze fills in whatever's still missing (the poster above
+    /// all), and is all there is without a key. Marked refreshed either way, so a show neither knows isn't retried
+    /// every batch.
+    /// </summary>
     public async Task EnrichAsync(PhantomDbContext db, Show show, CancellationToken ct)
     {
-        if (!IsConfigured) return;
+        if (IsConfigured) await EnrichFromTmdbAsync(db, show, ct);
+        if (show.PosterUrl is null || show.Overview is null || !show.Episodes.Any(e => e.Title is not null))
+            await tvMaze.EnrichAsync(show, ct);
+        show.MetadataRefreshedAt = DateTime.UtcNow;
+    }
+
+    private async Task EnrichFromTmdbAsync(PhantomDbContext db, Show show, CancellationToken ct)
+    {
         try
         {
             var tmdbId = show.TmdbId ?? await FindShowIdAsync(show, ct);
@@ -210,11 +222,19 @@ public class TmdbMetadataProvider(HttpClient http, IOptions<PhantomOptions> opti
             if (hits.GetArrayLength() > 0 && hits[0].TryGetProperty("id", out var hit) && hit.TryGetInt(out var hitId)) return hitId;
         }
 
-        var q = $"/search/tv?query={Uri.EscapeDataString(show.Title)}";
-        if (show.Year is { } year) q += $"&first_air_date_year={year}";
-        using var search = await GetAsync(q, ct);
-        var results = search.RootElement.GetProperty("results");
-        return results.GetArrayLength() > 0 && results[0].TryGetProperty("id", out var first) && first.TryGetInt(out var firstId) ? firstId : null;
+        // Release names carry a country or year TMDB doesn't ("The Office US", "Doctor Who 2005"): the name as it is
+        // first, then without, and with the year only while it narrows things down.
+        foreach (var name in TvMazeClient.TitleVariants(show.Title))
+        {
+            foreach (var year in show.Year is { } y ? new int?[] { y, null } : [null])
+            {
+                var q = $"/search/tv?query={Uri.EscapeDataString(name)}" + (year is { } yy ? $"&first_air_date_year={yy}" : "");
+                using var search = await GetAsync(q, ct);
+                var results = search.RootElement.GetProperty("results");
+                if (results.GetArrayLength() > 0 && results[0].TryGetProperty("id", out var first) && first.TryGetInt(out var firstId)) return firstId;
+            }
+        }
+        return null;
     }
 
     private static string? ShowCertification(JsonElement r)

@@ -113,9 +113,16 @@
                                             <ProgressBar Progress="{Binding CatalogueProgress, Converter={StaticResource Percent}}" VerticalOptions="Center" />
                                             <Label Grid.Column="1" Text="{Binding CatalogueProgress, StringFormat='Catalogue {0:0}% imported'}" Style="{StaticResource Muted}" FontSize="12" />
                                         </Grid>
-                                        <!-- Selectable, so an error can be copied into a bug report -->
-                                        <skeleton:CLabel Text="{Binding LastSyncResult}" Style="{StaticResource Muted}" FontSize="12"
-                                                         IsVisible="{Binding LastSyncResult, Converter={StaticResource HasValue}}" />
+                                        <!-- How the last check went, and when; hidden while a check runs. In red when it failed.
+                                             Selectable, so an error can be copied into a bug report. -->
+                                        <skeleton:CLabel Text="{Binding StatusText}" Style="{StaticResource Muted}" FontSize="12"
+                                                         IsVisible="{Binding StatusText, Converter={StaticResource HasValue}}">
+                                            <skeleton:CLabel.Triggers>
+                                                <DataTrigger TargetType="skeleton:CLabel" Binding="{Binding LastSyncFailed}" Value="True">
+                                                    <Setter Property="TextColor" Value="{StaticResource Danger}" />
+                                                </DataTrigger>
+                                            </skeleton:CLabel.Triggers>
+                                        </skeleton:CLabel>
                                     </VerticalStackLayout>
                                     <ImageButton Grid.Column="1" Grid.RowSpan="3" Style="{StaticResource IconButton}" VerticalOptions="Center"
                                                  Source="{controls:Icon sync}" SemanticProperties.Description="Check now" ToolTipProperties.Text="Check now"

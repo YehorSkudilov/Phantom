@@ -54,6 +54,11 @@ builder.Services.AddHttpClient<IMovieSource, YtsSource>(SourceClient);
 builder.Services.AddHttpClient<IMovieSource, PirateBaySource>(SourceClient);
 builder.Services.AddHttpClient<IMovieSource, KnabenSource>(SourceClient);
 builder.Services.AddHttpClient<IMovieSource, EztvSource>(SourceClient);
+builder.Services.AddHttpClient<TvMazeClient>(c =>
+{
+    c.Timeout = TimeSpan.FromSeconds(15);
+    c.DefaultRequestHeaders.UserAgent.ParseAdd("Phantom (self-hosted media server)");
+});
 builder.Services.AddHttpClient<IMetadataProvider, TmdbMetadataProvider>(c => c.Timeout = TimeSpan.FromSeconds(15));
 
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme).AddJwtBearer();
