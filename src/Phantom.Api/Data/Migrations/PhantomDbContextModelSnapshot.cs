@@ -467,6 +467,9 @@ namespace Phantom.Api.Data.Migrations
                     b.Property<int>("MaxDownloadKbps")
                         .HasColumnType("INTEGER");
 
+                    b.Property<int>("MaxStreamCacheGb")
+                        .HasColumnType("INTEGER");
+
                     b.Property<int>("MaxUploadKbps")
                         .HasColumnType("INTEGER");
 
