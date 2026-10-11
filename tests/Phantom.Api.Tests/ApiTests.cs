@@ -79,6 +79,25 @@ public class ApiTests : IClassFixture<PhantomFactory>
     }
 
     [Fact]
+    public async Task Storage_lists_what_the_server_keeps_and_clears_caches()
+    {
+        var client = await AdminClientAsync();
+        var hash = new string('d', 40);
+        var cache = Path.Combine(_factory.DataDir, "cache", hash);
+        Directory.CreateDirectory(cache);
+        await File.WriteAllBytesAsync(Path.Combine(cache, "movie.mkv"), new byte[4096]);
+
+        var storage = await client.GetFromJsonAsync<StorageDto>("/api/server/storage", Json);
+        var item = Assert.Single(storage!.Items, i => i.InfoHash == hash);
+        Assert.Equal((4096L, false, false), (item.SizeBytes, item.SavedOnServer, item.InUse));
+        Assert.True(storage.StreamCacheBytes >= 4096 && storage.DatabaseBytes > 0);
+
+        Assert.Equal(HttpStatusCode.NoContent, (await client.DeleteAsync($"/api/server/storage/cache/{hash}")).StatusCode);
+        Assert.False(Directory.Exists(cache));
+        Assert.Equal(HttpStatusCode.Unauthorized, (await _factory.CreateClient().GetAsync("/api/server/storage")).StatusCode);
+    }
+
+    [Fact]
     public async Task Health_is_public()
     {
         var res = await _factory.CreateClient().GetAsync("/health");
