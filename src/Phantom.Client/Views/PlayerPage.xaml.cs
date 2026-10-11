@@ -36,6 +36,124 @@ public partial class PlayerPage : ContentPage
 
         // Loading from the moment the page opens: finding the torrent can take a while before there's a source at all.
         SetLoading(true);
+
+        VolumeSlider.Value = _vm.Volume;
+        Media.Volume = _vm.Volume;
+        UpdateMuteIcon();
+        FullscreenButton.IsVisible = DeviceInfo.Platform == DevicePlatform.WinUI;
+    }
+
+    // ---------- Volume, aspect, full screen ----------
+
+    private void OnVolumeChanged(object? sender, ValueChangedEventArgs e)
+    {
+        Media.Volume = e.NewValue;
+        _vm.Volume = e.NewValue;
+        if (e.NewValue > 0 && Media.ShouldMute) Media.ShouldMute = false;
+        UpdateMuteIcon();
+    }
+
+    private void OnMute(object? sender, EventArgs e) => ToggleMute();
+
+    private void ToggleMute()
+    {
+        Media.ShouldMute = !Media.ShouldMute;
+        UpdateMuteIcon();
+        ShowControls();
+    }
+
+    private void ChangeVolume(double by) => VolumeSlider.Value = Math.Clamp(VolumeSlider.Value + by, 0, 1);
+
+    private void UpdateMuteIcon() => MuteButton.Source = IconExtension.Create(
+        Media.ShouldMute || Media.Volume == 0 ? "volume_off" : Media.Volume < 0.5 ? "volume_down" : "volume_up", Colors.White);
+
+    private void OnAspect(object? sender, EventArgs e)
+    {
+        var fill = Media.Aspect != Aspect.AspectFill;
+        Media.Aspect = fill ? Aspect.AspectFill : Aspect.AspectFit;
+        AspectButton.Source = IconExtension.Create(fill ? "fit_screen" : "crop_free", Colors.White, outlined: true);
+        Flash(fill ? "Fill screen" : "Fit to screen");
+    }
+
+    private bool _fullscreen;
+
+    private void OnFullscreen(object? sender, EventArgs e) => SetFullscreen(!_fullscreen);
+
+    private void SetFullscreen(bool on)
+    {
+#if WINDOWS
+        if (Window?.Handler?.PlatformView is Microsoft.UI.Xaml.Window window)
+        {
+            window.AppWindow.SetPresenter(on ? Microsoft.UI.Windowing.AppWindowPresenterKind.FullScreen : Microsoft.UI.Windowing.AppWindowPresenterKind.Default);
+            _fullscreen = on;
+            FullscreenButton.Source = IconExtension.Create(on ? "fullscreen_exit" : "fullscreen", Colors.White);
+        }
+#endif
+    }
+
+    // ---------- Double-tap to skip ----------
+
+    private async void OnSurfaceDoubleTapped(object? sender, TappedEventArgs e)
+    {
+        if (sender is not View surface || e.GetPosition(surface) is not { } at || TransportControls.IsVisible == false && Buffering.IsVisible) return;
+        if (at.X < surface.Width / 3) await SkipAsync(-_vm.SkipBack);
+        else if (at.X > surface.Width * 2 / 3) await SkipAsync(_vm.SkipForward);
+    }
+
+    private async Task SkipAsync(int seconds)
+    {
+        Flash(seconds < 0 ? $"−{-seconds}s" : $"+{seconds}s", left: seconds < 0);
+        await SeekToAsync(_vm.ActualPosition(Media.Position) + TimeSpan.FromSeconds(seconds));
+    }
+
+    private CancellationTokenSource? _flash;
+
+    /// <summary>A short message over the video: "+30s", "Fill screen"...</summary>
+    private async void Flash(string text, bool? left = null)
+    {
+        SkipFlashText.Text = text;
+        SkipFlash.HorizontalOptions = left switch { true => LayoutOptions.Start, false => LayoutOptions.End, null => LayoutOptions.Center };
+        SkipFlash.IsVisible = true;
+        SkipFlash.Opacity = 1;
+        _flash?.Cancel();
+        var cts = _flash = new CancellationTokenSource();
+        try
+        {
+            await Task.Delay(700, cts.Token);
+            await SkipFlash.FadeToAsync(0, 250);
+            if (!cts.IsCancellationRequested) SkipFlash.IsVisible = false;
+        }
+        catch (TaskCanceledException) { }
+    }
+
+    // ---------- Up next ----------
+
+    private static readonly TimeSpan UpNextLead = TimeSpan.FromSeconds(15);
+    private bool _upNextCancelled;
+
+    private void UpdateUpNext(TimeSpan position, TimeSpan total)
+    {
+        var remaining = total - position;
+        var show = !_upNextCancelled && _vm.UpNextTitle is not null && total > TimeSpan.Zero && remaining <= UpNextLead && remaining > TimeSpan.Zero;
+        UpNextCard.IsVisible = show;
+        if (show)
+        {
+            UpNextCountdown.Text = $"Starts in {Math.Ceiling(remaining.TotalSeconds / _vm.Speed):0}s";
+            Controls.IsVisible = true;
+        }
+    }
+
+    private void OnPlayNextNow(object? sender, EventArgs e)
+    {
+        UpNextCard.IsVisible = false;
+        _ = Report(PlayerState.Stopped, atEnd: true);
+        _vm.TryPlayNext();
+    }
+
+    private void OnCancelUpNext(object? sender, EventArgs e)
+    {
+        _upNextCancelled = true;
+        UpNextCard.IsVisible = false;
     }
 
     /// <summary>
@@ -58,6 +176,8 @@ public partial class PlayerPage : ContentPage
     private void LoadSource()
     {
         if (_vm.SourceUrl is not { } url) return;
+        _upNextCancelled = false;
+        UpNextCard.IsVisible = false;
         _pendingResume = _vm.ResumePosition > TimeSpan.Zero;
         SetLoading(true);
         Media.Source = url.StartsWith("http", StringComparison.OrdinalIgnoreCase) ? MediaSource.FromUri(url) : MediaSource.FromFile(url);
@@ -82,6 +202,9 @@ public partial class PlayerPage : ContentPage
         if (!_seeking && total > TimeSpan.Zero) Seek.Value = Math.Clamp(position / total, 0, 1);
         PositionLabel.Text = TimeSpanConverter.Format(position);
         DurationLabel.Text = total > TimeSpan.Zero ? $"-{TimeSpanConverter.Format(total - position)}" : "";
+        // When it'll finish at this speed, as Plex shows.
+        EndsAtLabel.Text = total > position ? $"Ends at {DateTime.Now + (total - position) / Math.Max(0.25, _vm.Speed):t}" : "";
+        UpdateUpNext(position, total);
         _vm.OnPosition(elementPosition, Media.Duration, Media.CurrentState == MediaElementState.Playing);
     }
 
@@ -95,7 +218,7 @@ public partial class PlayerPage : ContentPage
     private async void OnEnded()
     {
         await Report(PlayerState.Stopped, atEnd: true);
-        if (!_vm.TryPlayNext()) await Shell.Current.GoToAsync("..");
+        if (_upNextCancelled || !_vm.TryPlayNext()) await Shell.Current.GoToAsync("..");
     }
 
     private Task Report(PlayerState state, bool atEnd = false)
@@ -147,14 +270,80 @@ public partial class PlayerPage : ContentPage
     private async void OnSkipBack(object? sender, EventArgs e)
     {
         ShowControls();
-        await SeekToAsync(_vm.ActualPosition(Media.Position) - TimeSpan.FromSeconds(_vm.SkipBack));
+        await SkipAsync(-_vm.SkipBack);
     }
 
     private async void OnSkipForward(object? sender, EventArgs e)
     {
         ShowControls();
-        await SeekToAsync(_vm.ActualPosition(Media.Position) + TimeSpan.FromSeconds(_vm.SkipForward));
+        await SkipAsync(_vm.SkipForward);
     }
+
+    // ---------- Keyboard (Windows) ----------
+
+    /// <summary>YouTube-style keys. Returns true when the key did something.</summary>
+    private bool HandleKey(string key)
+    {
+        if (Buffering.IsVisible && key is not ("Escape" or "F")) return false;
+        switch (key)
+        {
+            case "Space" or "K": OnPlayPause(null, EventArgs.Empty); break;
+            case "Left" or "J": _ = SkipAsync(-_vm.SkipBack); break;
+            case "Right" or "L": _ = SkipAsync(_vm.SkipForward); break;
+            case "Up": ChangeVolume(0.1); Flash($"Volume {VolumeSlider.Value:P0}"); break;
+            case "Down": ChangeVolume(-0.1); Flash($"Volume {VolumeSlider.Value:P0}"); break;
+            case "M": ToggleMute(); Flash(Media.ShouldMute ? "Muted" : "Sound on"); break;
+            case "F": SetFullscreen(!_fullscreen); break;
+            case "C": ToggleSubtitles(); break;
+            case "Escape":
+                if (_fullscreen) SetFullscreen(false);
+                else OnClose(null, EventArgs.Empty);
+                break;
+            default: return false;
+        }
+        ShowControls();
+        return true;
+    }
+
+    /// <summary>Subtitles off, or on in the first available language.</summary>
+    private void ToggleSubtitles()
+    {
+        if (_vm.SubtitleChoices.Count <= 1)
+        {
+            Flash("No subtitles");
+            return;
+        }
+        _vm.SelectedSubtitle = _vm.SelectedSubtitle?.Track is null ? _vm.SubtitleChoices[1] : _vm.SubtitleChoices[0];
+        Flash(_vm.SelectedSubtitle.Track is null ? "Subtitles off" : $"Subtitles: {_vm.SelectedSubtitle.Label}");
+    }
+
+#if WINDOWS
+    private Microsoft.UI.Xaml.UIElement? _keyRoot;
+    private Microsoft.UI.Xaml.Input.KeyEventHandler? _keyHandler;
+
+    protected override void OnAppearing()
+    {
+        base.OnAppearing();
+        if ((Handler?.PlatformView as Microsoft.UI.Xaml.FrameworkElement)?.XamlRoot?.Content is not { } root) return;
+        _keyRoot = root;
+        _keyHandler = (_, e) =>
+        {
+            var key = e.Key switch
+            {
+                Windows.System.VirtualKey.Space => "Space",
+                Windows.System.VirtualKey.Left => "Left",
+                Windows.System.VirtualKey.Right => "Right",
+                Windows.System.VirtualKey.Up => "Up",
+                Windows.System.VirtualKey.Down => "Down",
+                Windows.System.VirtualKey.Escape => "Escape",
+                >= Windows.System.VirtualKey.A and <= Windows.System.VirtualKey.Z => e.Key.ToString(),
+                _ => "",
+            };
+            if (key.Length > 0 && HandleKey(key)) e.Handled = true;
+        };
+        root.AddHandler(Microsoft.UI.Xaml.UIElement.KeyDownEvent, _keyHandler, handledEventsToo: true);
+    }
+#endif
 
     private void OnSeekStarted(object? sender, EventArgs e)
     {
@@ -224,7 +413,7 @@ public partial class PlayerPage : ContentPage
         var choice = await DisplayActionSheetAsync("Quality", "Cancel", null, [.. _vm.Qualities.Select(q => q.Name)]);
         if (_vm.Qualities.FirstOrDefault(q => q.Name == choice) is { } quality && quality != _vm.SelectedQuality)
         {
-            if (!quality.IsOriginal && _vm.Stream?.TranscodeUrl is null)
+            if (!quality.Resolve().IsOriginal && _vm.Stream?.TranscodeUrl is null)
             {
                 await DisplayAlertAsync("Quality", "The server can't transcode (ffmpeg not installed), so only original quality is available.", "OK");
                 return;
@@ -250,6 +439,10 @@ public partial class PlayerPage : ContentPage
         base.OnDisappearing();
         _hideTimer?.Stop();
         _vm.StopLoadingStatus();
+        SetFullscreen(false);
+#if WINDOWS
+        if (_keyRoot is not null && _keyHandler is not null) _keyRoot.RemoveHandler(Microsoft.UI.Xaml.UIElement.KeyDownEvent, _keyHandler);
+#endif
         await Report(PlayerState.Stopped);
         Media.Stop();
         Media.Handler?.DisconnectHandler();

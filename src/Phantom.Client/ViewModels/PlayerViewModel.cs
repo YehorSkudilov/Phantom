@@ -102,6 +102,12 @@ public partial class PlayerViewModel(PhantomApi api, SettingsService settings, D
     public TimeSpan ResumePosition { get; private set; }
     public StreamInfoDto? Stream { get; private set; }
 
+    public double Volume
+    {
+        get => settings.PlayerVolume;
+        set => settings.PlayerVolume = value;
+    }
+
     public int SkipForward => settings.SkipForwardSeconds;
     public int SkipBack => settings.SkipBackSeconds;
 

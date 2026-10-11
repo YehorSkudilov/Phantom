@@ -12,6 +12,8 @@
     <Grid>
         <Grid.GestureRecognizers>
             <TapGestureRecognizer Tapped="OnSurfaceTapped" />
+            <!-- Double-tap the left or right side to skip back or forward, as on YouTube and Netflix -->
+            <TapGestureRecognizer NumberOfTapsRequired="2" Tapped="OnSurfaceDoubleTapped" />
         </Grid.GestureRecognizers>
 
         <toolkit:MediaElement x:Name="Media" ShouldShowPlaybackControls="False" ShouldAutoPlay="True" ShouldKeepScreenOn="True"
@@ -37,20 +39,33 @@
         <Label Text="{Binding ErrorMessage}" TextColor="{StaticResource Danger}" HorizontalOptions="Center" VerticalOptions="Center" Margin="0,120,0,0"
                IsVisible="{Binding ErrorMessage, Converter={StaticResource HasValue}}" />
 
+        <!-- "−10s" / "+30s" after a double-tap or arrow key -->
+        <Border x:Name="SkipFlash" IsVisible="False" Opacity="0" VerticalOptions="Center" Padding="18,10" Margin="60,0"
+                BackgroundColor="#990B0B12" StrokeShape="RoundRectangle 24" InputTransparent="True">
+            <Label x:Name="SkipFlashText" TextColor="White" FontFamily="OpenSansSemibold" FontSize="18" />
+        </Border>
+
         <!-- Controls overlay -->
         <Grid x:Name="Controls" RowDefinitions="Auto,*,Auto" BackgroundColor="#66000000" Padding="12">
-            <Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto" ColumnSpacing="6">
+            <Grid.GestureRecognizers>
+                <TapGestureRecognizer NumberOfTapsRequired="2" Tapped="OnSurfaceDoubleTapped" />
+            </Grid.GestureRecognizers>
+            <Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto,Auto,Auto" ColumnSpacing="6">
                 <ImageButton Style="{StaticResource IconButton}" Source="{controls:Icon close, Color=White}" Clicked="OnClose"
                              SemanticProperties.Description="Close player" ToolTipProperties.Text="Close" />
                 <VerticalStackLayout Grid.Column="1" VerticalOptions="Center">
                     <Label Text="{Binding Title}" FontFamily="OpenSansSemibold" FontSize="16" LineBreakMode="TailTruncation" />
-                    <Label Text="Transcoding" Style="{StaticResource Muted}" FontSize="11" IsVisible="{Binding IsTranscoding}" />
+                    <Label x:Name="EndsAtLabel" Style="{StaticResource Muted}" FontSize="12" />
                 </VerticalStackLayout>
                 <ImageButton x:Name="SubtitlesButton" Grid.Column="2" Style="{StaticResource IconButton}" Source="{controls:Icon closed_caption, Color=White, Outlined=True}" Clicked="OnSubtitles"
                              SemanticProperties.Description="Subtitles" ToolTipProperties.Text="Subtitles" />
                 <ImageButton x:Name="QualityButton" Grid.Column="3" Style="{StaticResource IconButton}" Source="{controls:Icon high_quality, Color=White, Outlined=True}" Clicked="OnQuality"
                              SemanticProperties.Description="Quality" ToolTipProperties.Text="Quality" />
                 <Button Grid.Column="4" x:Name="SpeedButton" Text="1x" Style="{StaticResource GhostButton}" TextColor="White" Clicked="OnSpeed" SemanticProperties.Description="Playback speed" />
+                <ImageButton x:Name="AspectButton" Grid.Column="5" Style="{StaticResource IconButton}" Source="{controls:Icon fit_screen, Color=White, Outlined=True}" Clicked="OnAspect"
+                             SemanticProperties.Description="Fill or fit the screen" ToolTipProperties.Text="Fill / fit" />
+                <ImageButton x:Name="FullscreenButton" Grid.Column="6" Style="{StaticResource IconButton}" Source="{controls:Icon fullscreen, Color=White}" Clicked="OnFullscreen"
+                             SemanticProperties.Description="Full screen" ToolTipProperties.Text="Full screen (F)" />
             </Grid>
 
             <HorizontalStackLayout x:Name="TransportControls" Grid.Row="1" HorizontalOptions="Center" VerticalOptions="Center" Spacing="36">
@@ -64,8 +79,18 @@
             </HorizontalStackLayout>
 
             <VerticalStackLayout x:Name="SeekArea" Grid.Row="2" Spacing="2">
-                <Label Text="{Binding UpNextTitle, StringFormat='Up next: {0}'}" Style="{StaticResource Muted}" HorizontalOptions="End"
-                       IsVisible="{Binding UpNextTitle, Converter={StaticResource HasValue}}" />
+                <!-- Near the end of a queue item: the next one, counting down, as Netflix does -->
+                <Border x:Name="UpNextCard" IsVisible="False" HorizontalOptions="End" Padding="14,10" Margin="0,0,0,8"
+                        BackgroundColor="#E60B0B12" StrokeShape="RoundRectangle 12">
+                    <VerticalStackLayout Spacing="8">
+                        <Label Text="{Binding UpNextTitle, StringFormat='Up next: {0}'}" TextColor="White" FontFamily="OpenSansSemibold" />
+                        <Label x:Name="UpNextCountdown" Style="{StaticResource Muted}" FontSize="12" />
+                        <HorizontalStackLayout Spacing="8">
+                            <Button Text="Play now" Clicked="OnPlayNextNow" Padding="14,6" MinimumHeightRequest="36" />
+                            <Button Text="Cancel" Style="{StaticResource SecondaryButton}" Clicked="OnCancelUpNext" Padding="14,6" MinimumHeightRequest="36" />
+                        </HorizontalStackLayout>
+                    </VerticalStackLayout>
+                </Border>
                 <!-- While dragging: the frame and time the drag would jump to, above the thumb. -->
                 <Border x:Name="SeekPreview" IsVisible="False" HorizontalOptions="Start" WidthRequest="176" Padding="0"
                         BackgroundColor="#E60B0B12" StrokeShape="RoundRectangle 8" InputTransparent="True">
@@ -75,9 +100,12 @@
                     </VerticalStackLayout>
                 </Border>
                 <Slider x:Name="Seek" Minimum="0" Maximum="1" DragStarted="OnSeekStarted" DragCompleted="OnSeekCompleted" ValueChanged="OnSeekValueChanged" />
-                <Grid ColumnDefinitions="*,*">
-                    <Label x:Name="PositionLabel" Text="0:00" FontSize="12" />
-                    <Label Grid.Column="1" x:Name="DurationLabel" Text="0:00" FontSize="12" HorizontalOptions="End" />
+                <Grid ColumnDefinitions="Auto,*,Auto,Auto" ColumnSpacing="8">
+                    <Label x:Name="PositionLabel" Text="0:00" FontSize="12" VerticalOptions="Center" />
+                    <ImageButton x:Name="MuteButton" Grid.Column="2" Style="{StaticResource IconButton}" WidthRequest="36" HeightRequest="36" Padding="6"
+                                 Clicked="OnMute" SemanticProperties.Description="Mute" ToolTipProperties.Text="Mute (M)" />
+                    <Slider x:Name="VolumeSlider" Grid.Column="3" Minimum="0" Maximum="1" WidthRequest="110" VerticalOptions="Center" ValueChanged="OnVolumeChanged" />
+                    <Label Grid.Column="1" x:Name="DurationLabel" Text="0:00" FontSize="12" HorizontalOptions="End" VerticalOptions="Center" />
                 </Grid>
             </VerticalStackLayout>
         </Grid>

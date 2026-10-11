@@ -66,6 +66,13 @@ public class SettingsService
         }
     }
 
+    /// <summary>The player's volume (0-1), kept between movies.</summary>
+    public double PlayerVolume
+    {
+        get => Math.Clamp(_prefs.Get(nameof(PlayerVolume), 1.0), 0, 1);
+        set => _prefs.Set(nameof(PlayerVolume), Math.Clamp(value, 0, 1));
+    }
+
     /// <summary>Kept by name (not position) so new choices like Auto don't shift what people picked.</summary>
     public QualityOption StreamingQuality
     {
