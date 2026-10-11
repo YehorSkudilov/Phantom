@@ -136,15 +136,29 @@ public partial class LibraryViewModel(PhantomApi api, SettingsService settings, 
     ];
 
     [ObservableProperty] private SortOption selectedSort = null!;
-    [ObservableProperty] private string selectedGenre = "All genres";
-    [ObservableProperty] private string selectedDecade = "Any decade";
-    [ObservableProperty] private string selectedQuality = "Any quality";
-    [ObservableProperty] private string selectedRating = "Any rating";
-    [ObservableProperty] private string selectedWatchState = "All";
-    [ObservableProperty] private string selectedLetter = "All";
-    [ObservableProperty] private string? actor;
-    [ObservableProperty] private string? director;
+    [ObservableProperty, NotifyPropertyChangedFor(nameof(ActiveFilterCount), nameof(HasActiveFilters), nameof(ClearFiltersText))] private string selectedGenre = "All genres";
+    [ObservableProperty, NotifyPropertyChangedFor(nameof(ActiveFilterCount), nameof(HasActiveFilters), nameof(ClearFiltersText))] private string selectedDecade = "Any decade";
+    [ObservableProperty, NotifyPropertyChangedFor(nameof(ActiveFilterCount), nameof(HasActiveFilters), nameof(ClearFiltersText))] private string selectedQuality = "Any quality";
+    [ObservableProperty, NotifyPropertyChangedFor(nameof(ActiveFilterCount), nameof(HasActiveFilters), nameof(ClearFiltersText))] private string selectedRating = "Any rating";
+    [ObservableProperty, NotifyPropertyChangedFor(nameof(ActiveFilterCount), nameof(HasActiveFilters), nameof(ClearFiltersText))] private string selectedWatchState = "All";
+    [ObservableProperty, NotifyPropertyChangedFor(nameof(ActiveFilterCount), nameof(HasActiveFilters), nameof(ClearFiltersText))] private string selectedLetter = "All";
+    [ObservableProperty, NotifyPropertyChangedFor(nameof(ActiveFilterCount), nameof(HasActiveFilters), nameof(ClearFiltersText))] private string? actor;
+    [ObservableProperty, NotifyPropertyChangedFor(nameof(ActiveFilterCount), nameof(HasActiveFilters), nameof(ClearFiltersText))] private string? director;
+
+    /// <summary>The filters popup (behind the Filters button) is open.</summary>
     [ObservableProperty] private bool showFilters;
+
+    /// <summary>How many filters narrow the library (the sort isn't one): the Filters button shows a dot while any do.</summary>
+    public int ActiveFilterCount => new[]
+    {
+        !SelectedGenre.StartsWith("All"), !SelectedDecade.StartsWith("Any"), !SelectedQuality.StartsWith("Any"),
+        !SelectedRating.StartsWith("Any"), SelectedWatchState != "All", SelectedLetter != "All", Actor is not null, Director is not null,
+    }.Count(on => on);
+
+    public bool HasActiveFilters => ActiveFilterCount > 0;
+
+    /// <summary>"Clear filters (2)" in the popup, or just "Clear filters".</summary>
+    public string ClearFiltersText => ActiveFilterCount > 0 ? $"Clear filters ({ActiveFilterCount})" : "Clear filters";
 
     /// <summary>The whole library's All / Movies / TV shows switch.</summary>
     [ObservableProperty]
@@ -316,6 +330,9 @@ public partial class LibraryViewModel(PhantomApi api, SettingsService settings, 
     private void ToggleFilters() => ShowFilters = !ShowFilters;
 
     [RelayCommand]
+    private void CloseFilters() => ShowFilters = false;
+
+    [RelayCommand]
     private void ToggleView() => IsGrid = !IsGrid;
 
     [RelayCommand]
@@ -333,8 +350,6 @@ public partial class LibraryViewModel(PhantomApi api, SettingsService settings, 
         ReloadCommand.Execute(null);
     }
 
-    [RelayCommand]
-    private void PickLetter(string letter) => SelectedLetter = letter;
 }
 
 public partial class SearchViewModel(PhantomApi api) : BaseViewModel
