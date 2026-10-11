@@ -411,6 +411,14 @@ public partial class PlayerPage : ContentPage
         await SeekToAsync(_vm.TotalDuration(Media.Duration) * Seek.Value);
     }
 
+    // Menus mark what's in use with a tick, and say it in the title, so it's clear before anything is picked.
+    private const string Tick = "✓  ";
+
+    private static string[] Marked(IEnumerable<string> options, string current) =>
+        [.. options.Select(o => o == current ? Tick + o : o)];
+
+    private static string? Unmarked(string? choice) => choice?.StartsWith(Tick) == true ? choice[Tick.Length..] : choice;
+
     private async void OnSubtitles(object? sender, EventArgs e)
     {
         var labels = _vm.SubtitleChoices.Select(c => c.Label).ToList();
@@ -419,7 +427,9 @@ public partial class PlayerPage : ContentPage
             await DisplayAlertAsync("Subtitles", "This release has no subtitle files.", "OK");
             return;
         }
-        var choice = await DisplayActionSheetAsync("Subtitles", "Cancel", null, [.. labels, "Larger text", "Smaller text"]);
+        var current = _vm.SelectedSubtitle?.Label ?? labels[0];
+        var choice = Unmarked(await DisplayActionSheetAsync($"Subtitles · {current} · text size {_vm.SubtitleSize:0}", "Cancel", null,
+            [.. Marked(labels, current), "Larger text", "Smaller text"]));
         if (choice == "Larger text") _vm.SubtitleSize = Math.Min(40, _vm.SubtitleSize + 2);
         else if (choice == "Smaller text") _vm.SubtitleSize = Math.Max(12, _vm.SubtitleSize - 2);
         else if (_vm.SubtitleChoices.FirstOrDefault(c => c.Label == choice) is { } picked) _vm.SelectedSubtitle = picked;
@@ -427,7 +437,9 @@ public partial class PlayerPage : ContentPage
 
     private async void OnQuality(object? sender, EventArgs e)
     {
-        var choice = await DisplayActionSheetAsync("Quality", "Cancel", null, [.. _vm.Qualities.Select(q => q.Name)]);
+        var current = _vm.SelectedQuality.Name;
+        var choice = Unmarked(await DisplayActionSheetAsync($"Quality · {(string.IsNullOrEmpty(_vm.QualityLabel) ? current : _vm.QualityLabel)}", "Cancel", null,
+            Marked(_vm.Qualities.Select(q => q.Name), current)));
         if (_vm.Qualities.FirstOrDefault(q => q.Name == choice) is { } quality && quality != _vm.SelectedQuality)
         {
             if (!quality.Resolve().IsOriginal && _vm.Stream?.TranscodeUrl is null)
@@ -441,7 +453,8 @@ public partial class PlayerPage : ContentPage
 
     private async void OnSpeed(object? sender, EventArgs e)
     {
-        var choice = await DisplayActionSheetAsync("Playback speed", "Cancel", null, [.. _vm.Speeds.Select(s => $"{s}x")]);
+        var current = $"{_vm.Speed}x";
+        var choice = Unmarked(await DisplayActionSheetAsync($"Playback speed · {current}", "Cancel", null, Marked(_vm.Speeds.Select(s => $"{s}x"), current)));
         if (choice is not null && double.TryParse(choice.TrimEnd('x'), System.Globalization.CultureInfo.InvariantCulture, out var speed))
         {
             _vm.Speed = speed;
