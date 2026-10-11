@@ -5,11 +5,7 @@
              xmlns:controls="clr-namespace:Phantom.Controls"
              xmlns:dto="clr-namespace:Phantom.Shared;assembly=Phantom.Shared"
              x:Class="Phantom.Views.MovieDetailPage"
-             x:DataType="vm:MovieDetailViewModel"
-             Title="{Binding Title}">
-    <ContentPage.ToolbarItems>
-        <ToolbarItem Text="More" IconImageSource="{controls:Icon more_vert, Size=20}" Command="{Binding MoreCommand}" />
-    </ContentPage.ToolbarItems>
+             x:DataType="vm:MovieDetailViewModel">
 
     <RefreshView IsRefreshing="{Binding IsRefreshing}" Command="{Binding LoadCommand}">
         <ScrollView>
@@ -40,25 +36,29 @@
 
                 <!-- Primary actions -->
                 <VerticalStackLayout Padding="16,0" Spacing="10">
-                    <!-- Trailer beside Play; Play takes the whole row when there's no trailer. -->
-                    <Grid ColumnDefinitions="Auto,*">
+                    <!-- Trailer, then Start over (when there's a place to resume from), then Play/Resume taking the rest. -->
+                    <Grid ColumnDefinitions="Auto,Auto,*">
                         <Button Text="Trailer" Style="{StaticResource SecondaryButton}" HeightRequest="52" Margin="0,0,10,0"
                                 ImageSource="{controls:Icon smart_display, Size=20}" ContentLayout="Left,8"
                                 Command="{Binding PlayTrailerCommand}" IsVisible="{Binding Movie.TrailerUrl, Converter={StaticResource HasValue}}" />
-                        <Button Grid.Column="1" Text="{Binding PlayLabel}" Command="{Binding PlayCommand}" FontSize="16" HeightRequest="52"
+                        <Button Grid.Column="1" Text="Start over" Style="{StaticResource SecondaryButton}" HeightRequest="52" Margin="0,0,10,0"
+                                ImageSource="{controls:Icon replay, Size=20}" ContentLayout="Left,8"
+                                Command="{Binding PlayFromStartCommand}" IsVisible="{Binding CanResume}" />
+                        <Button Grid.Column="2" Text="{Binding PlayLabel}" Command="{Binding PlayCommand}" FontSize="16" HeightRequest="52"
                                 ImageSource="{controls:Icon play_arrow, Color=White, Size=20}" ContentLayout="Left,8" />
                     </Grid>
                     <ProgressBar Progress="{Binding Movie.Playback.ProgressPercent, Converter={StaticResource Percent}}" IsVisible="{Binding CanResume}" />
-                    <Button Text="Start over" Style="{StaticResource SecondaryButton}" Command="{Binding PlayFromStartCommand}" IsVisible="{Binding CanResume}"
-                            ImageSource="{controls:Icon replay, Size=20}" ContentLayout="Left,8" />
-                    <Grid ColumnDefinitions="*,*,*,*" ColumnSpacing="8">
+                    <Grid ColumnDefinitions="*,*,*" RowDefinitions="Auto,Auto" ColumnSpacing="8" RowSpacing="8">
                         <controls:ActionTile Glyph="{Binding WatchlistGlyph}"
                                              Text="{Binding WatchlistLabel}" IsActive="{Binding IsOnWatchlist}" Command="{Binding ToggleWatchlistCommand}" />
                         <controls:ActionTile Grid.Column="1" Glyph="check_circle" Text="{Binding WatchedLabel}" IsActive="{Binding IsWatched}"
                                              Command="{Binding ToggleWatchedCommand}" />
-                        <controls:ActionTile Grid.Column="2" Glyph="download" Text="Download" Command="{Binding DownloadToDeviceCommand}"
+                        <controls:ActionTile Grid.Column="2" Glyph="star" Text="{Binding RateLabel}" IsActive="{Binding IsRated}"
+                                             Command="{Binding RateCommand}" />
+                        <controls:ActionTile Grid.Row="1" Glyph="playlist_add" Text="Add to playlist" Command="{Binding AddToPlaylistCommand}" />
+                        <controls:ActionTile Grid.Row="1" Grid.Column="1" Glyph="download" Text="Download" Command="{Binding DownloadToDeviceCommand}"
                                              IsActive="{Binding OfflineItem, Converter={StaticResource HasValue}}" />
-                        <controls:ActionTile Grid.Column="3" Glyph="cloud_download" Text="Save on server" Command="{Binding DownloadOnServerCommand}" />
+                        <controls:ActionTile Grid.Row="1" Grid.Column="2" Glyph="cloud_download" Text="Save on server" Command="{Binding DownloadOnServerCommand}" />
                     </Grid>
 
                     <!-- Device download status -->

@@ -11,6 +11,7 @@ namespace Phantom.Api.Services.Torrents;
 public class ServerDownloadService(IServiceScopeFactory scopes, TorrentEngine engine, ILogger<ServerDownloadService> log) : BackgroundService
 {
     private DateTime _lastEviction = DateTime.MinValue;
+    private DateTime _lastExpiry = DateTime.MinValue;
     private (int Down, int Up) _appliedLimits = (-1, -1);
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -87,6 +88,32 @@ public class ServerDownloadService(IServiceScopeFactory scopes, TorrentEngine en
             await engine.EvictIdleAsync(TimeSpan.FromHours(Math.Max(1, settings.StreamCacheHours)));
         }
         await engine.EnsureFreeSpaceAsync();
+
+        if (settings.KeepServerDownloadsDays > 0 && DateTime.UtcNow - _lastExpiry > TimeSpan.FromMinutes(15))
+        {
+            _lastExpiry = DateTime.UtcNow;
+            await DeleteExpiredAsync(db, settings.KeepServerDownloadsDays, ct);
+        }
+    }
+
+    /// <summary>Deletes movies saved on the server more than <paramref name="days"/> days after they finished.</summary>
+    private async Task DeleteExpiredAsync(PhantomDbContext db, int days, CancellationToken ct)
+    {
+        var cutoff = DateTime.UtcNow.AddDays(-days);
+        var expired = await db.ServerDownloads.Include(d => d.Release)
+            .Where(d => d.Status == DownloadStatus.Completed && d.CompletedAt != null && d.CompletedAt < cutoff)
+            .ToListAsync(ct);
+        foreach (var d in expired)
+        {
+            var release = d.Release!;
+            log.LogInformation("Deleting {Name}: saved on the server more than {Days} days ago", release.Name, days);
+            await engine.RemoveAsync(release.InfoHash, deleteData: true);
+            if (release.LocalFilePath is { } path && Path.GetDirectoryName(path) is { } dir && Directory.Exists(dir))
+                Directory.Delete(dir, recursive: true);
+            release.LocalFilePath = null;
+            db.ServerDownloads.Remove(d);
+        }
+        if (expired.Count > 0) await db.SaveChangesAsync(ct);
     }
 
     private async Task StartAsync(int downloadId, Release release, CancellationToken ct)

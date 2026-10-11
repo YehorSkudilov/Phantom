@@ -41,6 +41,7 @@ builder.Services.AddHostedService(sp => sp.GetRequiredService<TorrentEngine>());
 builder.Services.AddHostedService<ServerDownloadService>();
 builder.Services.AddSingleton<SourceSyncService>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<SourceSyncService>());
+builder.Services.AddHostedService<MetadataRefreshService>();
 
 // Sources & metadata
 builder.Services.AddHttpClient<IMovieSource, InternetArchiveSource>(c => c.Timeout = TimeSpan.FromSeconds(30));
@@ -132,6 +133,11 @@ static async Task SeedAsync(IServiceProvider services)
 // The database is made by EnsureCreated, with no migrations, so changes an existing database needs are applied here.
 static async Task UpgradeSchemaAsync(PhantomDbContext db)
 {
+    // Settings added since the database was made.
+    var settingsColumns = await db.Database.SqlQueryRaw<string>("SELECT name AS Value FROM pragma_table_info('Settings')").ToListAsync();
+    if (settingsColumns.Count > 0 && !settingsColumns.Contains("KeepServerDownloadsDays"))
+        await db.Database.ExecuteSqlRawAsync("""ALTER TABLE "Settings" ADD COLUMN "KeepServerDownloadsDays" INTEGER NOT NULL DEFAULT 7""");
+
     // Profile names used to be unique across the whole server; now only within their account.
     var usernameIndex = await db.Database.SqlQueryRaw<string>(
         "SELECT sql AS Value FROM sqlite_master WHERE type = 'index' AND name = 'IX_Users_Username'").ToListAsync();

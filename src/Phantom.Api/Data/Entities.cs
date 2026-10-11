@@ -181,4 +181,7 @@ public class ServerSettings
     public bool AutoDownloadNewReleases { get; set; }
     public string? PreferredQuality { get; set; } = "1080p";
     public int MinSeeders { get; set; } = 1;
+
+    /// <summary>Movies saved on the server are deleted this many days after they finish; 0 keeps them for good.</summary>
+    public int KeepServerDownloadsDays { get; set; } = 7;
 }

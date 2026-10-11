@@ -43,19 +43,33 @@ public class ServerController(PhantomDbContext db, TorrentEngine engine, Transco
     }
 
     [Authorize(Roles = "Admin")]
+    [HttpGet("metadata")]
+    public async Task<MetadataStatusDto> MetadataStatus([FromServices] Phantom.Api.Services.Metadata.IMetadataProvider metadata, CancellationToken ct) =>
+        new(metadata.IsConfigured, await Phantom.Api.Services.Metadata.MetadataRefreshService.Due(db).CountAsync(ct), await db.Movies.CountAsync(ct));
+
+    /// <summary>Queues every movie for a metadata refresh; MetadataRefreshService works through them in the background.</summary>
+    [Authorize(Roles = "Admin")]
+    [HttpPost("metadata/refresh")]
+    public async Task<MetadataStatusDto> RefreshAllMetadata([FromServices] Phantom.Api.Services.Metadata.IMetadataProvider metadata, CancellationToken ct)
+    {
+        await db.Movies.ExecuteUpdateAsync(m => m.SetProperty(x => x.MetadataRefreshedAt, (DateTime?)null), ct);
+        return await MetadataStatus(metadata, ct);
+    }
+
+    [Authorize(Roles = "Admin")]
     [HttpGet("settings")]
     public async Task<ServerSettingsDto> GetSettings(CancellationToken ct)
     {
         var s = await db.Settings.AsNoTracking().FirstAsync(ct);
         return new ServerSettingsDto(s.ServerName, s.MaxActiveDownloads, s.MaxDownloadKbps, s.MaxUploadKbps,
-            s.SeedAfterDownload, s.StreamCacheHours, s.AutoDownloadNewReleases, s.PreferredQuality, s.MinSeeders);
+            s.SeedAfterDownload, s.StreamCacheHours, s.AutoDownloadNewReleases, s.PreferredQuality, s.MinSeeders, s.KeepServerDownloadsDays);
     }
 
     [Authorize(Roles = "Admin")]
     [HttpPut("settings")]
     public async Task<IActionResult> UpdateSettings(ServerSettingsDto dto, CancellationToken ct)
     {
-        if (dto.MaxActiveDownloads < 1 || dto.StreamCacheHours < 1 || dto.MinSeeders < 0)
+        if (dto.MaxActiveDownloads < 1 || dto.StreamCacheHours < 1 || dto.MinSeeders < 0 || dto.KeepServerDownloadsDays < 0)
             return BadRequest("Invalid settings.");
         var s = await db.Settings.FirstAsync(ct);
         s.ServerName = dto.ServerName;
@@ -67,6 +81,7 @@ public class ServerController(PhantomDbContext db, TorrentEngine engine, Transco
         s.AutoDownloadNewReleases = dto.AutoDownloadNewReleases;
         s.PreferredQuality = dto.PreferredQuality;
         s.MinSeeders = dto.MinSeeders;
+        s.KeepServerDownloadsDays = dto.KeepServerDownloadsDays;
         await db.SaveChangesAsync(ct);
         return NoContent();
     }

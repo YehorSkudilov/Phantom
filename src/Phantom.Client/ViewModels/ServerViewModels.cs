@@ -115,7 +115,6 @@ public partial class SettingsViewModel(SettingsService settings) : BaseViewModel
 
     [ObservableProperty] private QualityOption quality = settings.StreamingQuality;
     [ObservableProperty] private bool autoPlayNext = settings.AutoPlayNext;
-    [ObservableProperty] private bool resumeAutomatically = settings.ResumeAutomatically;
     [ObservableProperty] private bool subtitlesByDefault = settings.SubtitlesByDefault;
     [ObservableProperty] private string subtitleLanguage = settings.PreferredSubtitleLanguage;
     [ObservableProperty] private double subtitleSize = settings.SubtitleSize;
@@ -124,7 +123,6 @@ public partial class SettingsViewModel(SettingsService settings) : BaseViewModel
 
     partial void OnQualityChanged(QualityOption value) => settings.StreamingQualityIndex = QualityOption.All.ToList().IndexOf(value);
     partial void OnAutoPlayNextChanged(bool value) => settings.AutoPlayNext = value;
-    partial void OnResumeAutomaticallyChanged(bool value) => settings.ResumeAutomatically = value;
     partial void OnSubtitlesByDefaultChanged(bool value) => settings.SubtitlesByDefault = value;
     partial void OnSubtitleLanguageChanged(string value) => settings.PreferredSubtitleLanguage = value;
     partial void OnSubtitleSizeChanged(double value) => settings.SubtitleSize = value;
@@ -183,6 +181,26 @@ public partial class AdminViewModel(PhantomApi api) : BaseViewModel
     [ObservableProperty] private bool autoDownloadNewReleases;
     [ObservableProperty] private string? preferredQuality;
     [ObservableProperty] private int minSeeders;
+    [ObservableProperty] private int keepServerDownloadsDays = 7;
+    [ObservableProperty] private string metadataText = "";
+
+    private async Task LoadMetadataAsync()
+    {
+        var m = await api.MetadataStatusAsync();
+        MetadataText = !m.Configured
+            ? "No TMDB API key on the server, so there's no artwork or cast to fetch."
+            : m.Pending == 0
+                ? $"All {m.Total:N0} movies are up to date. Each is refreshed again after 30 days."
+                : $"Refreshing {m.Pending:N0} of {m.Total:N0} movies in the background. Each is refreshed again after 30 days.";
+    }
+
+    [RelayCommand]
+    private Task RefreshAllMetadata() => RunAsync(async () =>
+    {
+        if (!await Shell.Current.DisplayAlertAsync("Refresh metadata", "Fetch posters, cast and details again for every movie? It runs in the background.", "Refresh all", "Cancel")) return;
+        await api.RefreshAllMetadataAsync();
+        await LoadMetadataAsync();
+    }, showBusy: false);
 
     [RelayCommand]
     public Task Load() => RunAsync(async () =>
@@ -191,6 +209,7 @@ public partial class AdminViewModel(PhantomApi api) : BaseViewModel
         Sources.Clear();
         foreach (var s in await api.SourcesAsync()) Sources.Add(s);
         await LoadAccountsAsync();
+        await LoadMetadataAsync();
 
         var s2 = await api.ServerSettingsAsync();
         ServerName = s2.ServerName;
@@ -202,6 +221,7 @@ public partial class AdminViewModel(PhantomApi api) : BaseViewModel
         AutoDownloadNewReleases = s2.AutoDownloadNewReleases;
         PreferredQuality = s2.PreferredQuality;
         MinSeeders = s2.MinSeeders;
+        KeepServerDownloadsDays = s2.KeepServerDownloadsDays;
     });
 
     [RelayCommand]
@@ -263,7 +283,7 @@ public partial class AdminViewModel(PhantomApi api) : BaseViewModel
     private Task SaveSettings() => RunAsync(async () =>
     {
         await api.SaveServerSettingsAsync(new ServerSettingsDto(ServerName, MaxActiveDownloads, MaxDownloadKbps, MaxUploadKbps,
-            SeedAfterDownload, StreamCacheHours, AutoDownloadNewReleases, PreferredQuality, MinSeeders));
+            SeedAfterDownload, StreamCacheHours, AutoDownloadNewReleases, PreferredQuality, MinSeeders, KeepServerDownloadsDays));
         await ToastAsync("Server settings saved");
     });
 

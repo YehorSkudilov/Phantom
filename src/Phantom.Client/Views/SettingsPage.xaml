@@ -22,10 +22,6 @@
                         <Label Text="Auto-play next in playlists" VerticalOptions="Center" />
                         <Switch Grid.Column="1" IsToggled="{Binding AutoPlayNext}" />
                     </Grid>
-                    <Grid Style="{StaticResource Row}">
-                        <Label Text="Resume without asking" VerticalOptions="Center" />
-                        <Switch Grid.Column="1" IsToggled="{Binding ResumeAutomatically}" />
-                    </Grid>
                     <Grid ColumnDefinitions="*,*" ColumnSpacing="10">
                         <VerticalStackLayout>
                             <Label Text="Skip back (s)" Style="{StaticResource Muted}" />

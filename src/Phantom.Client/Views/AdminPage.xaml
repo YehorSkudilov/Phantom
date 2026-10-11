@@ -184,6 +184,8 @@
                         </Grid>
                         <Label Text="Keep streamed torrents cached for (hours)" Style="{StaticResource Muted}" />
                         <Entry Text="{Binding StreamCacheHours}" Keyboard="Numeric" />
+                        <Label Text="Delete movies saved on the server after (days, 0 = keep them)" Style="{StaticResource Muted}" />
+                        <Entry Text="{Binding KeepServerDownloadsDays}" Keyboard="Numeric" />
                         <Grid ColumnDefinitions="*,Auto">
                             <Label Text="Seed after downloading" VerticalOptions="Center" />
                             <Switch Grid.Column="1" IsToggled="{Binding SeedAfterDownload}" />
@@ -193,6 +195,15 @@
                             <Switch Grid.Column="1" IsToggled="{Binding AutoDownloadNewReleases}" />
                         </Grid>
                         <Button Text="Save settings" Command="{Binding SaveSettingsCommand}" />
+                    </VerticalStackLayout>
+                </Border>
+
+                <Border Style="{StaticResource Card}">
+                    <VerticalStackLayout Spacing="10">
+                        <Label Text="Metadata" Style="{StaticResource H2}" />
+                        <Label Text="{Binding MetadataText}" Style="{StaticResource Muted}" />
+                        <Button Text="Refresh all metadata now" Style="{StaticResource SecondaryButton}" Command="{Binding RefreshAllMetadataCommand}"
+                                ImageSource="{controls:Icon sync, Size=20}" ContentLayout="Left,6" HorizontalOptions="Start" />
                     </VerticalStackLayout>
                 </Border>
                 </VerticalStackLayout>

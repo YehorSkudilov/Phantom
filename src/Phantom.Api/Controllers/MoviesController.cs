@@ -67,34 +67,6 @@ public class MoviesController(PhantomDbContext db, LibraryService library) : Con
         return NoContent();
     }
 
-    [Authorize(Roles = "Admin")]
-    [HttpPost("{id:int}/refresh")]
-    public async Task<IActionResult> RefreshMetadata(int id, [FromServices] IMetadataProvider metadata, CancellationToken ct)
-    {
-        var movie = await db.Movies.Include(m => m.Genres).Include(m => m.Credits).FirstOrDefaultAsync(m => m.Id == id, ct);
-        if (movie is null) return NotFound();
-        if (!metadata.IsConfigured) return BadRequest("No metadata provider configured (set Phantom:TmdbApiKey).");
-        await metadata.EnrichAsync(db, movie, ct);
-        await db.SaveChangesAsync(ct);
-        return NoContent();
-    }
-
-    [Authorize(Roles = "Admin")]
-    [HttpDelete("{id:int}")]
-    public async Task<IActionResult> Delete(int id, [FromServices] TorrentEngine engine, CancellationToken ct)
-    {
-        var movie = await db.Movies.Include(m => m.Releases).FirstOrDefaultAsync(m => m.Id == id, ct);
-        if (movie is null) return NotFound();
-        foreach (var r in movie.Releases) await engine.RemoveAsync(r.InfoHash, deleteData: true);
-        db.ServerDownloads.RemoveRange(db.ServerDownloads.Where(d => d.MovieId == id));
-        db.WatchStates.RemoveRange(db.WatchStates.Where(w => w.MovieId == id));
-        db.Watchlist.RemoveRange(db.Watchlist.Where(w => w.MovieId == id));
-        db.PlaylistItems.RemoveRange(db.PlaylistItems.Where(p => p.MovieId == id));
-        db.Movies.Remove(movie);
-        await db.SaveChangesAsync(ct);
-        return NoContent();
-    }
-
     private async Task<WatchState> GetOrCreateStateAsync(int movieId, CancellationToken ct)
     {
         var userId = User.UserId();

@@ -61,12 +61,6 @@ public class SettingsService
         set => _prefs.Set(nameof(AutoPlayNext), value);
     }
 
-    public bool ResumeAutomatically
-    {
-        get => _prefs.Get(nameof(ResumeAutomatically), false);
-        set => _prefs.Set(nameof(ResumeAutomatically), value);
-    }
-
     public bool SubtitlesByDefault
     {
         get => _prefs.Get(nameof(SubtitlesByDefault), false);

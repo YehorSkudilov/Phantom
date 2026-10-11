@@ -14,7 +14,7 @@ public partial class MovieDetailViewModel(PhantomApi api, SettingsService settin
     public ObservableCollection<ReleaseDto> Releases { get; } = [];
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(Meta), nameof(CanResume), nameof(PlayLabel), nameof(Directors), nameof(Writers), nameof(GenreText), nameof(IsWatched), nameof(IsOnWatchlist), nameof(WatchedLabel), nameof(WatchlistLabel), nameof(WatchlistGlyph))]
+    [NotifyPropertyChangedFor(nameof(Meta), nameof(CanResume), nameof(PlayLabel), nameof(Directors), nameof(Writers), nameof(GenreText), nameof(IsWatched), nameof(IsOnWatchlist), nameof(WatchedLabel), nameof(WatchlistLabel), nameof(WatchlistGlyph), nameof(IsRated), nameof(RateLabel))]
     private MovieDetailDto? movie;
 
     [ObservableProperty]
@@ -37,6 +37,8 @@ public partial class MovieDetailViewModel(PhantomApi api, SettingsService settin
     public string WatchedLabel => IsWatched ? "Watched" : "Mark watched";
     public string WatchlistLabel => IsOnWatchlist ? "On watchlist" : "Watchlist";
     public string WatchlistGlyph => IsOnWatchlist ? "bookmark_added" : "bookmark_add";
+    public bool IsRated => Movie?.UserRating is not null;
+    public string RateLabel => Movie?.UserRating is { } r ? $"Rated {r:0.#}" : "Rate";
     public string GenreText => Movie is null ? "" : string.Join(" · ", Movie.Genres);
     public string Directors => Movie is null ? "" : string.Join(", ", Movie.Crew.Where(c => c.Job == "Director").Select(c => c.Name));
     public string Writers => Movie is null ? "" : string.Join(", ", Movie.Crew.Where(c => c.Job == "Writer").Select(c => c.Name));
@@ -92,19 +94,9 @@ public partial class MovieDetailViewModel(PhantomApi api, SettingsService settin
         foreach (var m in await api.RelatedAsync(_id)) Related.Add(m);
     });
 
+    /// <summary>Plays, picking up where this profile left off (Start over beside it plays from the beginning).</summary>
     [RelayCommand]
-    private async Task Play()
-    {
-        if (Movie is null) return;
-        var resume = CanResume;
-        if (resume && !settings.ResumeAutomatically)
-        {
-            var choice = await Shell.Current.DisplayActionSheetAsync(Movie.Title, "Cancel", null, PlayLabel, "Play from beginning");
-            if (choice is null or "Cancel") return;
-            resume = choice != "Play from beginning";
-        }
-        await StartPlayback(resume);
-    }
+    private Task Play() => Movie is null ? Task.CompletedTask : StartPlayback(CanResume);
 
     [RelayCommand]
     private Task PlayFromStart() => StartPlayback(resume: false);
@@ -208,29 +200,4 @@ public partial class MovieDetailViewModel(PhantomApi api, SettingsService settin
 
     [RelayCommand]
     private Task OpenGenre(string genre) => Views.MainPage.ShowLibrary($"genre={Uri.EscapeDataString(genre)}");
-
-    [RelayCommand]
-    private Task More() => RunAsync(async () =>
-    {
-        var options = new List<string> { "Add to playlist", "Rate", "Download on server" };
-        if (IsAdmin) options.AddRange(["Refresh metadata", "Delete from library"]);
-        var choice = await Shell.Current.DisplayActionSheetAsync(Movie?.Title, "Cancel", null, [.. options]);
-        switch (choice)
-        {
-            case "Add to playlist": await AddToPlaylist(); break;
-            case "Rate": await Rate(); break;
-            case "Download on server": await DownloadOnServer(); break;
-            case "Refresh metadata":
-                await api.RefreshMetadataAsync(_id);
-                Movie = await api.MovieAsync(_id);
-                break;
-            case "Delete from library":
-                if (await Shell.Current.DisplayAlertAsync("Delete", $"Remove {Movie?.Title} and its torrents from the server?", "Delete", "Cancel"))
-                {
-                    await api.DeleteMovieAsync(_id);
-                    await Shell.Current.GoToAsync("..");
-                }
-                break;
-        }
-    }, showBusy: false);
 }

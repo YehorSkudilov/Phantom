@@ -140,8 +140,6 @@ public class PhantomApi(HttpClient http, SettingsService settings)
     public Task<List<MovieSummaryDto>> RelatedAsync(int id) => GetAsync<List<MovieSummaryDto>>($"/api/movies/{id}/related");
     public Task MarkWatchedAsync(int id, bool watched) => SendNoContentAsync(HttpMethod.Post, $"/api/movies/{id}/{(watched ? "watched" : "unwatched")}");
     public Task RateAsync(int id, double? rating) => SendNoContentAsync(HttpMethod.Put, $"/api/movies/{id}/rating", new SetRatingRequest(rating));
-    public Task RefreshMetadataAsync(int id) => SendNoContentAsync(HttpMethod.Post, $"/api/movies/{id}/refresh");
-    public Task DeleteMovieAsync(int id) => SendNoContentAsync(HttpMethod.Delete, $"/api/movies/{id}");
 
     // ---------- Playback ----------
 
@@ -188,6 +186,8 @@ public class PhantomApi(HttpClient http, SettingsService settings)
     // ---------- Admin ----------
 
     public Task<List<SourceDto>> SourcesAsync() => GetAsync<List<SourceDto>>("/api/sources");
+    public Task<MetadataStatusDto> MetadataStatusAsync() => GetAsync<MetadataStatusDto>("/api/server/metadata");
+    public Task<MetadataStatusDto> RefreshAllMetadataAsync() => SendAsync<MetadataStatusDto>(HttpMethod.Post, "/api/server/metadata/refresh", null);
     public Task<SourceDto> SetSourceEnabledAsync(int id, bool value) => SendAsync<SourceDto>(HttpMethod.Put, $"/api/sources/{id}/enabled?value={value}", null);
     public Task SyncSourceAsync(int id) => SendNoContentAsync(HttpMethod.Post, $"/api/sources/{id}/sync");
     public Task<ServerSettingsDto> ServerSettingsAsync() => GetAsync<ServerSettingsDto>("/api/server/settings");

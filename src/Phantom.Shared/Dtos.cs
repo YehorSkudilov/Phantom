@@ -208,7 +208,8 @@ public record ServerDownloadDto(
     long SizeBytes,
     string? Error,
     DateTime CreatedAt,
-    DateTime? CompletedAt);
+    DateTime? CompletedAt,
+    DateTime? ExpiresAt = null);
 
 public record CreateServerDownloadRequest(int MovieId, int? ReleaseId);
 
@@ -247,6 +248,9 @@ public record ServerInfoDto(
     bool TranscoderAvailable,
     bool MetadataProviderConfigured);
 
+/// <summary>The library-wide metadata refresh: whether it can run (a TMDB key is set) and how many movies are waiting.</summary>
+public record MetadataStatusDto(bool Configured, int Pending, int Total);
+
 public record ServerSettingsDto(
     string ServerName,
     int MaxActiveDownloads,
@@ -256,4 +260,5 @@ public record ServerSettingsDto(
     int StreamCacheHours,
     bool AutoDownloadNewReleases,
     string? PreferredQuality,
-    int MinSeeders);
+    int MinSeeders,
+    int KeepServerDownloadsDays = 7);

@@ -24,6 +24,7 @@ public class DownloadsController(PhantomDbContext db, TorrentEngine engine) : Co
             .Include(d => d.Movie).Include(d => d.Release)
             .OrderByDescending(d => d.CreatedAt)
             .ToListAsync(ct);
+        _keepDays = (await db.Settings.AsNoTracking().FirstAsync(ct)).KeepServerDownloadsDays;
         return rows.Select(ToDto).ToList();
     }
 
@@ -99,6 +100,8 @@ public class DownloadsController(PhantomDbContext db, TorrentEngine engine) : Co
         return NoContent();
     }
 
+    private int _keepDays = 7;
+
     private ServerDownloadDto ToDto(ServerDownload d)
     {
         var stats = d.Status is DownloadStatus.Downloading or DownloadStatus.FetchingMetadata or DownloadStatus.Completed
@@ -108,6 +111,7 @@ public class DownloadsController(PhantomDbContext db, TorrentEngine engine) : Co
             d.Id, d.MovieId, d.Movie?.Title ?? "", d.ReleaseId, d.Release?.Name ?? "", d.Status, d.Progress,
             stats?.DownloadRate ?? 0, stats?.UploadRate ?? 0, stats?.Peers ?? 0,
             stats?.Size is > 0 ? stats.Size : d.Release?.SizeBytes ?? 0,
-            d.Error, d.CreatedAt, d.CompletedAt);
+            d.Error, d.CreatedAt, d.CompletedAt,
+            d.CompletedAt is { } done && _keepDays > 0 ? done.AddDays(_keepDays) : null);
     }
 }
