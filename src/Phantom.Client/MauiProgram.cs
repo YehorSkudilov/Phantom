@@ -41,6 +41,7 @@ public static class MauiProgram
         builder.Services.AddTransient<ConnectViewModel>();
         builder.Services.AddTransient<ProfilesViewModel>();
         builder.Services.AddTransient<MovieDetailViewModel>();
+        builder.Services.AddTransient<ShowDetailViewModel>();
         builder.Services.AddTransient<PlayerViewModel>();
         builder.Services.AddTransient<MovieListViewModel>();
         builder.Services.AddTransient<CollectionsViewModel>();
@@ -60,6 +61,7 @@ public static class MauiProgram
         builder.Services.AddTransient<ConnectPage>();
         builder.Services.AddTransient<ProfilesPage>();
         builder.Services.AddTransient<MovieDetailPage>();
+        builder.Services.AddTransient<ShowDetailPage>();
         builder.Services.AddTransient<PlayerPage>();
         builder.Services.AddTransient<TrailerPage>();
         builder.Services.AddTransient<MovieListPage>();

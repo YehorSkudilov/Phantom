@@ -12,6 +12,7 @@ public partial class AppShell : Shell
 
         // Pushed (non-tab) pages.
         Routing.RegisterRoute(nameof(MovieDetailPage), typeof(MovieDetailPage));
+        Routing.RegisterRoute(nameof(ShowDetailPage), typeof(ShowDetailPage));
         Routing.RegisterRoute(nameof(PlayerPage), typeof(PlayerPage));
         Routing.RegisterRoute(nameof(TrailerPage), typeof(TrailerPage));
         Routing.RegisterRoute(nameof(MovieListPage), typeof(MovieListPage));

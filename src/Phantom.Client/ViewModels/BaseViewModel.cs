@@ -87,7 +87,12 @@ public abstract partial class BaseViewModel : ObservableObject
         }
     }
 
+    /// <summary>Opens a row or grid item's page: a movie's, or a show's.</summary>
     [RelayCommand]
-    protected static Task OpenMovie(MovieSummaryDto? movie) =>
-        movie is null ? Task.CompletedTask : GoToAsync($"{nameof(Views.MovieDetailPage)}?id={movie.Id}");
+    protected static Task OpenMovie(MovieSummaryDto? movie) => movie switch
+    {
+        null => Task.CompletedTask,
+        { Kind: MediaKind.Show } => GoToAsync($"{nameof(Views.ShowDetailPage)}?id={movie.Id}"),
+        _ => GoToAsync($"{nameof(Views.MovieDetailPage)}?id={movie.Id}"),
+    };
 }
