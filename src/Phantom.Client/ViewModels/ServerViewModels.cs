@@ -9,7 +9,7 @@ namespace Phantom.ViewModels;
 /// <summary>Torrents the server is downloading to its own disk.</summary>
 public partial class ServerDownloadsViewModel(PhantomApi api, SettingsService settings) : BaseViewModel
 {
-    public ObservableCollection<ServerDownloadDto> Items { get; } = [];
+    public ObservableList<ServerDownloadDto> Items { get; } = [];
 
     [ObservableProperty] private bool isAdmin;
     [ObservableProperty] private bool isEmpty;
@@ -20,13 +20,8 @@ public partial class ServerDownloadsViewModel(PhantomApi api, SettingsService se
     {
         IsAdmin = settings.User?.IsAdmin == true;
         var items = await api.ServerDownloadsAsync();
-        // Update in place so the list doesn't flicker on each poll.
-        for (var i = 0; i < items.Count; i++)
-        {
-            if (i < Items.Count) Items[i] = items[i];
-            else Items.Add(items[i]);
-        }
-        while (Items.Count > items.Count) Items.RemoveAt(Items.Count - 1);
+        // Polled every couple of seconds: only rows whose progress or state changed are redrawn.
+        Items.Sync(items);
         IsEmpty = Items.Count == 0;
         Totals = $"↓ {BytesConverter.Format(items.Sum(d => d.DownloadRate))}/s   ↑ {BytesConverter.Format(items.Sum(d => d.UploadRate))}/s   ·   {items.Count(d => d.Status == DownloadStatus.Completed)} completed";
     }, showBusy: false);
@@ -138,9 +133,9 @@ public record AccountRow(UserDto Account, string Profiles);
 /// <summary>Server dashboard for admins: activity, sources and server settings.</summary>
 public partial class AdminViewModel(PhantomApi api) : BaseViewModel
 {
-    public ObservableCollection<NowPlayingDto> Sessions { get; } = [];
-    public ObservableCollection<SourceDto> Sources { get; } = [];
-    public ObservableCollection<AccountRow> Accounts { get; } = [];
+    public ObservableList<NowPlayingDto> Sessions { get; } = [];
+    public ObservableList<SourceDto> Sources { get; } = [];
+    public ObservableList<AccountRow> Accounts { get; } = [];
 
     public IReadOnlyList<string> Tabs { get; } = ["Overview", "Sources", "Accounts", "Server settings", "Storage"];
     [ObservableProperty] private int selectedTab;
@@ -155,7 +150,7 @@ public partial class AdminViewModel(PhantomApi api) : BaseViewModel
 
     // ---------- Storage ----------
 
-    public ObservableCollection<StoredTorrentDto> StoredItems { get; } = [];
+    public ObservableList<StoredTorrentDto> StoredItems { get; } = [];
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(DiskText), nameof(DiskUsed), nameof(BreakdownText), nameof(CacheLimitText), nameof(DiskLow))]
@@ -188,8 +183,7 @@ public partial class AdminViewModel(PhantomApi api) : BaseViewModel
     private void ShowStorage(StorageDto storage)
     {
         Storage = storage;
-        StoredItems.Clear();
-        foreach (var item in storage.Items) StoredItems.Add(item);
+        StoredItems.Sync(storage.Items);
     }
 
     [RelayCommand]
@@ -295,8 +289,7 @@ public partial class AdminViewModel(PhantomApi api) : BaseViewModel
     public Task Load() => RunAsync(async () =>
     {
         await RefreshActivity();
-        Sources.Clear();
-        foreach (var s in await api.SourcesAsync()) Sources.Add(s);
+        Sources.Sync(await api.SourcesAsync());
         await LoadAccountsAsync();
         await LoadMetadataAsync();
 
@@ -320,20 +313,15 @@ public partial class AdminViewModel(PhantomApi api) : BaseViewModel
     {
         Info = await api.ServerInfoAsync();
         var sessions = await api.SessionsAsync();
-        Sessions.Clear();
-        foreach (var s in sessions) Sessions.Add(s);
+        Sessions.Sync(sessions);
     }, showBusy: false);
 
     private async Task LoadAccountsAsync()
     {
         var users = await api.UsersAsync();
-        Accounts.Clear();
-        foreach (var account in users.Where(u => !u.IsManaged))
-        {
-            // The account's own profile (its default one) first, then the ones added under it.
-            var profiles = users.Where(u => u.IsManaged && u.AccountId == account.Id).Select(u => u.Username);
-            Accounts.Add(new AccountRow(account, string.Join(", ", [$"{account.Username} (default)", .. profiles])));
-        }
+        // The account's own profile (its default one) first, then the ones added under it.
+        Accounts.ReplaceAll(users.Where(u => !u.IsManaged).Select(account => new AccountRow(account, string.Join(", ",
+            [$"{account.Username} (default)", .. users.Where(u => u.IsManaged && u.AccountId == account.Id).Select(u => u.Username)]))));
     }
 
     /// <summary>A new account with its own sign-in; its owner adds profiles under it after signing in.</summary>

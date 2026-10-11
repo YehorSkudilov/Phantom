@@ -151,10 +151,10 @@ public class LibraryController(PhantomDbContext db, LibraryService library, Show
         var continueMovies = await visible.Where(m => states.Any(w => w.MovieId == m.Id && !w.Watched && w.PositionMs > 0))
             .Select(m => new { m.Id, Last = states.Where(w => w.MovieId == m.Id).Select(w => w.LastViewedAt).FirstOrDefault() })
             .OrderByDescending(x => x.Last).Take(20).ToListAsync(ct);
-        var episodeStates = db.EpisodeWatchStates.Where(w => w.UserId == userId);
+        var since = DateTime.UtcNow.AddMonths(-6);
         var continueShows = await shows.Visible(User)
-            .Select(s => new { s.Id, Last = episodeStates.Where(w => w.Episode!.ShowId == s.Id).Max(w => w.LastViewedAt) })
-            .Where(x => x.Last != null && x.Last > DateTime.UtcNow.AddMonths(-6))
+            .Join(shows.LastViewed(userId), s => s.Id, l => l.ShowId, (s, l) => new { s.Id, Last = l.LastViewedAt })
+            .Where(x => x.Last > since)
             .OrderByDescending(x => x.Last).Take(20).ToListAsync(ct);
         await AddMixed("continue", "Continue Watching",
             continueMovies.ToDictionary(x => x.Id, x => x.Last), continueShows.ToDictionary(x => x.Id, x => x.Last), nextEpisode: true);
@@ -166,7 +166,11 @@ public class LibraryController(PhantomDbContext db, LibraryService library, Show
         await Add("recent", "Recently Added", visible.OrderByDescending(m => m.AddedAt));
 
         // Shows bump up when a new episode comes in.
-        await AddShows("shows-recent", "New On TV", shows.Visible(User).OrderByDescending(s => s.Releases.Max(r => r.AddedAt)));
+        var newestRelease = db.Releases.Where(r => r.ShowId != null)
+            .GroupBy(r => r.ShowId!.Value).Select(g => new { ShowId = g.Key, Newest = g.Max(r => r.AddedAt) });
+        await AddShows("shows-recent", "New On TV", shows.Visible(User)
+            .Join(newestRelease, s => s.Id, r => r.ShowId, (s, r) => new { Show = s, r.Newest })
+            .OrderByDescending(x => x.Newest).Select(x => x.Show));
 
         // Recommendations: unwatched movies sharing genres with what this user finished.
         var likedGenres = await db.WatchStates.Where(w => w.UserId == userId && w.Watched)

@@ -126,8 +126,7 @@ public class PlaybackController(PhantomDbContext db, SessionTracker sessions) : 
             .Select(m => new { m.Id, Last = db.WatchStates.Where(w => w.UserId == userId && w.MovieId == m.Id).Select(w => w.LastViewedAt).FirstOrDefault() })
             .OrderByDescending(x => x.Last).Take(100).ToListAsync(ct);
         var showRows = await shows.Visible(User)
-            .Select(s => new { s.Id, Last = db.EpisodeWatchStates.Where(w => w.UserId == userId && w.Episode!.ShowId == s.Id).Max(w => w.LastViewedAt) })
-            .Where(x => x.Last != null)
+            .Join(shows.LastViewed(userId), s => s.Id, l => l.ShowId, (s, l) => new { s.Id, Last = l.LastViewedAt })
             .OrderByDescending(x => x.Last).Take(100).ToListAsync(ct);
 
         var movieIds = movies.Select(m => m.Id).ToList();

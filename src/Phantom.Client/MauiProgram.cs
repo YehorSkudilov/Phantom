@@ -27,8 +27,13 @@ public static class MauiProgram
                 fonts.AddCIcons();
             });
 
-        // Shared HttpClient: long timeout because torrent-backed requests can wait on peers.
-        builder.Services.AddSingleton(new HttpClient { Timeout = TimeSpan.FromMinutes(3) });
+        // Shared HttpClient: long timeout because torrent-backed requests can wait on peers. Compressed replies are
+        // unpacked (the server gzips its JSON: the home screen's rows go from ~75 KB to ~5 KB); video isn't compressed.
+        builder.Services.AddSingleton(new HttpClient(new HttpClientHandler
+        {
+            AutomaticDecompression = System.Net.DecompressionMethods.GZip | System.Net.DecompressionMethods.Deflate,
+        })
+        { Timeout = TimeSpan.FromMinutes(3) });
         builder.Services.AddSingleton<SettingsService>();
         builder.Services.AddSingleton<PhantomApi>();
         builder.Services.AddSingleton<DownloadManager>();

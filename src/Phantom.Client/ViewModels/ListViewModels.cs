@@ -12,7 +12,7 @@ public partial class MovieListViewModel(PhantomApi api) : BaseViewModel, IQueryA
     private string _kind = "watchlist";
     private int _id;
 
-    public ObservableCollection<MovieSummaryDto> Movies { get; } = [];
+    public ObservableList<MovieSummaryDto> Movies { get; } = [];
 
     [ObservableProperty] private string? subtitle;
     [ObservableProperty] private bool isEmpty;
@@ -61,8 +61,7 @@ public partial class MovieListViewModel(PhantomApi api) : BaseViewModel, IQueryA
                 items = await api.WatchlistAsync();
                 break;
         }
-        Movies.Clear();
-        foreach (var m in items) Movies.Add(m);
+        Movies.Sync(items);
         IsEmpty = Movies.Count == 0;
     });
 
@@ -74,15 +73,14 @@ public partial class MovieListViewModel(PhantomApi api) : BaseViewModel, IQueryA
 
 public partial class CollectionsViewModel(PhantomApi api) : BaseViewModel
 {
-    public ObservableCollection<CollectionDto> Collections { get; } = [];
+    public ObservableList<CollectionDto> Collections { get; } = [];
 
     [ObservableProperty] private bool isEmpty;
 
     [RelayCommand]
     public Task Load() => RunAsync(async () =>
     {
-        Collections.Clear();
-        foreach (var c in await api.CollectionsAsync()) Collections.Add(c);
+        Collections.Sync(await api.CollectionsAsync());
         IsEmpty = Collections.Count == 0;
     });
 
@@ -92,15 +90,14 @@ public partial class CollectionsViewModel(PhantomApi api) : BaseViewModel
 
 public partial class PlaylistsViewModel(PhantomApi api) : BaseViewModel
 {
-    public ObservableCollection<PlaylistDto> Playlists { get; } = [];
+    public ObservableList<PlaylistDto> Playlists { get; } = [];
 
     [ObservableProperty] private bool isEmpty;
 
     [RelayCommand]
     public Task Load() => RunAsync(async () =>
     {
-        Playlists.Clear();
-        foreach (var p in await api.PlaylistsAsync()) Playlists.Add(p);
+        Playlists.Sync(await api.PlaylistsAsync());
         IsEmpty = Playlists.Count == 0;
     });
 
@@ -130,7 +127,7 @@ public partial class PlaylistViewModel(PhantomApi api) : BaseViewModel, IQueryAt
 {
     private int _id;
 
-    public ObservableCollection<MovieSummaryDto> Items { get; } = [];
+    public ObservableList<MovieSummaryDto> Items { get; } = [];
 
     [ObservableProperty] private string summary = "";
 
@@ -145,8 +142,7 @@ public partial class PlaylistViewModel(PhantomApi api) : BaseViewModel, IQueryAt
     {
         var p = await api.PlaylistAsync(_id);
         Title = p.Name;
-        Items.Clear();
-        foreach (var m in p.Items) Items.Add(m);
+        Items.Sync(p.Items);
         UpdateSummary();
     });
 

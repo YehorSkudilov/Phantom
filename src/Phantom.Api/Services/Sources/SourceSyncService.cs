@@ -138,6 +138,7 @@ public class SourceSyncService(IServiceScopeFactory scopes, PlaybackActivity act
         if (source is null || provider is null) return false;
 
         var hasMore = false;
+        var imported = false;
         var watching = activity.IsWatching;
         if (watching) await _watchingSlot.WaitAsync(ct);
         try
@@ -146,6 +147,7 @@ public class SourceSyncService(IServiceScopeFactory scopes, PlaybackActivity act
             var result = await scope.ServiceProvider.GetRequiredService<LibraryImporter>().ImportAsync(source, releases, ct);
             hasMore = provider is IBackfillingSource backfill && backfill.HasMore(source);
             source.LastSyncResult = Describe(result) + (hasMore ? " Still working through the catalogue." : "");
+            imported = result.NewMovies + result.NewShows + result.NewReleases > 0;
         }
         catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
         {
@@ -158,6 +160,7 @@ public class SourceSyncService(IServiceScopeFactory scopes, PlaybackActivity act
         }
         source.LastSyncAt = DateTime.UtcNow;
         await db.SaveChangesAsync(ct);
+        if (imported) await DatabaseStatistics.RefreshAsync(db, ct);
         return hasMore;
     }
 

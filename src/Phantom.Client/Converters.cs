@@ -90,8 +90,17 @@ public class TimeSpanConverter : IValueConverter
 /// <summary>Poster fallback: shows the brand mark when a movie has no artwork.</summary>
 public class PosterConverter : IValueConverter
 {
-    public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture) =>
-        value is string { Length: > 0 } s ? ImageSource.FromUri(new Uri(s)) : ImageSource.FromFile("logo_mark.png");
+    /// <summary>
+    /// Posters are shown card-sized (about 120 wide), yet stored as TMDB's 500-wide image. On a phone the 342-wide one
+    /// is still sharp there and a fraction of the download, which adds up across a screen full of them.
+    /// </summary>
+    public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
+    {
+        if (value is not string { Length: > 0 } url) return ImageSource.FromFile("logo_mark.png");
+        if (DeviceInfo.Idiom == DeviceIdiom.Phone)
+            url = url.Replace("image.tmdb.org/t/p/w500/", "image.tmdb.org/t/p/w342/", StringComparison.Ordinal);
+        return ImageSource.FromUri(new Uri(url));
+    }
 
     public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture) => throw new NotSupportedException();
 }

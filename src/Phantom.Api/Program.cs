@@ -92,6 +92,15 @@ builder.Services.AddControllers()
     .AddJsonOptions(o => o.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter()));
 builder.Services.AddSwagger(builder.Configuration);
 builder.Services.AddCors(o => o.AddDefaultPolicy(p => p.AllowAnyOrigin().AllowAnyHeader().AllowAnyMethod()));
+// JSON shrinks ~15x gzipped (the home screen's rows: ~75 KB to ~5 KB), which is most of a reply's time on a phone.
+// Only the default text/JSON types are compressed: video goes out as it is (it's compressed already, and range
+// requests need its real length). On for HTTPS too, as the reverse proxy forwards it as such. Gzip alone: it's what
+// the app asks for, and Brotli's fast setting came out larger.
+builder.Services.AddResponseCompression(o =>
+{
+    o.EnableForHttps = true;
+    o.Providers.Add<Microsoft.AspNetCore.ResponseCompression.GzipCompressionProvider>();
+});
 
 var app = builder.Build();
 
@@ -105,6 +114,7 @@ var forwarded = new ForwardedHeadersOptions
 foreach (var network in (app.Configuration["ReverseProxy:KnownNetworks"] ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
     forwarded.KnownIPNetworks.Add(System.Net.IPNetwork.Parse(network));
 app.UseForwardedHeaders(forwarded);
+app.UseResponseCompression();
 
 await SeedAsync(app.Services);
 
@@ -160,6 +170,7 @@ static async Task MigrateAsync(PhantomDbContext db)
     // Write-ahead logging: imports and metadata workers write while people browse and play, and with it reads carry on
     // during a write instead of waiting for it. It's a setting of the database file, so it stays on.
     await db.Database.ExecuteSqlRawAsync("PRAGMA journal_mode=WAL;");
+    await DatabaseStatistics.EnsureAsync(db);
 }
 
 // Changes made to EnsureCreated databases before there were migrations; they match the first migration afterwards.

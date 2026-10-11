@@ -11,8 +11,8 @@ public partial class ShowDetailViewModel(PhantomApi api) : BaseViewModel, IQuery
 {
     private int _id;
 
-    public ObservableCollection<SeasonDto> Seasons { get; } = [];
-    public ObservableCollection<EpisodeDto> Episodes { get; } = [];
+    public ObservableList<SeasonDto> Seasons { get; } = [];
+    public ObservableList<EpisodeDto> Episodes { get; } = [];
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(Meta), nameof(GenreText), nameof(Creators), nameof(PlayLabel), nameof(CanPlay), nameof(NextProgress),
@@ -70,17 +70,24 @@ public partial class ShowDetailViewModel(PhantomApi api) : BaseViewModel, IQuery
     public Task Load() => RunAsync(async () =>
     {
         if (_id == 0) return;
+        // Reloading (back from the player, or pulled down): the season being looked at is known, so its episodes load
+        // alongside the show. The first time, the season to open on comes from the show (that of the episode Play starts).
+        var known = SelectedSeason?.Number;
+        var episodes = known is { } n ? api.SeasonAsync(_id, n) : null;
         Show = await api.ShowAsync(_id);
         Title = Show.Title;
 
-        // Stay on the season being looked at; the first time, open on the season of the episode Play would start.
-        var season = SelectedSeason?.Number ?? Show.NextEpisode?.SeasonNumber ?? Show.Seasons.FirstOrDefault()?.Number;
-        Seasons.Clear();
-        foreach (var s in Show.Seasons) Seasons.Add(s);
-        _loadingSeasons = true;
-        SelectedSeason = Seasons.FirstOrDefault(s => s.Number == season) ?? Seasons.FirstOrDefault();
-        _loadingSeasons = false;
-        await LoadEpisodesAsync();
+        var season = known ?? Show.NextEpisode?.SeasonNumber ?? Show.Seasons.FirstOrDefault()?.Number;
+        // The picker's list is only rebuilt when the seasons themselves change (that resets it, and redraws the page).
+        if (!Seasons.Select(s => s.Number).SequenceEqual(Show.Seasons.Select(s => s.Number)))
+        {
+            _loadingSeasons = true;
+            Seasons.ReplaceAll(Show.Seasons);
+            SelectedSeason = Seasons.FirstOrDefault(s => s.Number == season) ?? Seasons.FirstOrDefault();
+            _loadingSeasons = false;
+        }
+        if (episodes is not null && known is { } same && SelectedSeason?.Number == same) ShowEpisodes(same, await episodes);
+        else await LoadEpisodesAsync();
     });
 
     private bool _loadingSeasons;
@@ -93,10 +100,18 @@ public partial class ShowDetailViewModel(PhantomApi api) : BaseViewModel, IQuery
     private async Task LoadEpisodesAsync()
     {
         if (SelectedSeason is not { } season) return;
-        var episodes = await api.SeasonAsync(_id, season.Number);
-        if (SelectedSeason?.Number != season.Number) return; // another season was picked meanwhile
-        Episodes.Clear();
-        foreach (var e in episodes) Episodes.Add(e);
+        ShowEpisodes(season.Number, await api.SeasonAsync(_id, season.Number));
+    }
+
+    /// <summary>
+    /// Puts a season's episodes on the page. The same season again (a reload) only redraws the rows that changed;
+    /// another season replaces the list in one go.
+    /// </summary>
+    private void ShowEpisodes(int season, IReadOnlyList<EpisodeDto> episodes)
+    {
+        if (SelectedSeason?.Number != season) return; // another season was picked meanwhile
+        if (Episodes.Count > 0 && Episodes[0].SeasonNumber == season) Episodes.Sync(episodes);
+        else Episodes.ReplaceAll(episodes);
     }
 
     /// <summary>Plays the next episode for this profile, from where it was left off.</summary>
@@ -115,19 +130,97 @@ public partial class ShowDetailViewModel(PhantomApi api) : BaseViewModel, IQuery
         await GoToAsync($"{nameof(Views.PlayerPage)}?episode={episode.Id}&resume={InProgress(episode)}");
     }
 
-    [RelayCommand]
+    /// <summary>
+    /// Ticks an episode off (or back on) straight away: its row and the season's counts change as the server will change
+    /// them, then the server is told. Only the show's header (what Play starts next) is fetched again afterwards; the
+    /// episode list isn't reloaded and redrawn.
+    /// </summary>
+    // Concurrent, so ticking off several episodes in a row isn't held up by each one's round trip.
+    [RelayCommand(AllowConcurrentExecutions = true)]
     private Task ToggleEpisodeWatched(EpisodeDto? episode) => episode is null ? Task.CompletedTask : RunAsync(async () =>
     {
-        await api.MarkEpisodeWatchedAsync(episode.Id, !episode.Playback.Watched);
-        await Load();
+        var watched = !episode.Playback.Watched;
+        SetWatchedLocally([episode], watched);
+        try
+        {
+            await api.MarkEpisodeWatchedAsync(episode.Id, watched);
+        }
+        catch
+        {
+            // Only this episode goes back: others ticked meanwhile keep their change.
+            if (IndexOfEpisode(episode.Id) is var i and >= 0) Episodes[i] = episode;
+            RecountSeasons(wholeShow: null);
+            throw;
+        }
+        await RefreshHeaderAsync();
     }, showBusy: false);
 
+    /// <summary>The whole show watched (or not), shown at once like an episode.</summary>
     [RelayCommand]
     private Task ToggleWatched() => RunAsync(async () =>
     {
-        await api.MarkShowWatchedAsync(_id, !IsWatched);
-        await Load();
+        var watched = !IsWatched;
+        var before = (Show, Episodes: Episodes.ToList());
+        SetWatchedLocally(Episodes.ToList(), watched, wholeShow: true);
+        try
+        {
+            await api.MarkShowWatchedAsync(_id, watched);
+        }
+        catch
+        {
+            Show = before.Show;
+            Episodes.Sync(before.Episodes);
+            throw;
+        }
+        await RefreshHeaderAsync();
     }, showBusy: false);
+
+    /// <summary>What marking does on the server, done to what's on screen: the rows, and the seasons' watched counts.</summary>
+    private void SetWatchedLocally(IReadOnlyList<EpisodeDto> changed, bool watched, bool wholeShow = false)
+    {
+        foreach (var e in changed)
+        {
+            var i = IndexOfEpisode(e.Id);
+            if (i < 0 || e.Playback.Watched == watched && e.Playback.PositionMs == 0) continue;
+            Episodes[i] = e with
+            {
+                Playback = e.Playback with
+                {
+                    Watched = watched, PositionMs = 0,
+                    ViewCount = watched && !e.Playback.Watched ? e.Playback.ViewCount + 1 : e.Playback.ViewCount,
+                },
+            };
+        }
+        RecountSeasons(wholeShow ? watched : null);
+    }
+
+    /// <summary>
+    /// The seasons' watched counts after a change on screen: every season's for the whole show (all or none), else the
+    /// season on screen's, counted from its rows.
+    /// </summary>
+    private void RecountSeasons(bool? wholeShow)
+    {
+        if (Show is not { } show) return;
+        var seasons = show.Seasons.Select(s =>
+            wholeShow is { } all ? s with { WatchedCount = all ? s.EpisodeCount : 0 }
+            : s.Number == SelectedSeason?.Number ? s with { WatchedCount = Episodes.Count(e => e.Playback.Watched) }
+            : s).ToList();
+        Show = show with { Seasons = seasons };
+    }
+
+    private int IndexOfEpisode(int id)
+    {
+        for (var i = 0; i < Episodes.Count; i++)
+            if (Episodes[i].Id == id) return i;
+        return -1;
+    }
+
+    /// <summary>The show's header again (Play's next episode and its progress), leaving the season picker and rows be.</summary>
+    private async Task RefreshHeaderAsync()
+    {
+        var show = await api.ShowAsync(_id);
+        if (show.Id == _id) Show = show;
+    }
 
     [RelayCommand]
     private Task ToggleWatchlist() => RunAsync(async () =>
