@@ -13,7 +13,8 @@ public record SubtitleChoice(string Label, SubtitleTrackDto? Track)
 
 /// <summary>
 /// Player state: source selection (direct / transcoded / offline file), resume, subtitles overlay,
-/// timeline reporting and the up-next queue. The page wires MediaElement events into it.
+/// timeline reporting and the up-next queue. Plays a movie (<c>id=</c>) or a show's episode (<c>episode=</c>), whose
+/// up next is the following episode. The page wires MediaElement events into it.
 /// </summary>
 public partial class PlayerViewModel(PhantomApi api, SettingsService settings, DownloadManager downloads) : BaseViewModel, IQueryAttributable
 {
@@ -24,12 +25,16 @@ public partial class PlayerViewModel(PhantomApi api, SettingsService settings, D
     private int? _releaseId;
     private List<int> _queue = [];
     private TimeSpan _runtime;
+    private EpisodeDto? _nextEpisode;
 
     public ObservableCollection<SubtitleChoice> SubtitleChoices { get; } = [];
     public IReadOnlyList<QualityOption> Qualities => QualityOption.All;
     public IReadOnlyList<double> Speeds { get; } = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0];
 
     [ObservableProperty] private int movieId;
+
+    /// <summary>The episode playing, when it's a show's (MovieId is 0 then).</summary>
+    [ObservableProperty] private int? episodeId;
     [ObservableProperty] private string? sourceUrl;
     [ObservableProperty] private string? posterUrl;
     [ObservableProperty] private string? subtitleText;
@@ -65,7 +70,7 @@ public partial class PlayerViewModel(PhantomApi api, SettingsService settings, D
     [RelayCommand]
     private Task SaveOnServerInstead() => RunAsync(async () =>
     {
-        await api.QueueServerDownloadAsync(MovieId, _releaseId);
+        await api.QueueServerDownloadAsync(MovieId, _releaseId, EpisodeId);
         StopLoadingStatus();
         await ToastAsync("Saving it on the server. Watch it from Downloads → On the server when it's ready.");
         await Shell.Current.GoToAsync("..");
@@ -92,7 +97,7 @@ public partial class PlayerViewModel(PhantomApi api, SettingsService settings, D
         {
             try
             {
-                var status = await api.StreamStatusAsync(MovieId, _releaseId, StatusPosition, ct);
+                var status = await api.StreamStatusAsync(MovieId, _releaseId, StatusPosition, ct, EpisodeId);
                 if (ct.IsCancellationRequested) return;
                 LoadingText = status.Ready ? "Buffering…" : status.Message;
                 // The bar is the wait until playback starts, not the whole movie.
@@ -103,7 +108,7 @@ public partial class PlayerViewModel(PhantomApi api, SettingsService settings, D
                     : null;
                 IsTooSlow = !status.Ready && status.TooSlow;
                 TooSlowText = IsTooSlow
-                    ? $"Downloading at {BytesConverter.Format(status.DownloadRate)}/s, but this movie needs about {BytesConverter.Format(status.NeededRate)}/s to play without pausing."
+                    ? $"Downloading at {BytesConverter.Format(status.DownloadRate)}/s, but this {(EpisodeId is null ? "movie" : "episode")} needs about {BytesConverter.Format(status.NeededRate)}/s to play without pausing."
                     : null;
             }
             catch (Exception ex) when (ex is HttpRequestException or ApiException)
@@ -164,7 +169,8 @@ public partial class PlayerViewModel(PhantomApi api, SettingsService settings, D
 
     public void ApplyQueryAttributes(IDictionary<string, object> query)
     {
-        MovieId = int.Parse(query["id"].ToString()!);
+        EpisodeId = query.TryGetValue("episode", out var ep) && int.TryParse(ep.ToString(), out var eid) ? eid : null;
+        MovieId = EpisodeId is null ? int.Parse(query["id"].ToString()!) : 0;
         _resume = query.TryGetValue("resume", out var r) && bool.TryParse(r.ToString(), out var b) && b;
         _offline = query.TryGetValue("offline", out var o) && o.ToString() == "true";
         _releaseId = query.TryGetValue("releaseId", out var rel) && int.TryParse(rel.ToString(), out var rid) ? rid : null;
@@ -186,7 +192,7 @@ public partial class PlayerViewModel(PhantomApi api, SettingsService settings, D
         SubtitleChoices.Clear();
         SubtitleChoices.Add(new SubtitleChoice("Off", null));
 
-        var offline = downloads.Find(MovieId);
+        var offline = EpisodeId is null ? downloads.Find(MovieId) : null;
         if (_offline && offline is { IsComplete: true })
         {
             Title = offline.Title;
@@ -200,11 +206,24 @@ public partial class PlayerViewModel(PhantomApi api, SettingsService settings, D
         }
 
         StartLoadingStatus(); // the stream info below waits until the torrent is found, which can take a while
-        var movie = await api.MovieAsync(MovieId);
-        Title = movie.Title;
-        _runtime = TimeSpan.FromMinutes(movie.RuntimeMinutes ?? 0);
-        PosterUrl = movie.BackdropUrl ?? movie.PosterUrl;
-        Stream = await api.StreamInfoAsync(MovieId, _releaseId);
+        if (EpisodeId is { } episodeId)
+        {
+            var detail = await api.EpisodeAsync(episodeId);
+            var e = detail.Episode;
+            Title = $"{detail.ShowTitle} · S{e.SeasonNumber}:E{e.EpisodeNumber}" + (string.IsNullOrWhiteSpace(e.Title) ? "" : $" {e.Title}");
+            _runtime = TimeSpan.FromMinutes(e.RuntimeMinutes ?? 0);
+            PosterUrl = e.StillUrl ?? detail.ShowBackdropUrl ?? detail.ShowPosterUrl;
+            _nextEpisode = detail.Next is { Available: true } next ? next : null;
+        }
+        else
+        {
+            var movie = await api.MovieAsync(MovieId);
+            Title = movie.Title;
+            _runtime = TimeSpan.FromMinutes(movie.RuntimeMinutes ?? 0);
+            PosterUrl = movie.BackdropUrl ?? movie.PosterUrl;
+            _nextEpisode = null;
+        }
+        Stream = await api.StreamInfoAsync(MovieId, _releaseId, episodeId: EpisodeId);
         _releaseId = Stream.ReleaseId;
         ResumePosition = _resume ? TimeSpan.FromMilliseconds(Stream.ResumePositionMs) : TimeSpan.Zero;
         StatusPosition = ResumePosition;
@@ -317,18 +336,23 @@ public partial class PlayerViewModel(PhantomApi api, SettingsService settings, D
         }
         try
         {
-            await api.ReportTimelineAsync(new TimelineUpdate(MovieId, _releaseId, pos, dur, state, settings.ClientName));
+            await api.ReportTimelineAsync(new TimelineUpdate(MovieId, _releaseId, pos, dur, state, settings.ClientName, EpisodeId));
         }
         catch (Exception ex) when (ex is HttpRequestException or ApiException or TaskCanceledException)
         {
             // Lost connection mid-play; remember locally if downloaded.
-            await downloads.RecordOfflineProgressAsync(MovieId, pos, dur);
+            if (EpisodeId is null) await downloads.RecordOfflineProgressAsync(MovieId, pos, dur);
         }
     }
 
     private async Task UpdateUpNextAsync()
     {
         UpNextTitle = null;
+        if (EpisodeId is not null)
+        {
+            UpNextTitle = _nextEpisode is { } next ? $"S{next.SeasonNumber}:E{next.EpisodeNumber} {next.Title}".Trim() : null;
+            return;
+        }
         var index = _queue.IndexOf(MovieId);
         if (index < 0 || index + 1 >= _queue.Count) return;
         try
@@ -341,10 +365,19 @@ public partial class PlayerViewModel(PhantomApi api, SettingsService settings, D
         }
     }
 
-    /// <summary>Advances the play queue (playlists / "play all"). Returns false at the end.</summary>
+    /// <summary>Advances the play queue (playlists / "play all") or to the show's next episode. Returns false at the end.</summary>
     public bool TryPlayNext()
     {
         if (!settings.AutoPlayNext) return false;
+        if (EpisodeId is not null)
+        {
+            if (_nextEpisode is not { } next) return false;
+            EpisodeId = next.Id;
+            _resume = next.Playback is { Watched: false, PositionMs: > 0 };
+            _releaseId = null;
+            LoadCommand.Execute(null);
+            return true;
+        }
         var index = _queue.IndexOf(MovieId);
         if (index < 0 || index + 1 >= _queue.Count) return false;
         MovieId = _queue[index + 1];
