@@ -193,6 +193,8 @@
                         </Grid>
                         <Label Text="Keep streamed torrents cached for (hours)" Style="{StaticResource Muted}" />
                         <Entry Text="{Binding StreamCacheHours}" Keyboard="Numeric" />
+                        <Label Text="Stream cache size limit (GB, 0 = no limit)" Style="{StaticResource Muted}" />
+                        <Entry Text="{Binding MaxStreamCacheGb}" Keyboard="Numeric" />
                         <Label Text="Delete movies saved on the server after (days, 0 = keep them)" Style="{StaticResource Muted}" />
                         <Entry Text="{Binding KeepServerDownloadsDays}" Keyboard="Numeric" />
                         <Grid ColumnDefinitions="*,Auto">
@@ -215,6 +217,81 @@
                                 ImageSource="{controls:Icon sync, Size=20}" ContentLayout="Left,6" HorizontalOptions="Start" />
                     </VerticalStackLayout>
                 </Border>
+                </VerticalStackLayout>
+
+                <VerticalStackLayout Spacing="14" IsVisible="{Binding SelectedTab, Converter={StaticResource Equals}, ConverterParameter=4}">
+                <!-- Storage: the disk, what's using it, and each torrent's files -->
+                <Border Style="{StaticResource Card}">
+                    <VerticalStackLayout Spacing="8">
+                        <Grid ColumnDefinitions="*,Auto">
+                            <Label Text="Disk" Style="{StaticResource H2}" VerticalOptions="Center" />
+                            <ImageButton Grid.Column="1" Style="{StaticResource IconButton}" Source="{controls:Icon refresh}" Command="{Binding RefreshStorageCommand}"
+                                         SemanticProperties.Description="Refresh" ToolTipProperties.Text="Refresh" />
+                        </Grid>
+                        <Label Text="{Binding DiskText}" FontFamily="OpenSansSemibold" />
+                        <ProgressBar Progress="{Binding DiskUsed}">
+                            <ProgressBar.Triggers>
+                                <DataTrigger TargetType="ProgressBar" Binding="{Binding DiskLow}" Value="True">
+                                    <Setter Property="ProgressColor" Value="{StaticResource Danger}" />
+                                </DataTrigger>
+                            </ProgressBar.Triggers>
+                        </ProgressBar>
+                        <Label Text="{Binding BreakdownText}" Style="{StaticResource Muted}" LineHeight="1.3" />
+                        <Label Text="{Binding CacheLimitText}" Style="{StaticResource Muted}" FontSize="12" />
+                        <FlexLayout Wrap="Wrap" Margin="-4,4,-4,0">
+                            <Button Text="Clear stream cache" Style="{StaticResource SecondaryButton}" Command="{Binding ClearIdleCachesCommand}" Margin="4"
+                                    ImageSource="{controls:Icon delete_sweep, Size=20}" ContentLayout="Left,6" />
+                            <Button Text="Clear seek previews" Style="{StaticResource SecondaryButton}" Command="{Binding ClearPreviewsCommand}" Margin="4"
+                                    ImageSource="{controls:Icon image_not_supported, Size=20}" ContentLayout="Left,6" />
+                        </FlexLayout>
+                    </VerticalStackLayout>
+                </Border>
+
+                <Label Text="Largest first. Stream caches are parts of torrents kept from watching, saved copies are kept for good (until removed or they expire)."
+                       Style="{StaticResource Muted}" FontSize="12" />
+                <VerticalStackLayout BindableLayout.ItemsSource="{Binding StoredItems}" Spacing="8">
+                    <BindableLayout.EmptyView>
+                        <Label Text="Nothing stored yet." Style="{StaticResource Muted}" HorizontalOptions="Center" Margin="0,16" />
+                    </BindableLayout.EmptyView>
+                    <BindableLayout.ItemTemplate>
+                        <DataTemplate x:DataType="dto:StoredTorrentDto">
+                            <Border Style="{StaticResource Card}">
+                                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                                    <VerticalStackLayout Spacing="2" VerticalOptions="Center">
+                                        <Label Text="{Binding Title}" FontFamily="OpenSansSemibold" LineBreakMode="TailTruncation" MaxLines="2" />
+                                        <Label Style="{StaticResource Muted}" FontSize="12">
+                                            <Label.FormattedText>
+                                                <FormattedString>
+                                                    <Span Text="{Binding SizeBytes, Converter={StaticResource Bytes}}" />
+                                                    <Span Text="  ·  " />
+                                                    <Span Text="Saved on the server" />
+                                                </FormattedString>
+                                            </Label.FormattedText>
+                                            <Label.Triggers>
+                                                <DataTrigger TargetType="Label" Binding="{Binding SavedOnServer}" Value="False">
+                                                    <Setter Property="FormattedText">
+                                                        <Setter.Value>
+                                                            <FormattedString>
+                                                                <Span Text="{Binding SizeBytes, Converter={StaticResource Bytes}}" />
+                                                                <Span Text="  ·  Stream cache" />
+                                                            </FormattedString>
+                                                        </Setter.Value>
+                                                    </Setter>
+                                                </DataTrigger>
+                                            </Label.Triggers>
+                                        </Label>
+                                        <Label Text="Being watched" FontSize="12" TextColor="{StaticResource PrimaryLight}" IsVisible="{Binding InUse}" />
+                                    </VerticalStackLayout>
+                                    <ImageButton Grid.Column="1" Style="{StaticResource IconButton}" Source="{controls:Icon delete, Outlined=True}" VerticalOptions="Center"
+                                                 IsVisible="{Binding InUse, Converter={StaticResource Not}}"
+                                                 Command="{Binding Source={RelativeSource AncestorType={x:Type vm:AdminViewModel}}, Path=RemoveStoredCommand, x:DataType=vm:AdminViewModel}"
+                                                 CommandParameter="{Binding .}"
+                                                 SemanticProperties.Description="Delete" ToolTipProperties.Text="Delete" />
+                                </Grid>
+                            </Border>
+                        </DataTemplate>
+                    </BindableLayout.ItemTemplate>
+                </VerticalStackLayout>
                 </VerticalStackLayout>
             </VerticalStackLayout>
         </ScrollView>
