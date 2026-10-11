@@ -33,22 +33,40 @@ public partial class PlayerPage : ContentPage
         SemanticProperties.SetDescription(ForwardButton, $"Forward {_vm.SkipForward} seconds");
         ToolTipProperties.SetText(BackButton, $"Back {_vm.SkipBack}s");
         ToolTipProperties.SetText(ForwardButton, $"Forward {_vm.SkipForward}s");
+
+        // Loading from the moment the page opens: finding the torrent can take a while before there's a source at all.
+        SetLoading(true);
+    }
+
+    /// <summary>
+    /// While the movie is still loading or buffering there's nothing to control yet: only the title and close button show,
+    /// over the loading panel.
+    /// </summary>
+    private void SetLoading(bool loading)
+    {
+        Buffering.IsVisible = loading;
+        TransportControls.IsVisible = SeekArea.IsVisible = !loading;
+        SubtitlesButton.IsVisible = QualityButton.IsVisible = SpeedButton.IsVisible = !loading;
+        if (loading)
+        {
+            _vm.StartLoadingStatus();
+            Controls.IsVisible = true; // keep the close button reachable
+        }
+        else _vm.StopLoadingStatus();
     }
 
     private void LoadSource()
     {
         if (_vm.SourceUrl is not { } url) return;
         _pendingResume = _vm.ResumePosition > TimeSpan.Zero;
-        Buffering.IsVisible = true;
-        _vm.StartLoadingStatus();
+        SetLoading(true);
         Media.Source = url.StartsWith("http", StringComparison.OrdinalIgnoreCase) ? MediaSource.FromUri(url) : MediaSource.FromFile(url);
         ShowControls();
     }
 
     private async void OnOpened()
     {
-        Buffering.IsVisible = false;
-        _vm.StopLoadingStatus();
+        SetLoading(false);
         if (_pendingResume)
         {
             _pendingResume = false;
@@ -69,9 +87,7 @@ public partial class PlayerPage : ContentPage
 
     private void OnStateChanged(MediaElementState state)
     {
-        Buffering.IsVisible = state is MediaElementState.Buffering or MediaElementState.Opening;
-        if (Buffering.IsVisible) _vm.StartLoadingStatus();
-        else _vm.StopLoadingStatus();
+        SetLoading(state is MediaElementState.Buffering or MediaElementState.Opening);
         PlayPause.Source = IconExtension.Create(state == MediaElementState.Playing ? "pause" : "play_arrow", Colors.White, size: 40);
         if (state == MediaElementState.Paused) _ = Report(PlayerState.Paused);
     }

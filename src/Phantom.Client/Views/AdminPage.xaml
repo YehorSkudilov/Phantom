@@ -101,8 +101,20 @@
                                             </FormattedString>
                                         </Label.FormattedText>
                                     </Label>
-                                    <Label Grid.Row="2" Text="{Binding LastSyncResult}" Style="{StaticResource Muted}" FontSize="12" Margin="0,4,0,0"
-                                           IsVisible="{Binding LastSyncResult, Converter={StaticResource HasValue}}" />
+                                    <VerticalStackLayout Grid.Row="2" Spacing="4" Margin="0,4,0,0">
+                                        <!-- Working on it right now -->
+                                        <HorizontalStackLayout Spacing="8" IsVisible="{Binding IsSyncing}">
+                                            <ActivityIndicator IsRunning="{Binding IsSyncing}" WidthRequest="16" HeightRequest="16" />
+                                            <Label Text="Checking for new movies now…" FontSize="12" TextColor="{StaticResource PrimaryLight}" VerticalOptions="Center" />
+                                        </HorizontalStackLayout>
+                                        <!-- The whole-catalogue import, while it's running -->
+                                        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8" IsVisible="{Binding CatalogueProgress, Converter={StaticResource Below100}}">
+                                            <ProgressBar Progress="{Binding CatalogueProgress, Converter={StaticResource Percent}}" VerticalOptions="Center" />
+                                            <Label Grid.Column="1" Text="{Binding CatalogueProgress, StringFormat='Catalogue {0:0}% imported'}" Style="{StaticResource Muted}" FontSize="12" />
+                                        </Grid>
+                                        <Label Text="{Binding LastSyncResult}" Style="{StaticResource Muted}" FontSize="12"
+                                               IsVisible="{Binding LastSyncResult, Converter={StaticResource HasValue}}" />
+                                    </VerticalStackLayout>
                                     <ImageButton Grid.Column="1" Grid.RowSpan="3" Style="{StaticResource IconButton}" VerticalOptions="Center"
                                                  Source="{controls:Icon sync}" SemanticProperties.Description="Check now" ToolTipProperties.Text="Check now"
                                                  Command="{Binding Source={RelativeSource AncestorType={x:Type vm:AdminViewModel}}, Path=SyncCommand, x:DataType=vm:AdminViewModel}" CommandParameter="{Binding .}" />

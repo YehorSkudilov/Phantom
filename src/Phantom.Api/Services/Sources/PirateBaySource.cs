@@ -22,6 +22,8 @@ public class PirateBaySource(HttpClient http, IOptions<PhantomOptions> options, 
 
     public bool HasMore(Source source) => string.IsNullOrWhiteSpace(source.Query) && Crawl(source).HasMore;
 
+    public double CatalogueProgress(Source source) => Crawl(source).Progress(CrawlTerms.All.Count);
+
     public SourceType Type => SourceType.PirateBay;
 
     public async Task<IReadOnlyList<SourceRelease>> FetchAsync(Source source, CancellationToken ct)

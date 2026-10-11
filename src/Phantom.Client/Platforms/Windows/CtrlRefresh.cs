@@ -48,7 +48,30 @@ public static class CtrlRefresh
     // The screens' scrollers. Ctrl + wheel is the zoom gesture, which a ScrollViewer acts on before any wheel handler
     // sees it, so while Ctrl is held their up/down scrolling is switched off instead.
     private static readonly List<WeakReference<ScrollViewer>> Scrollers = [];
+    private static readonly List<WeakReference<ScrollViewer>> RowScrollers = [];
     private static bool _keysHooked;
+
+    // Each hooked screen's refresh control, for wheel events that arrive through a sideways row (see FromRow).
+    private sealed record Registration(FrameworkElement PlatformView, IRefreshView View, ScrollViewer Scroller);
+    private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<FrameworkElement, Registration> Screens = new();
+
+    /// <summary>A sideways row's scroller: also kept still while Ctrl is held.</summary>
+    public static void RegisterRow(ScrollViewer row) => RowScrollers.Add(new WeakReference<ScrollViewer>(row));
+
+    /// <summary>
+    /// Ctrl + wheel over a sideways row: the row handles every wheel event itself (and its scroller would swallow this
+    /// one), so it hands it here to refresh the screen it's on.
+    /// </summary>
+    public static void FromRow(DependencyObject row, PointerRoutedEventArgs e)
+    {
+        for (var element = VisualTreeHelper.GetParent(row); element is not null; element = VisualTreeHelper.GetParent(element))
+            if (element is FrameworkElement fe && Screens.TryGetValue(fe, out var screen))
+            {
+                OnWheel(screen.PlatformView, screen.View, screen.Scroller, e);
+                return;
+            }
+        e.Handled = true; // not on a refreshable screen: still don't scroll anything
+    }
 
     private static void Hook(FrameworkElement platformView, IRefreshView view)
     {
@@ -58,6 +81,7 @@ public static class CtrlRefresh
         Hooked.Add(content, new object());
         content.PointerWheelChanged += (_, e) => OnWheel(platformView, view, scroller, e);
         Scrollers.Add(new WeakReference<ScrollViewer>(scroller));
+        Screens.AddOrUpdate(platformView, new Registration(platformView, view, scroller));
 
         if (!_keysHooked && platformView.XamlRoot?.Content is UIElement root)
         {
@@ -94,9 +118,12 @@ public static class CtrlRefresh
     private static void SetCtrlHeld(bool held)
     {
         Scrollers.RemoveAll(w => !w.TryGetTarget(out _));
+        RowScrollers.RemoveAll(w => !w.TryGetTarget(out _));
+        var mode = held ? Microsoft.UI.Xaml.Controls.ScrollMode.Disabled : Microsoft.UI.Xaml.Controls.ScrollMode.Enabled;
         foreach (var weak in Scrollers)
-            if (weak.TryGetTarget(out var s))
-                s.VerticalScrollMode = held ? Microsoft.UI.Xaml.Controls.ScrollMode.Disabled : Microsoft.UI.Xaml.Controls.ScrollMode.Enabled;
+            if (weak.TryGetTarget(out var s)) s.VerticalScrollMode = mode;
+        foreach (var weak in RowScrollers)
+            if (weak.TryGetTarget(out var s)) s.HorizontalScrollMode = mode;
     }
 
     private static void OnWheel(FrameworkElement platformView, IRefreshView view, ScrollViewer scroller, PointerRoutedEventArgs e)

@@ -12,6 +12,9 @@ public class SourceSyncService(IServiceScopeFactory scopes, ILogger<SourceSyncSe
 {
     private readonly Channel<int?> _requests = Channel.CreateUnbounded<int?>();
 
+    /// <summary>The source being synced right now, if any.</summary>
+    public int? CurrentSourceId { get; private set; }
+
     /// <summary>Queue a sync now. Null syncs every enabled source.</summary>
     public void RequestSync(int? sourceId = null) => _requests.Writer.TryWrite(sourceId);
 
@@ -52,6 +55,7 @@ public class SourceSyncService(IServiceScopeFactory scopes, ILogger<SourceSyncSe
                 : source.LastSyncAt is null || source.LastSyncAt.Value.AddMinutes(source.SyncIntervalMinutes) <= DateTime.UtcNow;
             if (!due || !providers.TryGetValue(source.Type, out var provider)) continue;
 
+            CurrentSourceId = source.Id;
             try
             {
                 var releases = await provider.FetchAsync(source, ct);
@@ -71,6 +75,10 @@ public class SourceSyncService(IServiceScopeFactory scopes, ILogger<SourceSyncSe
             {
                 log.LogWarning(ex, "Sync failed for source {Source}", source.Name);
                 source.LastSyncResult = $"Error: {ex.Message}";
+            }
+            finally
+            {
+                CurrentSourceId = null;
             }
             source.LastSyncAt = DateTime.UtcNow;
             await db.SaveChangesAsync(ct);

@@ -39,4 +39,7 @@ public interface IBackfillingSource
 {
     /// <summary>True while there's catalogue left; the sync service then runs it again shortly.</summary>
     bool HasMore(Source source);
+
+    /// <summary>How much of the catalogue is in, as a percentage (100 once done), for the admin's progress bar.</summary>
+    double CatalogueProgress(Source source);
 }

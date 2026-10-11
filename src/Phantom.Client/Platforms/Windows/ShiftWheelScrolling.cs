@@ -35,11 +35,19 @@ public static class ShiftWheelScrolling
         if (FindDescendant<ScrollViewer>(list) is not { Content: UIElement content } row) return;
         content.PointerWheelChanged -= OnWheel;
         content.PointerWheelChanged += OnWheel;
+        CtrlRefresh.RegisterRow(row);
 
         void OnWheel(object sender, PointerRoutedEventArgs e)
         {
             var properties = e.GetCurrentPoint(content).Properties;
             if (properties.IsHorizontalMouseWheel) return; // a trackpad's sideways swipe: the row scrolls itself
+
+            // Ctrl + wheel refreshes the screen the row is on.
+            if (e.KeyModifiers.HasFlag(VirtualKeyModifiers.Control))
+            {
+                CtrlRefresh.FromRow(row, e);
+                return;
+            }
 
             var delta = properties.MouseWheelDelta;
             if (e.KeyModifiers.HasFlag(VirtualKeyModifiers.Shift))

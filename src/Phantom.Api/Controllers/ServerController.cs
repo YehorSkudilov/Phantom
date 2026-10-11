@@ -76,7 +76,7 @@ public class ServerController(PhantomDbContext db, TorrentEngine engine, Transco
 [ApiController]
 [Authorize(Roles = "Admin")]
 [Route("api/sources")]
-public class SourcesController(PhantomDbContext db, SourceSyncService sync) : ControllerBase
+public class SourcesController(PhantomDbContext db, SourceSyncService sync, IEnumerable<IMovieSource> providers) : ControllerBase
 {
     [HttpGet]
     public async Task<List<SourceDto>> List(CancellationToken ct) =>
@@ -103,7 +103,9 @@ public class SourcesController(PhantomDbContext db, SourceSyncService sync) : Co
 
 
 
-    private static SourceDto ToDto(Source s) =>
+    private SourceDto ToDto(Source s) =>
         new(s.Id, s.Name, s.Type, s.BaseUrl, !string.IsNullOrEmpty(s.ApiKey), s.Categories, s.Query, s.Enabled,
-            s.SyncIntervalMinutes, s.LastSyncAt, s.LastSyncResult);
+            s.SyncIntervalMinutes, s.LastSyncAt, s.LastSyncResult,
+            sync.CurrentSourceId == s.Id,
+            providers.FirstOrDefault(p => p.Type == s.Type) is IBackfillingSource backfill ? backfill.CatalogueProgress(s) : null);
 }

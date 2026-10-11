@@ -64,11 +64,20 @@ public class YtsSource(HttpClient http, IOptions<PhantomOptions> options, ILogge
 
     public bool HasMore(Source source) => Crawl(source).HasMore;
 
+    // Pages in the whole catalogue, from the last response's movie_count.
+    private static int _totalPages;
+
+    public double CatalogueProgress(Source source) => Crawl(source).Progress(_totalPages);
+
     private async Task<(IReadOnlyList<SourceRelease> Releases, int MovieCount)> PageAsync(string baseUrl, Source source, int page, CancellationToken ct)
     {
         var url = $"{baseUrl}/api/v2/list_movies.json?limit={PageSize}&page={page}&sort_by=date_added&order_by=desc";
         if (!string.IsNullOrWhiteSpace(source.Query)) url += $"&query_term={Uri.EscapeDataString(source.Query)}";
-        return Parse(await http.GetStringAsync(url, ct));
+        var json = await http.GetStringAsync(url, ct);
+        using (var doc = JsonDocument.Parse(json))
+            if (doc.RootElement.TryGetProperty("data", out var data) && data.TryGetProperty("movie_count", out var mc) && mc.TryGetInt32(out var total))
+                _totalPages = (total + PageSize - 1) / PageSize;
+        return Parse(json);
     }
 
 

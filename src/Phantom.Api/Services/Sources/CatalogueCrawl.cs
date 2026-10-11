@@ -24,6 +24,14 @@ public sealed class CatalogueCrawl(string dataDirectory, string name)
 
     public bool HasMore => Next() is not null;
 
+    /// <summary>How far the walk is, as a percentage of <paramref name="totalSteps"/>: 100 once done, 0 before it starts.</summary>
+    public double Progress(int totalSteps) => Next() switch
+    {
+        null => 100,
+        var (step, _) when totalSteps > 0 => Math.Clamp(step * 100.0 / totalSteps, 0, 99.9),
+        _ => 0,
+    };
+
     public void Save(int step, int page) => File.WriteAllText(FilePath, $"{step} {page}");
 
     public void Finish() => File.WriteAllText(FilePath, $"done {DateTime.UtcNow.Ticks.ToString(CultureInfo.InvariantCulture)}");

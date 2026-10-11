@@ -46,14 +46,14 @@
                     <Label Text="{Binding Title}" FontFamily="OpenSansSemibold" FontSize="16" LineBreakMode="TailTruncation" />
                     <Label Text="Transcoding" Style="{StaticResource Muted}" FontSize="11" IsVisible="{Binding IsTranscoding}" />
                 </VerticalStackLayout>
-                <ImageButton Grid.Column="2" Style="{StaticResource IconButton}" Source="{controls:Icon closed_caption, Color=White, Outlined=True}" Clicked="OnSubtitles"
+                <ImageButton x:Name="SubtitlesButton" Grid.Column="2" Style="{StaticResource IconButton}" Source="{controls:Icon closed_caption, Color=White, Outlined=True}" Clicked="OnSubtitles"
                              SemanticProperties.Description="Subtitles" ToolTipProperties.Text="Subtitles" />
-                <ImageButton Grid.Column="3" Style="{StaticResource IconButton}" Source="{controls:Icon high_quality, Color=White, Outlined=True}" Clicked="OnQuality"
+                <ImageButton x:Name="QualityButton" Grid.Column="3" Style="{StaticResource IconButton}" Source="{controls:Icon high_quality, Color=White, Outlined=True}" Clicked="OnQuality"
                              SemanticProperties.Description="Quality" ToolTipProperties.Text="Quality" />
                 <Button Grid.Column="4" x:Name="SpeedButton" Text="1x" Style="{StaticResource GhostButton}" TextColor="White" Clicked="OnSpeed" SemanticProperties.Description="Playback speed" />
             </Grid>
 
-            <HorizontalStackLayout Grid.Row="1" HorizontalOptions="Center" VerticalOptions="Center" Spacing="36">
+            <HorizontalStackLayout x:Name="TransportControls" Grid.Row="1" HorizontalOptions="Center" VerticalOptions="Center" Spacing="36">
                 <ImageButton x:Name="BackButton" Style="{StaticResource IconButton}" WidthRequest="60" HeightRequest="60" CornerRadius="30" Padding="12"
                              VerticalOptions="Center" Clicked="OnSkipBack" />
                 <ImageButton x:Name="PlayPause" Source="{controls:Icon pause, Color=White, Size=40}" BackgroundColor="{StaticResource Primary}"
@@ -63,7 +63,7 @@
                              VerticalOptions="Center" Clicked="OnSkipForward" />
             </HorizontalStackLayout>
 
-            <VerticalStackLayout Grid.Row="2" Spacing="2">
+            <VerticalStackLayout x:Name="SeekArea" Grid.Row="2" Spacing="2">
                 <Label Text="{Binding UpNextTitle, StringFormat='Up next: {0}'}" Style="{StaticResource Muted}" HorizontalOptions="End"
                        IsVisible="{Binding UpNextTitle, Converter={StaticResource HasValue}}" />
                 <!-- While dragging: the frame and time the drag would jump to, above the thumb. -->

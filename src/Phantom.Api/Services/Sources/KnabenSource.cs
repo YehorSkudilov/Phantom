@@ -26,6 +26,8 @@ public partial class KnabenSource(HttpClient http, IOptions<PhantomOptions> opti
 
     public bool HasMore(Source source) => Crawl(source).HasMore;
 
+    public double CatalogueProgress(Source source) => Crawl(source).Progress(CrawlTerms.All.Count);
+
     public async Task<IReadOnlyList<SourceRelease>> FetchAsync(Source source, CancellationToken ct)
     {
         var url = string.IsNullOrWhiteSpace(source.BaseUrl) ? DefaultBaseUrl : source.BaseUrl;

@@ -144,6 +144,25 @@ public partial class AdminViewModel(PhantomApi api) : BaseViewModel
 
     public IReadOnlyList<string> Tabs { get; } = ["Overview", "Sources", "Accounts", "Server settings"];
     [ObservableProperty] private int selectedTab;
+
+    /// <summary>Re-reads the sources (sync status, catalogue progress) in place, for the page's live update.</summary>
+    public async Task RefreshSourcesAsync()
+    {
+        try
+        {
+            var sources = await api.SourcesAsync();
+            for (var i = 0; i < sources.Count; i++)
+            {
+                if (i < Sources.Count) { if (Sources[i] != sources[i]) Sources[i] = sources[i]; }
+                else Sources.Add(sources[i]);
+            }
+            while (Sources.Count > sources.Count) Sources.RemoveAt(Sources.Count - 1);
+        }
+        catch (Exception ex) when (ex is HttpRequestException or ApiException)
+        {
+            // Keep what's shown; the next tick tries again.
+        }
+    }
     public IReadOnlyList<string> QualityChoices { get; } = ["2160p", "1080p", "720p", "SD"];
 
     [ObservableProperty]

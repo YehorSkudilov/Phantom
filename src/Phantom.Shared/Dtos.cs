@@ -229,7 +229,9 @@ public record SourceDto(
     bool Enabled,
     int SyncIntervalMinutes,
     DateTime? LastSyncAt,
-    string? LastSyncResult);
+    string? LastSyncResult,
+    bool IsSyncing = false,
+    double? CatalogueProgress = null);
 
 
 // ---------- Server ----------

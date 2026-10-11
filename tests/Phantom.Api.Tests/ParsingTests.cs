@@ -147,6 +147,36 @@ public class PirateBayCategoryTests
     }
 }
 
+public class CatalogueCrawlTests
+{
+    [Fact]
+    public void Reports_progress_through_the_walk_and_restarts_after_a_week()
+    {
+        var dir = Directory.CreateTempSubdirectory("phantom-crawl-").FullName;
+        try
+        {
+            var crawl = new CatalogueCrawl(dir, "test");
+            Assert.Equal((0, 0), crawl.Next());
+            Assert.Equal(0, crawl.Progress(100));
+
+            crawl.Save(50, 3);
+            Assert.Equal((50, 3), crawl.Next());
+            Assert.Equal(50, crawl.Progress(100));
+
+            crawl.Finish();
+            Assert.False(crawl.HasMore);
+            Assert.Equal(100, crawl.Progress(100));
+
+            File.WriteAllText(Path.Combine(dir, "crawl-test.txt"), $"done {DateTime.UtcNow.AddDays(-8).Ticks}");
+            Assert.Equal((0, 0), crawl.Next()); // due again
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+}
+
 public class SubtitleConverterTests
 {
     [Fact]
