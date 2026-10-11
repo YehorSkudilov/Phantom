@@ -149,13 +149,14 @@ public class StateView : ContentView
                 for (var c = 0; c < 3; c++) grid.ColumnDefinitions.Add(new ColumnDefinition(GridLength.Star));
                 for (var i = 0; i < 12; i++)
                 {
-                    var poster = new VerticalStackLayout { Spacing = 6 };
-                    var cover = Bar(0, 10);
-                    cover.HeightRequest = -1;
-                    // A poster's shape, whatever the column's width.
-                    cover.SizeChanged += (s, _) => { if (s is Border b && b.Width > 0) b.HeightRequest = b.Width * 1.5; };
-                    poster.Add(cover);
-                    poster.Add(Bar(10, 4));
+                    // A poster's shape at a phone's three-across width (sized up front: sizing it from the column's width once
+                    // laid out left it a thin line), with its title under it, as on Discover.
+                    var poster = new VerticalStackLayout { Spacing = 8 };
+                    poster.Add(Bar(170, 10));
+                    var caption = Bar(10, 4);
+                    caption.WidthRequest = 70;
+                    caption.HorizontalOptions = LayoutOptions.Start;
+                    poster.Add(caption);
                     grid.Add(poster, i % 3, i / 3);
                     if (i % 3 == 0) grid.RowDefinitions.Add(new RowDefinition(GridLength.Auto));
                 }
