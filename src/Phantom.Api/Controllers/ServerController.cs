@@ -91,6 +91,85 @@ public class ServerController(PhantomDbContext db, TorrentEngine engine, Transco
         await db.SaveChangesAsync(ct);
         return NoContent();
     }
+
+    // ---------- Storage ----------
+
+    /// <summary>What's taking space: the disk, each part of the data folder, and every torrent's files, biggest first.</summary>
+    [Authorize(Roles = "Admin")]
+    [HttpGet("storage")]
+    public async Task<StorageDto> Storage(CancellationToken ct)
+    {
+        var o = options.Value;
+        long free = 0, total = 0;
+        try
+        {
+            var drive = new DriveInfo(Path.GetFullPath(o.DataDirectory));
+            (free, total) = (drive.AvailableFreeSpace, drive.TotalSize);
+        }
+        catch (Exception ex) when (ex is ArgumentException or IOException or UnauthorizedAccessException)
+        {
+            // Unknown drive layout (e.g. some containers); report 0.
+        }
+
+        var stored = engine.StoredTorrents();
+        var hashes = stored.Select(t => t.InfoHash).ToList();
+        var releases = await db.Releases.AsNoTracking().Where(r => hashes.Contains(r.InfoHash))
+            .Select(r => new { r.Id, r.InfoHash, r.Name, Movie = r.Movie!.Title, Show = r.Show!.Title, r.SeasonNumber, r.EpisodeNumber })
+            .ToListAsync(ct);
+        var downloads = await db.ServerDownloads.AsNoTracking().Where(d => hashes.Contains(d.Release!.InfoHash))
+            .Select(d => new { d.Id, d.Release!.InfoHash }).ToListAsync(ct);
+
+        var items = stored.Select(t =>
+        {
+            var r = releases.FirstOrDefault(x => x.InfoHash == t.InfoHash);
+            var title = r is null ? t.Name ?? t.InfoHash
+                : r.Movie ?? (r.Show is null ? r.Name
+                    : r.EpisodeNumber is { } e ? $"{r.Show} · S{r.SeasonNumber:00}E{e:00}"
+                    : r.SeasonNumber is { } s ? $"{r.Show} · Season {s}" : $"{r.Show} · Several seasons");
+            return new StoredTorrentDto(t.InfoHash, title, t.Saved, t.SizeBytes, t.LastUsed, t.InUse,
+                downloads.FirstOrDefault(d => d.InfoHash == t.InfoHash)?.Id);
+        }).OrderByDescending(i => i.SizeBytes).ToList();
+
+        var settings = await db.Settings.AsNoTracking().FirstAsync(ct);
+        return new StorageDto(free, total,
+            items.Where(i => !i.SavedOnServer).Sum(i => i.SizeBytes),
+            items.Where(i => i.SavedOnServer).Sum(i => i.SizeBytes),
+            TorrentEngine.DirectorySize(Path.Combine(o.CacheDirectory, "thumbnails")),
+            new[] { "", "-wal", "-shm" }.Sum(suffix => TorrentEngine.DirectorySize(o.DatabasePath + suffix)),
+            settings.MaxStreamCacheGb, o.MinFreeDiskGb, items);
+    }
+
+    /// <summary>Clears one torrent's stream cache (not while it's being watched, and not a copy saved on the server).</summary>
+    [Authorize(Roles = "Admin")]
+    [HttpDelete("storage/cache/{infoHash}")]
+    public async Task<IActionResult> ClearCache(string infoHash) =>
+        await engine.ClearStreamCacheAsync(infoHash) ? NoContent() : Conflict("It's being watched, or it's saved on the server (remove it from Downloads).");
+
+    /// <summary>Clears every stream cache nobody is watching from.</summary>
+    [Authorize(Roles = "Admin")]
+    [HttpPost("storage/cache/clear")]
+    public async Task<StorageDto> ClearIdleCaches(CancellationToken ct)
+    {
+        await engine.ClearIdleStreamCachesAsync();
+        return await Storage(ct);
+    }
+
+    /// <summary>Deletes every seek preview; they're made again as they're needed.</summary>
+    [Authorize(Roles = "Admin")]
+    [HttpPost("storage/previews/clear")]
+    public async Task<StorageDto> ClearPreviews(CancellationToken ct)
+    {
+        var folder = Path.Combine(options.Value.CacheDirectory, "thumbnails");
+        try
+        {
+            if (Directory.Exists(folder)) Directory.Delete(folder, recursive: true);
+        }
+        catch (IOException)
+        {
+            // One being written right now; the rest are gone.
+        }
+        return await Storage(ct);
+    }
 }
 
 /// <summary>The built-in sources (see Program.SeedSourcesAsync): listed, switched on or off, synced. Nothing else.</summary>
