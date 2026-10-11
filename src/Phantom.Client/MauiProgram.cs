@@ -48,6 +48,7 @@ public static class MauiProgram
         builder.Services.AddTransient<PlaylistViewModel>();
         builder.Services.AddTransient<ServerDownloadsViewModel>();
         builder.Services.AddTransient<SettingsViewModel>();
+        builder.Services.AddTransient<AccountViewModel>();
         builder.Services.AddTransient<AdminViewModel>();
 
         // MainPage hosts the tab views for the app's lifetime, so they're singletons together.
@@ -62,11 +63,9 @@ public static class MauiProgram
         builder.Services.AddTransient<PlayerPage>();
         builder.Services.AddTransient<TrailerPage>();
         builder.Services.AddTransient<MovieListPage>();
-        builder.Services.AddTransient<CollectionsPage>();
-        builder.Services.AddTransient<PlaylistsPage>();
         builder.Services.AddTransient<PlaylistPage>();
-        builder.Services.AddTransient<ServerDownloadsPage>();
         builder.Services.AddTransient<SettingsPage>();
+        builder.Services.AddTransient<AccountPage>();
         builder.Services.AddTransient<AdminPage>();
 
 #if WINDOWS

@@ -86,6 +86,13 @@ with copyright law where you live.
   resumable HTTP range transfers, Wi-Fi-only mode, pause/resume, and offline resume points
   that sync back to the server when you reconnect
 
+**Accounts, profiles and TVs**
+- Every account signs in with its own username and password; admins add accounts under *Manage server → Accounts*
+- Each account has its own profiles (own watch history, optional PIN, content limit); profile names only need to be
+  unique within the account
+- Android TV: the app is in the TV launcher, and a TV signs in with a code approved from a phone or computer
+  (*More → Sign in a TV*), or with a username and password
+
 **Server admin**
 - Sources (YTS, The Pirate Bay, Internet Archive queries, Torznab indexers), sync status, enable/disable
 - Settings: server name, preferred quality, download/upload limits, max active downloads,
@@ -152,7 +159,7 @@ write `src/Phantom.Api/.env` from repository variables and secrets, `docker comp
 for `/health`, prune old images. One-time server setup: install Docker, `git clone` this repository to
 `/opt/Phantom`, and open `TORRENT_PORT` (TCP and UDP) in the firewall.
 
-**App (`PublishApp.yml`)**: bumps `ApplicationDisplayVersion`/`ApplicationVersion` in `Phantom.Client.csproj` and
+**App (`PublishApp.yml`)**: bumps `ApplicationDisplayVersion`/`ApplicationVersion` in `Phantom.csproj` and
 commits it, builds each selected platform with `API_BASE_URL` baked in, uploads it, then creates a GitHub Release
 `vX.Y.Z` with the Android `.aab` and `.apk`.
 

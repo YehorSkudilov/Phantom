@@ -35,6 +35,8 @@
                                    HorizontalOptions="Center" VerticalOptions="Center" />
                         </Border>
                         <Label Text="{Binding Username}" HorizontalOptions="Center" LineBreakMode="TailTruncation" />
+                        <Label Text="Default" Style="{StaticResource Muted}" FontSize="11" HorizontalOptions="Center"
+                               IsVisible="{Binding IsManaged, Converter={StaticResource Not}}" />
                         <Image Source="{controls:Icon lock, Color={StaticResource TextSecondary}}" IsVisible="{Binding HasPin}" HorizontalOptions="Center" WidthRequest="14" HeightRequest="14" />
                     </VerticalStackLayout>
                 </DataTemplate>

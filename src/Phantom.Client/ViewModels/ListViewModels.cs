@@ -17,10 +17,26 @@ public partial class MovieListViewModel(PhantomApi api) : BaseViewModel, IQueryA
     [ObservableProperty] private string? subtitle;
     [ObservableProperty] private bool isEmpty;
 
+    public string EmptyText => _kind switch
+    {
+        "history" => "Nothing watched yet.",
+        "collection" => "This collection is empty.",
+        _ => "Nothing on your watchlist yet. Tap Watchlist on a movie to save it for later.",
+    };
+
+    /// <summary>Picks what this list shows without loading it yet (the Library tab loads it when its sub-tab opens).</summary>
+    public MovieListViewModel Use(string kind)
+    {
+        _kind = kind;
+        OnPropertyChanged(nameof(EmptyText));
+        return this;
+    }
+
     public void ApplyQueryAttributes(IDictionary<string, object> query)
     {
         _kind = query.TryGetValue("kind", out var k) ? k.ToString()! : "watchlist";
         _id = query.TryGetValue("id", out var id) && int.TryParse(id.ToString(), out var i) ? i : 0;
+        OnPropertyChanged(nameof(EmptyText));
         LoadCommand.Execute(null);
     }
 
@@ -172,8 +188,15 @@ public partial class PlaylistViewModel(PhantomApi api) : BaseViewModel, IQueryAt
 }
 
 /// <summary>Movies saved on this device.</summary>
-public partial class DownloadsViewModel(DownloadManager manager, SettingsService settings) : BaseViewModel
+public partial class DownloadsViewModel(DownloadManager manager, SettingsService settings, ServerDownloadsViewModel server) : BaseViewModel
 {
+    public IReadOnlyList<string> Tabs { get; } = ["On this device", "On the server"];
+
+    /// <summary>0: downloads on this device; 1: movies the server is downloading or keeps.</summary>
+    [ObservableProperty] private int selectedTab;
+
+    public ServerDownloadsViewModel Server => server;
+
     public ObservableCollection<OfflineDownload> Items => manager.Items;
 
     [ObservableProperty] private string storageText = "";

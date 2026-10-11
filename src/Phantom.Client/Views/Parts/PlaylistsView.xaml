@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<!-- The profile's playlists, in the Library tab. -->
+<ContentView xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:vm="clr-namespace:Phantom.ViewModels"
+             xmlns:views="clr-namespace:Phantom.Views"
+             xmlns:controls="clr-namespace:Phantom.Controls"
+             xmlns:dto="clr-namespace:Phantom.Shared;assembly=Phantom.Shared"
+             x:Class="Phantom.Views.Parts.PlaylistsView"
+             x:DataType="vm:PlaylistsViewModel">
+    <Grid RowDefinitions="Auto,*">
+        <Button Text="New playlist" Style="{StaticResource SecondaryButton}" Command="{Binding CreateCommand}" HorizontalOptions="Start" Margin="16,8"
+                ImageSource="{controls:Icon playlist_add, Size=20}" ContentLayout="Left,6" />
+        <RefreshView Grid.Row="1" IsRefreshing="{Binding IsBusy}" Command="{Binding LoadCommand}">
+            <CollectionView ItemsSource="{Binding Playlists}" SelectionMode="None">
+                <CollectionView.Footer>
+                    <BoxView HeightRequest="{x:Static views:TabView.NavBarInset}" Color="Transparent" />
+                </CollectionView.Footer>
+                <CollectionView.ItemTemplate>
+                    <DataTemplate x:DataType="dto:PlaylistDto">
+                        <Border Style="{StaticResource Card}" Margin="16,5" Padding="12">
+                            <Border.GestureRecognizers>
+                                <TapGestureRecognizer Command="{Binding Source={RelativeSource AncestorType={x:Type vm:PlaylistsViewModel}}, Path=OpenCommand, x:DataType=vm:PlaylistsViewModel}"
+                                                      CommandParameter="{Binding .}" />
+                            </Border.GestureRecognizers>
+                            <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="14">
+                                <Border WidthRequest="48" HeightRequest="48" StrokeShape="RoundRectangle 10" Background="{StaticResource BrandGradient}">
+                                    <Image Source="{controls:Icon playlist_play, Color=White}" WidthRequest="26" HeightRequest="26" />
+                                </Border>
+                                <VerticalStackLayout Grid.Column="1" VerticalOptions="Center">
+                                    <Label Text="{Binding Name}" FontFamily="OpenSansSemibold" FontSize="16" />
+                                    <Label Text="{Binding Count, StringFormat='{0} movies'}" Style="{StaticResource Muted}" />
+                                </VerticalStackLayout>
+                                <ImageButton Grid.Column="2" Style="{StaticResource IconButton}" Source="{controls:Icon delete, Outlined=True}"
+                                             SemanticProperties.Description="Delete playlist" ToolTipProperties.Text="Delete playlist"
+                                             Command="{Binding Source={RelativeSource AncestorType={x:Type vm:PlaylistsViewModel}}, Path=DeleteCommand, x:DataType=vm:PlaylistsViewModel}"
+                                             CommandParameter="{Binding .}" />
+                            </Grid>
+                        </Border>
+                    </DataTemplate>
+                </CollectionView.ItemTemplate>
+            </CollectionView>
+        </RefreshView>
+        <Label Grid.Row="1" Text="No playlists yet. Create one, or add movies from their page." Style="{StaticResource Muted}"
+               HorizontalTextAlignment="Center" Margin="32,48" VerticalOptions="Start" IsVisible="{Binding IsEmpty}" />
+    </Grid>
+</ContentView>

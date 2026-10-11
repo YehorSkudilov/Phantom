@@ -196,3 +196,42 @@ public partial class ProfilesViewModel(PhantomApi api, SettingsService settings)
         Profiles.Remove(profile);
     });
 }
+
+/// <summary>The signed-in account: its username (also its default profile's name) and password.</summary>
+public partial class AccountViewModel(PhantomApi api, SettingsService settings) : BaseViewModel
+{
+    // A managed profile shows its account's name once loaded; the default profile is the account itself.
+    [ObservableProperty] private string username = settings.User is { IsManaged: false } u ? u.Username : "";
+    [ObservableProperty] private string newPassword = "";
+    [ObservableProperty] private string confirmPassword = "";
+    [ObservableProperty] private string currentPassword = "";
+
+    [RelayCommand]
+    private Task Save() => RunAsync(async () =>
+    {
+        if (string.IsNullOrWhiteSpace(Username))
+        {
+            ErrorMessage = "Username can't be empty.";
+            return;
+        }
+        if (NewPassword != ConfirmPassword)
+        {
+            ErrorMessage = "The new passwords don't match.";
+            return;
+        }
+        if (string.IsNullOrEmpty(CurrentPassword))
+        {
+            ErrorMessage = "Enter your current password to confirm.";
+            return;
+        }
+
+        var account = await api.UpdateAccountAsync(new UpdateAccountRequest(CurrentPassword, Username.Trim(), string.IsNullOrEmpty(NewPassword) ? null : NewPassword));
+        if (settings.User?.Id == account.Id) settings.User = account; // signed in as the default profile
+        Username = account.Username;
+        NewPassword = ConfirmPassword = CurrentPassword = "";
+        await ToastAsync("Account saved");
+    });
+
+    [RelayCommand]
+    private Task Profiles() => GoToAsync("//profiles");
+}

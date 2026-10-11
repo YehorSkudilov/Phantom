@@ -26,6 +26,7 @@ public partial class LibraryPage : TabView
     public override void Load()
     {
         if (_vm.Movies.Count == 0) _vm.ReloadCommand.Execute(null);
+        _vm.LoadSelectedTab();
     }
 
     private void OnSelected(object? sender, SelectionChangedEventArgs e)

@@ -62,10 +62,35 @@ public record SortOption(string Name, MovieSort Sort, bool Descending)
     public override string ToString() => Name;
 }
 
-public partial class LibraryViewModel(PhantomApi api, SettingsService settings, SearchViewModel search) : BaseViewModel, IQueryAttributable
+public partial class LibraryViewModel(PhantomApi api, SettingsService settings, SearchViewModel search,
+    MovieListViewModel watchlist, MovieListViewModel history, CollectionsViewModel collections, PlaylistsViewModel playlists)
+    : BaseViewModel, IQueryAttributable
 {
     /// <summary>The search box at the top of the Library tab.</summary>
     public SearchViewModel Search => search;
+
+    // Sub-tabs: the whole library, then the profile's own lists.
+    public IReadOnlyList<string> Tabs { get; } = ["All movies", "Watchlist", "Recently watched", "Collections", "Playlists"];
+    public MovieListViewModel Watchlist { get; } = watchlist.Use("watchlist");
+    public MovieListViewModel History { get; } = history.Use("history");
+    public CollectionsViewModel Collections => collections;
+    public PlaylistsViewModel Playlists => playlists;
+
+    [ObservableProperty] private int selectedTab;
+
+    partial void OnSelectedTabChanged(int value) => LoadSelectedTab();
+
+    /// <summary>Refreshes the open sub-tab's list (the whole library loads itself as it scrolls).</summary>
+    public void LoadSelectedTab()
+    {
+        switch (SelectedTab)
+        {
+            case 1: Watchlist.LoadCommand.Execute(null); break;
+            case 2: History.LoadCommand.Execute(null); break;
+            case 3: Collections.LoadCommand.Execute(null); break;
+            case 4: Playlists.LoadCommand.Execute(null); break;
+        }
+    }
 
     private const int PageSize = 60;
     private int _page;
@@ -110,6 +135,7 @@ public partial class LibraryViewModel(PhantomApi api, SettingsService settings, 
 
     public void ApplyQueryAttributes(IDictionary<string, object> query)
     {
+        SelectedTab = 0;
         _suspendReload = true;
         SelectedSort = SortOptions[0];
         SelectedGenre = "All genres";

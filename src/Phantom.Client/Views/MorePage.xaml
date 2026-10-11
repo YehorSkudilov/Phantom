@@ -19,25 +19,16 @@
                 </VerticalStackLayout>
             </Grid>
 
-            <Label Text="YOUR LIBRARY" Style="{StaticResource SectionLabel}" />
+            <Label Text="ACCOUNT" Style="{StaticResource SectionLabel}" />
             <Border Style="{StaticResource Card}" Padding="0">
                 <VerticalStackLayout>
-                    <controls:MenuRow Glyph="bookmark" Text="Watchlist" Command="{Binding NavigateCommand}" CommandParameter="MovieListPage?kind=watchlist" />
+                    <controls:MenuRow Glyph="manage_accounts" Text="Account" Command="{Binding NavigateCommand}" CommandParameter="AccountPage" />
                     <BoxView Style="{StaticResource Divider}" />
-                    <controls:MenuRow Glyph="playlist_play" Text="Playlists" Command="{Binding NavigateCommand}" CommandParameter="PlaylistsPage" />
+                    <controls:MenuRow Glyph="switch_account" Text="Switch profile" Command="{Binding SwitchProfileCommand}" />
                     <BoxView Style="{StaticResource Divider}" />
-                    <controls:MenuRow Glyph="collections_bookmark" Text="Collections" Command="{Binding NavigateCommand}" CommandParameter="CollectionsPage" />
+                    <controls:MenuRow Glyph="tv" Text="Sign in a TV" Command="{Binding SignInTvCommand}" />
                     <BoxView Style="{StaticResource Divider}" />
-                    <controls:MenuRow Glyph="history" Text="Recently watched" Command="{Binding NavigateCommand}" CommandParameter="MovieListPage?kind=history" />
-                </VerticalStackLayout>
-            </Border>
-
-            <Label Text="SERVER" Style="{StaticResource SectionLabel}" />
-            <Border Style="{StaticResource Card}" Padding="0">
-                <VerticalStackLayout>
-                    <controls:MenuRow Glyph="cloud_download" Text="Saved on the server" Command="{Binding NavigateCommand}" CommandParameter="ServerDownloadsPage" />
-                    <BoxView Style="{StaticResource Divider}" IsVisible="{Binding IsAdmin}" />
-                    <controls:MenuRow Glyph="dns" Text="Manage server" Command="{Binding NavigateCommand}" CommandParameter="AdminPage" IsVisible="{Binding IsAdmin}" />
+                    <controls:MenuRow Glyph="logout" Text="Sign out" Command="{Binding SignOutCommand}" ShowChevron="False" TextColor="{StaticResource Danger}" />
                 </VerticalStackLayout>
             </Border>
 
@@ -45,12 +36,8 @@
             <Border Style="{StaticResource Card}" Padding="0">
                 <VerticalStackLayout>
                     <controls:MenuRow Glyph="settings" Text="Settings" Command="{Binding NavigateCommand}" CommandParameter="SettingsPage" />
-                    <BoxView Style="{StaticResource Divider}" />
-                    <controls:MenuRow Glyph="switch_account" Text="Switch profile" Command="{Binding SwitchProfileCommand}" />
-                    <BoxView Style="{StaticResource Divider}" />
-                    <controls:MenuRow Glyph="tv" Text="Sign in a TV" Command="{Binding SignInTvCommand}" />
-                    <BoxView Style="{StaticResource Divider}" />
-                    <controls:MenuRow Glyph="logout" Text="Sign out" Command="{Binding SignOutCommand}" ShowChevron="False" TextColor="{StaticResource Danger}" />
+                    <BoxView Style="{StaticResource Divider}" IsVisible="{Binding IsAdmin}" />
+                    <controls:MenuRow Glyph="dns" Text="Manage server" Command="{Binding NavigateCommand}" CommandParameter="AdminPage" IsVisible="{Binding IsAdmin}" />
                 </VerticalStackLayout>
             </Border>
         </VerticalStackLayout>

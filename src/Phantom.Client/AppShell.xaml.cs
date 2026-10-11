@@ -15,11 +15,9 @@ public partial class AppShell : Shell
         Routing.RegisterRoute(nameof(PlayerPage), typeof(PlayerPage));
         Routing.RegisterRoute(nameof(TrailerPage), typeof(TrailerPage));
         Routing.RegisterRoute(nameof(MovieListPage), typeof(MovieListPage));
-        Routing.RegisterRoute(nameof(CollectionsPage), typeof(CollectionsPage));
-        Routing.RegisterRoute(nameof(PlaylistsPage), typeof(PlaylistsPage));
         Routing.RegisterRoute(nameof(PlaylistPage), typeof(PlaylistPage));
-        Routing.RegisterRoute(nameof(ServerDownloadsPage), typeof(ServerDownloadsPage));
         Routing.RegisterRoute(nameof(SettingsPage), typeof(SettingsPage));
+        Routing.RegisterRoute(nameof(AccountPage), typeof(AccountPage));
         Routing.RegisterRoute(nameof(AdminPage), typeof(AdminPage));
     }
 }

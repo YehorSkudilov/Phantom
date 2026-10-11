@@ -22,6 +22,9 @@ public record CreateProfileRequest(string Username, string? Pin, string? MaxCont
 
 public record SwitchProfileRequest(int ProfileId, string? Pin);
 
+/// <summary>Changes the signed-in account's username and/or password; the current password confirms it.</summary>
+public record UpdateAccountRequest(string CurrentPassword, string? Username, string? NewPassword);
+
 /// <summary>A TV asking to be signed in with a code (see PairingController).</summary>
 public record PairingStartRequest(string? DeviceName);
 

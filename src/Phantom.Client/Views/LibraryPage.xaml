@@ -3,15 +3,17 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
              xmlns:controls="clr-namespace:Phantom.Controls"
              xmlns:views="clr-namespace:Phantom.Views"
+             xmlns:parts="clr-namespace:Phantom.Views.Parts"
              xmlns:vm="clr-namespace:Phantom.ViewModels"
              x:Class="Phantom.Views.LibraryPage"
              x:DataType="vm:LibraryViewModel">
-    <Grid RowDefinitions="Auto,Auto,*">
-        <Grid ColumnDefinitions="*,Auto,Auto" Padding="16,18,8,0">
+    <Grid RowDefinitions="Auto,Auto,Auto,*">
+        <Grid ColumnDefinitions="*,Auto,Auto" Padding="16,18,8,0" MinimumHeightRequest="62">
             <Label Text="Library" Style="{StaticResource H1}" VerticalOptions="Center" />
             <ImageButton Grid.Column="1" Style="{StaticResource IconButton}" Source="{controls:Icon tune}" Command="{Binding ToggleFiltersCommand}"
+                         IsVisible="{Binding SelectedTab, Converter={StaticResource Equals}, ConverterParameter=0}"
                          SemanticProperties.Description="Filters" ToolTipProperties.Text="Filters" />
-            <Grid Grid.Column="2">
+            <Grid Grid.Column="2" IsVisible="{Binding SelectedTab, Converter={StaticResource Equals}, ConverterParameter=0}">
                 <ImageButton Style="{StaticResource IconButton}" Source="{controls:Icon view_list}" Command="{Binding ToggleViewCommand}" IsVisible="{Binding IsGrid}"
                              SemanticProperties.Description="Show as list" ToolTipProperties.Text="Show as list" />
                 <ImageButton Style="{StaticResource IconButton}" Source="{controls:Icon grid_view}" Command="{Binding ToggleViewCommand}" IsVisible="{Binding IsGrid, Converter={StaticResource Not}}"
@@ -19,12 +21,19 @@
             </Grid>
         </Grid>
 
+        <controls:TabStrip Grid.Row="1" Tabs="{Binding Tabs}" SelectedIndex="{Binding SelectedTab}" Margin="0,4,0,0" />
+
         <!-- Search: typing swaps the library below for results across titles, cast and genres. -->
-        <SearchBar Grid.Row="1" x:Name="Box" Text="{Binding Search.Query}" Placeholder="Search movies, actors, directors, genres"
+        <SearchBar Grid.Row="2" x:Name="Box" IsVisible="{Binding SelectedTab, Converter={StaticResource Equals}, ConverterParameter=0}" Text="{Binding Search.Query}" Placeholder="Search movies, actors, directors, genres"
                    SearchCommand="{Binding Search.SearchCommand}" Margin="8,6,8,0" />
 
-        <Grid Grid.Row="2" RowDefinitions="Auto,Auto,Auto,*"
-              IsVisible="{Binding Search.Query, Converter={StaticResource HasValue}, ConverterParameter=invert}">
+        <Grid Grid.Row="3" RowDefinitions="Auto,Auto,Auto,*">
+            <Grid.IsVisible>
+                <MultiBinding Converter="{StaticResource AllTrue}">
+                    <Binding Path="SelectedTab" Converter="{StaticResource Equals}" ConverterParameter="0" />
+                    <Binding Path="Search.Query" Converter="{StaticResource HasValue}" ConverterParameter="invert" />
+                </MultiBinding>
+            </Grid.IsVisible>
         <!-- Sort + summary -->
         <Grid ColumnDefinitions="*,Auto" Padding="16,8" ColumnSpacing="10">
             <Label Text="{Binding Summary}" Style="{StaticResource Muted}" VerticalOptions="Center" />
@@ -92,8 +101,14 @@
         </Grid>
 
         <!-- Search results -->
-        <ScrollView Grid.Row="2" BindingContext="{Binding Search}" x:DataType="vm:SearchViewModel"
-                    IsVisible="{Binding Query, Converter={StaticResource HasValue}}">
+        <ScrollView Grid.Row="3" x:DataType="vm:LibraryViewModel">
+            <ScrollView.IsVisible>
+                <MultiBinding Converter="{StaticResource AllTrue}">
+                    <Binding Path="SelectedTab" Converter="{StaticResource Equals}" ConverterParameter="0" />
+                    <Binding Path="Search.Query" Converter="{StaticResource HasValue}" />
+                </MultiBinding>
+            </ScrollView.IsVisible>
+            <VerticalStackLayout BindingContext="{Binding Search}" x:DataType="vm:SearchViewModel">
             <VerticalStackLayout Spacing="10" Padding="0,8,0,108">
                 <Label Text="No results." Style="{StaticResource Muted}" HorizontalOptions="Center" Margin="0,40" IsVisible="{Binding NoResults}" />
 
@@ -123,6 +138,17 @@
                 <Label Text="Movies" Style="{StaticResource H2}" Margin="16,8,16,0" IsVisible="{Binding Movies.Count, Converter={StaticResource HasValue}}" />
                 <VerticalStackLayout BindableLayout.ItemsSource="{Binding Movies}" BindableLayout.ItemTemplate="{StaticResource MovieRow}" x:Name="SearchMovies" />
             </VerticalStackLayout>
+            </VerticalStackLayout>
         </ScrollView>
+
+        <!-- The profile's own lists -->
+        <parts:MovieGridView Grid.Row="3" BindingContext="{Binding Watchlist}"
+                             IsVisible="{Binding Source={RelativeSource AncestorType={x:Type vm:LibraryViewModel}}, Path=SelectedTab, Converter={StaticResource Equals}, ConverterParameter=1, x:DataType=vm:LibraryViewModel}" />
+        <parts:MovieGridView Grid.Row="3" BindingContext="{Binding History}"
+                             IsVisible="{Binding Source={RelativeSource AncestorType={x:Type vm:LibraryViewModel}}, Path=SelectedTab, Converter={StaticResource Equals}, ConverterParameter=2, x:DataType=vm:LibraryViewModel}" />
+        <parts:CollectionsView Grid.Row="3" BindingContext="{Binding Collections}"
+                               IsVisible="{Binding Source={RelativeSource AncestorType={x:Type vm:LibraryViewModel}}, Path=SelectedTab, Converter={StaticResource Equals}, ConverterParameter=3, x:DataType=vm:LibraryViewModel}" />
+        <parts:PlaylistsView Grid.Row="3" BindingContext="{Binding Playlists}"
+                             IsVisible="{Binding Source={RelativeSource AncestorType={x:Type vm:LibraryViewModel}}, Path=SelectedTab, Converter={StaticResource Equals}, ConverterParameter=4, x:DataType=vm:LibraryViewModel}" />
     </Grid>
 </views:TabView>

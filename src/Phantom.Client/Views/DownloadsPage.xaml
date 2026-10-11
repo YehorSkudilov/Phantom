@@ -3,13 +3,18 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
              xmlns:controls="clr-namespace:Phantom.Controls"
              xmlns:views="clr-namespace:Phantom.Views"
+             xmlns:parts="clr-namespace:Phantom.Views.Parts"
              xmlns:vm="clr-namespace:Phantom.ViewModels"
              xmlns:svc="clr-namespace:Phantom.Services"
              x:Class="Phantom.Views.DownloadsPage"
              x:DataType="vm:DownloadsViewModel">
     <Grid RowDefinitions="Auto,Auto,*">
         <Label Text="Downloads" Style="{StaticResource H1}" Margin="16,18,16,4" />
-        <Border Grid.Row="1" Style="{StaticResource Card}" Margin="16,8">
+        <controls:TabStrip Grid.Row="1" Tabs="{Binding Tabs}" SelectedIndex="{Binding SelectedTab}" Margin="0,4,0,0" />
+
+        <!-- On this device -->
+        <Grid Grid.Row="2" RowDefinitions="Auto,*" IsVisible="{Binding SelectedTab, Converter={StaticResource Equals}, ConverterParameter=0}">
+        <Border Style="{StaticResource Card}" Margin="16,8">
             <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto">
                 <Label Text="On this device" Style="{StaticResource H2}" />
                 <Label Grid.Row="1" Text="{Binding StorageText}" Style="{StaticResource Muted}" />
@@ -21,14 +26,14 @@
         </Border>
 
         <!-- Empty state outside the list: on Windows a CollectionView with a footer never shows its EmptyView. -->
-        <VerticalStackLayout Grid.Row="2" Spacing="8" Margin="32,48" HorizontalOptions="Center"
+        <VerticalStackLayout Grid.Row="1" Spacing="8" Margin="32,48" HorizontalOptions="Center"
                              IsVisible="{Binding Items.Count, Converter={StaticResource HasValue}, ConverterParameter=invert}">
             <Image Source="logo_mark.png" HeightRequest="56" Opacity="0.6" />
             <Label Text="No downloads yet" Style="{StaticResource H2}" HorizontalOptions="Center" />
             <Label Text="Open a movie and tap Download to watch it without a connection." Style="{StaticResource Muted}" HorizontalTextAlignment="Center" />
         </VerticalStackLayout>
 
-        <CollectionView Grid.Row="2" ItemsSource="{Binding Items}" SelectionMode="None">
+        <CollectionView Grid.Row="1" ItemsSource="{Binding Items}" SelectionMode="None">
             <CollectionView.Footer>
                 <BoxView HeightRequest="{x:Static views:TabView.NavBarInset}" Color="Transparent" />
             </CollectionView.Footer>
@@ -79,5 +84,10 @@
                 </DataTemplate>
             </CollectionView.ItemTemplate>
         </CollectionView>
+        </Grid>
+
+        <!-- On the server -->
+        <parts:ServerDownloadsView Grid.Row="2" BindingContext="{Binding Server}"
+                                   IsVisible="{Binding Source={RelativeSource AncestorType={x:Type vm:DownloadsViewModel}}, Path=SelectedTab, Converter={StaticResource Equals}, ConverterParameter=1, x:DataType=vm:DownloadsViewModel}" />
     </Grid>
 </views:TabView>

@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:controls="clr-namespace:Phantom.Controls"
+             xmlns:vm="clr-namespace:Phantom.ViewModels"
+             x:Class="Phantom.Views.AccountPage"
+             x:DataType="vm:AccountViewModel"
+             Title="Account">
+    <ScrollView>
+        <VerticalStackLayout Padding="16" Spacing="14" MaximumWidthRequest="640">
+            <Label Text="{Binding ErrorMessage}" TextColor="{StaticResource Danger}" IsVisible="{Binding ErrorMessage, Converter={StaticResource HasValue}}" />
+
+            <Border Style="{StaticResource Card}">
+                <VerticalStackLayout Spacing="10">
+                    <Label Text="Sign-in details" Style="{StaticResource H2}" />
+                    <Label Text="Your username is what you sign in with, and the name of your default profile." Style="{StaticResource Muted}" />
+                    <Label Text="Username" Style="{StaticResource Muted}" />
+                    <Entry Text="{Binding Username}" />
+                    <Label Text="New password (leave empty to keep it)" Style="{StaticResource Muted}" />
+                    <Entry Text="{Binding NewPassword}" IsPassword="True" />
+                    <Entry Text="{Binding ConfirmPassword}" IsPassword="True" Placeholder="Repeat the new password" />
+                    <Label Text="Current password, to confirm" Style="{StaticResource Muted}" />
+                    <Entry Text="{Binding CurrentPassword}" IsPassword="True" ReturnCommand="{Binding SaveCommand}" />
+                    <Button Text="Save" Command="{Binding SaveCommand}" IsEnabled="{Binding IsNotBusy}" />
+                </VerticalStackLayout>
+            </Border>
+
+            <Border Style="{StaticResource Card}" Padding="0">
+                <VerticalStackLayout>
+                    <controls:MenuRow Glyph="group" Text="Profiles" Command="{Binding ProfilesCommand}" />
+                </VerticalStackLayout>
+            </Border>
+            <Label Text="Every account has at least one profile: the default one, named after the account. Add more for other people in your household."
+                   Style="{StaticResource Muted}" FontSize="12" Margin="4,0" />
+        </VerticalStackLayout>
+    </ScrollView>
+</ContentPage>

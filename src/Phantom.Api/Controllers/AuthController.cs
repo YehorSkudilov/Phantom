@@ -44,6 +44,40 @@ public class AuthController(PhantomDbContext db, TokenService tokens, PasswordSe
         return tokens.Issue(user);
     }
 
+    /// <summary>
+    /// Renames the account and/or changes its password. Works from any of its profiles; the account's own (default)
+    /// profile carries its username, so that is renamed with it.
+    /// </summary>
+    [Authorize]
+    [HttpPut("account")]
+    public async Task<ActionResult<UserDto>> UpdateAccount(UpdateAccountRequest req, CancellationToken ct)
+    {
+        var account = await db.Users.FindAsync([User.UserId()], ct);
+        if (account?.ParentUserId is { } parent) account = await db.Users.FindAsync([parent], ct);
+        if (account is null) return Unauthorized();
+        if (!passwords.Verify(account, account.PasswordHash, req.CurrentPassword ?? "")) return BadRequest("Your current password isn't right.");
+
+        if (req.Username is { } wanted && wanted.Trim() != account.Username)
+        {
+            var name = wanted.Trim();
+            if (name.Length == 0) return BadRequest("Username can't be empty.");
+            if (await db.Users.AnyAsync(u => u.Id != account.Id && u.ParentUserId == null && u.Username == name, ct))
+                return Conflict("That username is taken.");
+            if (await db.Users.AnyAsync(u => u.ParentUserId == account.Id && u.Username == name, ct))
+                return Conflict("One of your profiles already has that name.");
+            account.Username = name;
+        }
+
+        if (!string.IsNullOrEmpty(req.NewPassword))
+        {
+            if (req.NewPassword.Length < 6) return BadRequest("The new password must be at least 6 characters.");
+            account.PasswordHash = passwords.Hash(account, req.NewPassword);
+        }
+
+        await db.SaveChangesAsync(ct);
+        return TokenService.ToDto(account);
+    }
+
     [Authorize]
     [HttpGet("me")]
     public async Task<ActionResult<UserDto>> Me(CancellationToken ct)

@@ -76,6 +76,7 @@ public class PhantomApi(HttpClient http, SettingsService settings)
     public Task<AuthResponse> LoginAsync(string user, string password) => SendAsync<AuthResponse>(HttpMethod.Post, "/api/auth/login", new LoginRequest(user, password));
     public Task<AuthResponse> RegisterAsync(string user, string password) => SendAsync<AuthResponse>(HttpMethod.Post, "/api/auth/register", new RegisterRequest(user, password));
     public Task<UserDto> MeAsync() => GetAsync<UserDto>("/api/auth/me");
+    public Task<UserDto> UpdateAccountAsync(UpdateAccountRequest req) => SendAsync<UserDto>(HttpMethod.Put, "/api/auth/account", req);
 
     // Pairing: a TV shows a code, a signed-in device approves it (see PairingController on the server).
     public Task<PairingStartResponse> StartPairingAsync(string deviceName, CancellationToken ct = default) =>
