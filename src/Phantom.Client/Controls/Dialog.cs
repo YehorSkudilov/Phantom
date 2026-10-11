@@ -208,9 +208,9 @@ public static class Dialog
         {
             if (_closing) return;
             _closing = true;
-            // From here on it takes no taps, so even a pop-up that fails to go away can't block the page under it.
-            InputTransparent = true;
-            if (Content is { } content) content.InputTransparent = true;
+            // (Not made input-transparent meanwhile: on Android that wraps the page's view in a container, which a modal's
+            // fragment rejects - "Views added to a FragmentContainerView must be associated with a Fragment" - and the
+            // app crashed on closing every pop-up. A second tap is ignored by _closing instead.)
             try
             {
                 // The fade, but not waited on for ever (an animation that can't run never finishes).

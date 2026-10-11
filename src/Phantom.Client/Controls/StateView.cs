@@ -98,7 +98,6 @@ public class StateView : ContentView
         _built = built;
 
         IsVisible = mode != Mode.Hidden;
-        InputTransparent = mode is Mode.Hidden or Mode.Loading;
         this.AbortAnimation(nameof(StateView));
         Content = mode switch
         {
