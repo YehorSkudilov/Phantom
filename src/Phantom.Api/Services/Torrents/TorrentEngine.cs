@@ -33,6 +33,8 @@ public sealed class TorrentEngine : IHostedService, IAsyncDisposable
     {
         _options = options.Value;
         _http = httpFactory.CreateClient(nameof(TorrentEngine));
+        // Torrent sites and caches turn away requests with no browser-like user agent.
+        _http.DefaultRequestHeaders.UserAgent.ParseAdd("Mozilla/5.0 (Windows NT 10.0; Win64; x64) Phantom");
         _log = log;
     }
 
@@ -129,15 +131,44 @@ public sealed class TorrentEngine : IHostedService, IAsyncDisposable
         var savePath = Path.Combine(keep ? _options.MediaDirectory : _options.CacheDirectory, release.InfoHash);
         var settings = new TorrentSettingsBuilder { CreateContainingDirectory = false }.ToSettings();
 
-        if (!string.IsNullOrEmpty(release.TorrentUrl) && !release.TorrentUrl.StartsWith("magnet:"))
+        // A .torrent file starts straight away. A magnet link first has to fetch the torrent's metadata from peers,
+        // which hangs whenever the trackers are slow (and MonoTorrent's DHT rarely finds any), so it's the last resort:
+        // the source's own .torrent link first, then public torrent caches, which have most popular torrents by hash.
+        var urls = new List<string>();
+        if (!string.IsNullOrEmpty(release.TorrentUrl) && !release.TorrentUrl.StartsWith("magnet:")) urls.Add(release.TorrentUrl);
+        urls.AddRange(TorrentCaches.Select(c => string.Format(c, release.InfoHash.ToUpperInvariant())));
+        foreach (var url in urls)
         {
-            var bytes = await _http.GetByteArrayAsync(release.TorrentUrl, ct);
-            var torrent = await Torrent.LoadAsync(bytes);
-            return await Engine.AddStreamingAsync(torrent, savePath, settings);
+            if (await DownloadTorrentAsync(url, release.InfoHash, ct) is { } torrent)
+                return await Engine.AddStreamingAsync(torrent, savePath, settings);
         }
 
-        var magnetText = release.MagnetUri ?? release.TorrentUrl ?? $"magnet:?xt=urn:btih:{release.InfoHash}";
+        _log.LogInformation("No .torrent file for {Release}; fetching its metadata from peers", release.Name);
+        var magnetText = release.MagnetUri ?? (release.TorrentUrl?.StartsWith("magnet:") == true ? release.TorrentUrl : null)
+                         ?? Magnets.Build(release.InfoHash, release.Name);
         return await Engine.AddStreamingAsync(MagnetLink.Parse(magnetText), savePath, settings);
+    }
+
+    /// <summary>Public caches serving .torrent files by info hash ({0}, upper case).</summary>
+    private static readonly string[] TorrentCaches = ["https://itorrents.net/torrent/{0}.torrent", "https://itorrents.org/torrent/{0}.torrent"];
+
+    /// <summary>Downloads a .torrent file, or null if it can't be had or isn't the torrent we want.</summary>
+    private async Task<Torrent?> DownloadTorrentAsync(string url, string infoHash, CancellationToken ct)
+    {
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        timeout.CancelAfter(TimeSpan.FromSeconds(15));
+        try
+        {
+            var bytes = await _http.GetByteArrayAsync(url, timeout.Token);
+            var torrent = await Torrent.LoadAsync(bytes);
+            if (torrent.InfoHashes.V1OrV2.ToHex().Equals(infoHash, StringComparison.OrdinalIgnoreCase)) return torrent;
+            _log.LogWarning("{Url} returned a different torrent than {InfoHash}", url, infoHash);
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TorrentException or OperationCanceledException && !ct.IsCancellationRequested)
+        {
+            _log.LogDebug(ex, "No .torrent from {Url}", url);
+        }
+        return null;
     }
 
     /// <summary>Only download the main video and subtitles; skip samples, artwork, extras.</summary>

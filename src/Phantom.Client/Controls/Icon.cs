@@ -17,15 +17,16 @@ public class IconExtension : IMarkupExtension<ImageSource>
     /// <summary>Outlined instead of filled.</summary>
     public bool Outlined { get; set; }
 
-    /// <summary>The glyph's drawn size. Images scale it to their own size, so this only needs to be large enough to
-    /// stay sharp - on Windows a glyph left small is drawn as a small bitmap and scaled up, blurry.</summary>
-    public double Size { get; set; } = 48;
+    /// <summary>The glyph's drawn size. 24 fills an IconButton (44 less its padding). An ImageButton or Button on
+    /// Windows draws the glyph at this size rather than fitting it, so match it to the space: 20 for a Button's
+    /// icon beside its text, larger for a larger ImageButton.</summary>
+    public double Size { get; set; } = 24;
 
     public ImageSource ProvideValue(IServiceProvider serviceProvider) => Create(Glyph, Color, Outlined, Size);
 
     object IMarkupExtension.ProvideValue(IServiceProvider serviceProvider) => ProvideValue(serviceProvider);
 
-    public static FontImageSource Create(string glyph, Color? color = null, bool outlined = false, double size = 48) => new()
+    public static FontImageSource Create(string glyph, Color? color = null, bool outlined = false, double size = 24) => new()
     {
         Glyph = glyph,
         FontFamily = outlined ? "OutlinedIcons" : "RegularIcons",

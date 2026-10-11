@@ -27,8 +27,8 @@ public partial class PlayerPage : ContentPage
         Media.MediaFailed += (_, e) => Dispatcher.Dispatch(() => _vm.ErrorMessage = $"Playback failed: {e.ErrorMessage}");
 
         // Material only has numbered skip icons for 5, 10 and 30 seconds; other lengths get the plain arrow.
-        BackButton.Source = IconExtension.Create(_vm.SkipBack is 5 or 10 or 30 ? $"replay_{_vm.SkipBack}" : "fast_rewind", Colors.White);
-        ForwardButton.Source = IconExtension.Create(_vm.SkipForward is 5 or 10 or 30 ? $"forward_{_vm.SkipForward}" : "fast_forward", Colors.White);
+        BackButton.Source = IconExtension.Create(_vm.SkipBack is 5 or 10 or 30 ? $"replay_{_vm.SkipBack}" : "fast_rewind", Colors.White, size: 36);
+        ForwardButton.Source = IconExtension.Create(_vm.SkipForward is 5 or 10 or 30 ? $"forward_{_vm.SkipForward}" : "fast_forward", Colors.White, size: 36);
         SemanticProperties.SetDescription(BackButton, $"Back {_vm.SkipBack} seconds");
         SemanticProperties.SetDescription(ForwardButton, $"Forward {_vm.SkipForward} seconds");
         ToolTipProperties.SetText(BackButton, $"Back {_vm.SkipBack}s");
@@ -68,7 +68,7 @@ public partial class PlayerPage : ContentPage
     private void OnStateChanged(MediaElementState state)
     {
         Buffering.IsVisible = state is MediaElementState.Buffering or MediaElementState.Opening;
-        PlayPause.Source = IconExtension.Create(state == MediaElementState.Playing ? "pause" : "play_arrow", Colors.White);
+        PlayPause.Source = IconExtension.Create(state == MediaElementState.Playing ? "pause" : "play_arrow", Colors.White, size: 40);
         if (state == MediaElementState.Paused) _ = Report(PlayerState.Paused);
     }
 

@@ -21,6 +21,8 @@ public class LibraryImporter(PhantomDbContext db, IMetadataProvider metadata, IL
             {
                 existing.Seeders = sr.Seeders;
                 existing.Leechers = sr.Leechers;
+                existing.TorrentUrl ??= sr.TorrentUrl;
+                existing.MagnetUri ??= sr.MagnetUri;
                 continue;
             }
 

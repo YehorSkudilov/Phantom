@@ -46,7 +46,7 @@
             <HorizontalStackLayout Grid.Row="1" HorizontalOptions="Center" VerticalOptions="Center" Spacing="36">
                 <ImageButton x:Name="BackButton" Style="{StaticResource IconButton}" WidthRequest="60" HeightRequest="60" CornerRadius="30" Padding="12"
                              VerticalOptions="Center" Clicked="OnSkipBack" />
-                <ImageButton x:Name="PlayPause" Source="{controls:Icon pause, Color=White}" BackgroundColor="{StaticResource Primary}"
+                <ImageButton x:Name="PlayPause" Source="{controls:Icon pause, Color=White, Size=40}" BackgroundColor="{StaticResource Primary}"
                              WidthRequest="72" HeightRequest="72" CornerRadius="36" Padding="16" Clicked="OnPlayPause"
                              SemanticProperties.Description="Play or pause" />
                 <ImageButton x:Name="ForwardButton" Style="{StaticResource IconButton}" WidthRequest="60" HeightRequest="60" CornerRadius="30" Padding="12"

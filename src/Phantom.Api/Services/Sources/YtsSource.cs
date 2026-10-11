@@ -80,6 +80,7 @@ public class YtsSource(HttpClient http, ILogger<YtsSource> log) : IMovieSource
                     ReleaseName = name,
                     InfoHash = hash.ToLowerInvariant(),
                     MagnetUri = Magnets.Build(hash, name),
+                    TorrentUrl = Str(t, "url"),
                     Quality = quality,
                     Codec = codec,
                     SizeBytes = t.TryGetProperty("size_bytes", out var s) && s.TryGetInt64(out var sv) ? sv : 0,
