@@ -55,3 +55,6 @@ CodeCoverage/
 *.VisualState.xml
 TestResult.xml
 nunit-*.xml
+
+# Phantom runtime data (database, torrent cache, downloads, signing key)
+src/Phantom.Api/data/
