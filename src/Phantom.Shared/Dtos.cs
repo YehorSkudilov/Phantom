@@ -386,4 +386,32 @@ public record ServerSettingsDto(
     bool AutoDownloadNewReleases,
     string? PreferredQuality,
     int MinSeeders,
-    int KeepServerDownloadsDays = 7);
+    int KeepServerDownloadsDays = 7,
+    int MaxStreamCacheGb = 0);
+
+// ---------- Storage ----------
+
+/// <summary>What's taking space on the server's disk, for Manage server → Storage.</summary>
+public record StorageDto(
+    long DiskFreeBytes,
+    long DiskTotalBytes,
+    long StreamCacheBytes,
+    long SavedBytes,
+    long PreviewBytes,
+    long DatabaseBytes,
+    int MaxStreamCacheGb,
+    int MinFreeDiskGb,
+    IReadOnlyList<StoredTorrentDto> Items);
+
+/// <summary>
+/// One torrent's files on the server: a stream cache (cleared when idle) or a copy saved on the server
+/// (<see cref="DownloadId"/> is its download, removed from Downloads).
+/// </summary>
+public record StoredTorrentDto(
+    string InfoHash,
+    string Title,
+    bool SavedOnServer,
+    long SizeBytes,
+    DateTime? LastUsed,
+    bool InUse,
+    int? DownloadId);

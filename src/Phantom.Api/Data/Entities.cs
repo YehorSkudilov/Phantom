@@ -269,4 +269,7 @@ public class ServerSettings
 
     /// <summary>Movies saved on the server are deleted this many days after they finish; 0 keeps them for good.</summary>
     public int KeepServerDownloadsDays { get; set; } = 7;
+
+    /// <summary>The stream cache is kept under this many GB (least recently watched cleared first); 0 for no limit.</summary>
+    public int MaxStreamCacheGb { get; set; }
 }

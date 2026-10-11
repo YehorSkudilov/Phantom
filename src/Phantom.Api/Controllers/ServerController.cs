@@ -66,14 +66,15 @@ public class ServerController(PhantomDbContext db, TorrentEngine engine, Transco
     {
         var s = await db.Settings.AsNoTracking().FirstAsync(ct);
         return new ServerSettingsDto(s.ServerName, s.MaxActiveDownloads, s.MaxDownloadKbps, s.MaxUploadKbps,
-            s.SeedAfterDownload, s.StreamCacheHours, s.AutoDownloadNewReleases, s.PreferredQuality, s.MinSeeders, s.KeepServerDownloadsDays);
+            s.SeedAfterDownload, s.StreamCacheHours, s.AutoDownloadNewReleases, s.PreferredQuality, s.MinSeeders, s.KeepServerDownloadsDays,
+            s.MaxStreamCacheGb);
     }
 
     [Authorize(Roles = "Admin")]
     [HttpPut("settings")]
     public async Task<IActionResult> UpdateSettings(ServerSettingsDto dto, CancellationToken ct)
     {
-        if (dto.MaxActiveDownloads < 1 || dto.StreamCacheHours < 1 || dto.MinSeeders < 0 || dto.KeepServerDownloadsDays < 0)
+        if (dto.MaxActiveDownloads < 1 || dto.StreamCacheHours < 1 || dto.MinSeeders < 0 || dto.KeepServerDownloadsDays < 0 || dto.MaxStreamCacheGb < 0)
             return BadRequest("Invalid settings.");
         var s = await db.Settings.FirstAsync(ct);
         s.ServerName = dto.ServerName;
@@ -86,6 +87,7 @@ public class ServerController(PhantomDbContext db, TorrentEngine engine, Transco
         s.PreferredQuality = dto.PreferredQuality;
         s.MinSeeders = dto.MinSeeders;
         s.KeepServerDownloadsDays = dto.KeepServerDownloadsDays;
+        s.MaxStreamCacheGb = dto.MaxStreamCacheGb;
         await db.SaveChangesAsync(ct);
         return NoContent();
     }
