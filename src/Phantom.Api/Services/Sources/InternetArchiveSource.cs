@@ -27,7 +27,7 @@ public partial class InternetArchiveSource(HttpClient http, ILogger<InternetArch
                   "&fl[]=identifier&fl[]=title&fl[]=year&fl[]=description&fl[]=subject&fl[]=creator&fl[]=runtime" +
                   $"&sort[]=downloads+desc&rows={rows}&page=1&output=json";
 
-        using var doc = JsonDocument.Parse(await http.GetStringAsync(url, ct));
+        using var doc = JsonDocument.Parse(await SourceRequests.RetryAsync(token => http.GetStringAsync(url, token), log, "Internet Archive search", ct));
         var docs = doc.RootElement.GetProperty("response").GetProperty("docs");
 
         var results = new List<SourceRelease>();

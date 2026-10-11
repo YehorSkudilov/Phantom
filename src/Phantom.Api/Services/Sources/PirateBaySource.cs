@@ -37,6 +37,7 @@ public class PirateBaySource(HttpClient http, IOptions<PhantomOptions> options, 
             .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 
         var results = new List<SourceRelease>();
+        Exception? failure = null;
         foreach (var cat in cats)
         {
             // apibay has no full listing: the all-time top 100 and the last 48 hours' top 100 per category, or a search.
@@ -47,11 +48,12 @@ public class PirateBaySource(HttpClient http, IOptions<PhantomOptions> options, 
             {
                 try
                 {
-                    results.AddRange(Parse(await http.GetStringAsync(url, ct)));
+                    results.AddRange(Parse(await SourceRequests.RetryAsync(token => http.GetStringAsync(url, token), log, $"Pirate Bay list {url}", ct)));
                 }
-                catch (HttpRequestException ex)
+                catch (Exception ex) when (SourceRequests.IsTransient(ex, ct))
                 {
-                    log.LogWarning(ex, "Pirate Bay list {Url} failed", url);
+                    log.LogWarning("Pirate Bay list {Url} failed: {Error}", url, ex.Message);
+                    failure = ex;
                 }
             }
         }
@@ -64,19 +66,25 @@ public class PirateBaySource(HttpClient http, IOptions<PhantomOptions> options, 
             for (var i = 0; i < SearchesPerSync && step < terms.Count; i++, step++)
             {
                 await Task.Delay(300, ct); // be polite
+                var term = terms[step];
                 try
                 {
-                    results.AddRange(Parse(await http.GetStringAsync($"{baseUrl}/q.php?q={Uri.EscapeDataString(terms[step])}", ct), movieCategories));
+                    results.AddRange(Parse(await SourceRequests.RetryAsync(
+                        token => http.GetStringAsync($"{baseUrl}/q.php?q={Uri.EscapeDataString(term)}", token), log, $"Pirate Bay search {term}", ct), movieCategories));
                 }
-                catch (HttpRequestException ex)
+                catch (Exception ex) when (SourceRequests.IsTransient(ex, ct))
                 {
-                    log.LogWarning(ex, "Pirate Bay search {Term} failed", terms[step]);
+                    // Stopped here, so this term is searched again next time rather than skipped.
+                    log.LogWarning("Pirate Bay search {Term} failed: {Error}", term, ex.Message);
+                    failure = ex;
+                    break;
                 }
             }
             if (step >= terms.Count) crawl.Finish();
             else crawl.Save(step, 0);
         }
 
+        if (results.Count == 0 && failure is not null) throw failure;
         // The same torrent can sit in several lists.
         return results.DistinctBy(r => r.InfoHash).ToList();
     }

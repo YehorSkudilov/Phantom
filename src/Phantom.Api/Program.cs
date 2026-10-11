@@ -49,7 +49,7 @@ builder.Services.AddHostedService(sp => sp.GetRequiredService<SourceSyncService>
 builder.Services.AddHostedService<MetadataRefreshService>();
 
 // Sources & metadata
-builder.Services.AddHttpClient<IMovieSource, InternetArchiveSource>(c => c.Timeout = TimeSpan.FromSeconds(30));
+builder.Services.AddHttpClient<IMovieSource, InternetArchiveSource>(c => c.Timeout = TimeSpan.FromSeconds(60));
 builder.Services.AddHttpClient<IMovieSource, YtsSource>(SourceClient);
 builder.Services.AddHttpClient<IMovieSource, PirateBaySource>(SourceClient);
 builder.Services.AddHttpClient<IMovieSource, KnabenSource>(SourceClient);
@@ -118,7 +118,7 @@ app.Run();
 // Public torrent sites turn away requests with no browser-like user agent.
 static void SourceClient(HttpClient c)
 {
-    c.Timeout = TimeSpan.FromSeconds(30);
+    c.Timeout = TimeSpan.FromSeconds(60);
     c.DefaultRequestHeaders.UserAgent.ParseAdd("Mozilla/5.0 (Windows NT 10.0; Win64; x64) Phantom");
 }
 
