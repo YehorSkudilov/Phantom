@@ -108,7 +108,15 @@ public class PhantomApi(HttpClient http, SettingsService settings)
     {
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
         cts.CancelAfter(TimeSpan.FromSeconds(8));
-        return (await http.GetFromJsonAsync<ServerInfoDto>($"{serverUrl.TrimEnd('/')}/api/server/info", Json, cts.Token))!;
+        try
+        {
+            return (await http.GetFromJsonAsync<ServerInfoDto>($"{serverUrl.TrimEnd('/')}/api/server/info", Json, cts.Token))!;
+        }
+        catch (OperationCanceledException ex) when (!ct.IsCancellationRequested)
+        {
+            // No answer in time: the server can't be reached (said as such), not a cancellation.
+            throw new HttpRequestException("The server didn't answer.", ex);
+        }
     }
 
     public Task<ServerInfoDto> ServerInfoAsync(CancellationToken ct = default) => GetAsync<ServerInfoDto>("/api/server/info", ct);

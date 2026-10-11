@@ -91,9 +91,17 @@ public abstract partial class BaseViewModel : ObservableObject
             if (ShowsOfflineState) { if (!wasOffline) await ToastAsync("Can't reach the Phantom server"); }
             else ErrorMessage = "Can't reach the Phantom server. Check your connection.";
         }
-        catch (TaskCanceledException)
+        catch (OperationCanceledException ex) when (ex.InnerException is TimeoutException)
         {
-            ErrorMessage = "The server took too long to respond.";
+            // A request that really ran out of time: the server is down or unreachable, said as being offline is.
+            var wasOffline = IsOffline;
+            IsOffline = true;
+            if (ShowsOfflineState) { if (!wasOffline) await ToastAsync("The Phantom server isn't answering"); }
+            else ErrorMessage = "The Phantom server isn't answering. Check your connection and try again.";
+        }
+        catch (OperationCanceledException)
+        {
+            // Cancelled on purpose (the filters changed, the page closed, a newer load replaced this one): not an error.
         }
         catch (Exception ex)
         {
