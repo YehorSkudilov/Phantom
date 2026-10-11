@@ -6,7 +6,7 @@
              xmlns:dto="clr-namespace:Phantom.Shared;assembly=Phantom.Shared"
              x:Class="Phantom.Views.HomePage"
              x:DataType="vm:HomeViewModel">
-    <RefreshView IsRefreshing="{Binding IsBusy}" Command="{Binding RefreshCommand}">
+    <RefreshView IsRefreshing="{Binding IsRefreshing}" Command="{Binding RefreshCommand}">
         <ScrollView>
             <VerticalStackLayout Padding="0,0,0,108" Spacing="8">
                 <Grid ColumnDefinitions="Auto,*" Padding="16,18,16,4" ColumnSpacing="10">

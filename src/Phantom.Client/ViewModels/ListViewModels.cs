@@ -205,7 +205,11 @@ public partial class DownloadsViewModel(DownloadManager manager, SettingsService
     partial void OnWifiOnlyChanged(bool value) => settings.DownloadOnWifiOnly = value;
 
     [RelayCommand]
-    public void Refresh() => StorageText = $"{Items.Count(i => i.IsComplete)} of {Items.Count} ready · {BytesConverter.Format(manager.UsedBytes)} used";
+    public void Refresh()
+    {
+        StorageText = $"{Items.Count(i => i.IsComplete)} of {Items.Count} ready · {BytesConverter.Format(manager.UsedBytes)} used";
+        IsRefreshing = false;
+    }
 
     [RelayCommand]
     private Task Play(OfflineDownload item) => item.IsComplete

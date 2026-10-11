@@ -128,7 +128,6 @@ public partial class LibraryViewModel(PhantomApi api, SettingsService settings, 
     [ObservableProperty] private bool showFilters;
     [ObservableProperty] private bool isGrid = settings.LibraryView == "grid";
     [ObservableProperty] private string summary = "";
-    [ObservableProperty] private bool isRefreshing;
 
     private bool _filtersLoaded;
     private bool _suspendReload;

@@ -12,7 +12,8 @@
         <Label Text="Movies the server keeps on its own disk. They start instantly and are never cleaned up."
                Style="{StaticResource Muted}" Margin="16,8,16,0" />
         <Label Grid.Row="1" Text="{Binding Totals}" Margin="16,8" FontSize="13" TextColor="{StaticResource Accent}" />
-        <CollectionView Grid.Row="2" ItemsSource="{Binding Items}" SelectionMode="None">
+        <RefreshView Grid.Row="2" IsRefreshing="{Binding IsRefreshing}" Command="{Binding RefreshCommand}">
+        <CollectionView ItemsSource="{Binding Items}" SelectionMode="None">
             <CollectionView.Footer>
                 <BoxView HeightRequest="{x:Static views:TabView.NavBarInset}" Color="Transparent" />
             </CollectionView.Footer>
@@ -57,6 +58,7 @@
                 </DataTemplate>
             </CollectionView.ItemTemplate>
         </CollectionView>
+        </RefreshView>
         <Label Grid.Row="2" Text="Nothing saved yet. Open a movie and tap Save on server to keep a copy there." Style="{StaticResource Muted}"
                HorizontalTextAlignment="Center" Margin="32,48" VerticalOptions="Start" IsVisible="{Binding IsEmpty}" />
     </Grid>

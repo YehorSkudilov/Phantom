@@ -75,6 +75,9 @@ public static class MauiProgram
             if (view is CollectionView { ItemsLayout: LinearItemsLayout { Orientation: ItemsLayoutOrientation.Horizontal } })
                 Phantom.WinUI.ShiftWheelScrolling.Attach(handler.PlatformView);
         });
+        // Shift + wheel refreshes, as pulling down does on a phone (see ShiftWheelRefresh).
+        Microsoft.Maui.Handlers.RefreshViewHandler.Mapper.AppendToMapping("ShiftWheelRefresh", (handler, view) =>
+            Phantom.WinUI.ShiftWheelRefresh.Attach(handler.PlatformView, view));
 #endif
 
 #if DEBUG

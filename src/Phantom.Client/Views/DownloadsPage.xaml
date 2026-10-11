@@ -33,7 +33,8 @@
             <Label Text="Open a movie and tap Download to watch it without a connection." Style="{StaticResource Muted}" HorizontalTextAlignment="Center" />
         </VerticalStackLayout>
 
-        <CollectionView Grid.Row="1" ItemsSource="{Binding Items}" SelectionMode="None">
+        <RefreshView Grid.Row="1" IsRefreshing="{Binding IsRefreshing}" Command="{Binding RefreshCommand}">
+        <CollectionView ItemsSource="{Binding Items}" SelectionMode="None">
             <CollectionView.Footer>
                 <BoxView HeightRequest="{x:Static views:TabView.NavBarInset}" Color="Transparent" />
             </CollectionView.Footer>
@@ -84,6 +85,7 @@
                 </DataTemplate>
             </CollectionView.ItemTemplate>
         </CollectionView>
+        </RefreshView>
         </Grid>
 
         <!-- On the server -->

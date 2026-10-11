@@ -9,7 +9,7 @@
              x:DataType="vm:MovieListViewModel">
     <Grid RowDefinitions="Auto,*">
         <Label Text="{Binding Subtitle}" Style="{StaticResource Muted}" Margin="16,8" IsVisible="{Binding Subtitle, Converter={StaticResource HasValue}}" />
-        <RefreshView Grid.Row="1" IsRefreshing="{Binding IsBusy}" Command="{Binding LoadCommand}">
+        <RefreshView Grid.Row="1" IsRefreshing="{Binding IsRefreshing}" Command="{Binding LoadCommand}">
             <CollectionView ItemsSource="{Binding Movies}" ItemTemplate="{StaticResource PosterCard}" SelectionMode="Single"
                             SelectionChanged="OnSelected" Margin="12,0">
                 <CollectionView.ItemsLayout>

@@ -19,6 +19,10 @@ public abstract partial class BaseViewModel : ObservableObject
 
     public bool IsNotBusy => !IsBusy;
 
+    /// <summary>A RefreshView's spinner (two-way bound): set by pulling, cleared when the load it started finishes.</summary>
+    [ObservableProperty]
+    private bool isRefreshing;
+
     /// <summary>Runs an operation with busy/error handling so pages never crash on network errors.</summary>
     protected async Task RunAsync(Func<Task> action, bool showBusy = true)
     {
@@ -44,6 +48,7 @@ public abstract partial class BaseViewModel : ObservableObject
         finally
         {
             if (showBusy) IsBusy = false;
+            IsRefreshing = false;
         }
     }
 

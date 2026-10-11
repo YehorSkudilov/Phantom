@@ -11,7 +11,7 @@
         <ToolbarItem Text="More" IconImageSource="{controls:Icon more_vert, Size=20}" Command="{Binding MoreCommand}" />
     </ContentPage.ToolbarItems>
 
-    <Grid>
+    <RefreshView IsRefreshing="{Binding IsRefreshing}" Command="{Binding LoadCommand}">
         <ScrollView>
             <VerticalStackLayout Padding="0,0,0,32" Spacing="16">
                 <!-- Backdrop + poster header -->
@@ -160,5 +160,5 @@
                 </VerticalStackLayout>
             </VerticalStackLayout>
         </ScrollView>
-    </Grid>
+    </RefreshView>
 </ContentPage>

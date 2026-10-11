@@ -11,7 +11,7 @@
     <Grid RowDefinitions="Auto,*">
         <Button Text="New playlist" Style="{StaticResource SecondaryButton}" Command="{Binding CreateCommand}" HorizontalOptions="Start" Margin="16,8"
                 ImageSource="{controls:Icon playlist_add, Size=20}" ContentLayout="Left,6" />
-        <RefreshView Grid.Row="1" IsRefreshing="{Binding IsBusy}" Command="{Binding LoadCommand}">
+        <RefreshView Grid.Row="1" IsRefreshing="{Binding IsRefreshing}" Command="{Binding LoadCommand}">
             <CollectionView ItemsSource="{Binding Playlists}" SelectionMode="None">
                 <CollectionView.Footer>
                     <BoxView HeightRequest="{x:Static views:TabView.NavBarInset}" Color="Transparent" />

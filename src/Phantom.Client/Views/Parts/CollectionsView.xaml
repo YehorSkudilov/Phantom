@@ -8,7 +8,7 @@
              x:Class="Phantom.Views.Parts.CollectionsView"
              x:DataType="vm:CollectionsViewModel">
     <Grid>
-        <RefreshView IsRefreshing="{Binding IsBusy}" Command="{Binding LoadCommand}">
+        <RefreshView IsRefreshing="{Binding IsRefreshing}" Command="{Binding LoadCommand}">
             <CollectionView ItemsSource="{Binding Collections}" SelectionMode="None" Margin="12,8">
                 <CollectionView.ItemsLayout>
                     <GridItemsLayout x:Name="GridLayout" Orientation="Vertical" Span="2" HorizontalItemSpacing="12" VerticalItemSpacing="12" />
