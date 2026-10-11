@@ -68,7 +68,7 @@
         <Grid Grid.Row="1">
             <RefreshView IsRefreshing="{Binding IsRefreshing}" Command="{Binding ReloadCommand}" IsVisible="{Binding IsGrid}">
                 <CollectionView x:Name="Grid" ItemsSource="{Binding Movies}" Scrolled="OnListScrolled"
-                                ItemTemplate="{StaticResource PosterCard}" SelectionMode="Single"
+                                ItemTemplate="{StaticResource PosterGridCard}" SelectionMode="Single"
                                 SelectionChanged="OnSelected"
                                 RemainingItemsThreshold="45" RemainingItemsThresholdReachedCommand="{Binding LoadMoreCommand}">
                     <CollectionView.ItemsLayout>

@@ -62,6 +62,40 @@
                 </Grid>
             </DataTemplate>
 
+            <!-- The same card in a grid: as wide as its column rather than a fixed width (which overflowed three columns
+                 on a small phone and cut the text off), and the title on up to two lines -->
+            <DataTemplate x:Key="PosterGridCard" x:DataType="dto:MovieSummaryDto">
+                <Grid RowDefinitions="Auto,Auto,Auto" Padding="0,0,0,8" RowSpacing="4">
+                    <Border StrokeShape="RoundRectangle 8" HeightRequest="165" BackgroundColor="{StaticResource Surface}">
+                        <Grid>
+                            <Image Source="{Binding PosterUrl, Converter={StaticResource Poster}}" Aspect="AspectFill" />
+                            <!-- Unwatched marker, like Plex's corner triangle -->
+                            <Border IsVisible="{Binding Watched, Converter={StaticResource Not}}"
+                                    HorizontalOptions="End" VerticalOptions="Start"
+                                    WidthRequest="10" HeightRequest="10" Margin="6"
+                                    StrokeShape="RoundRectangle 5" BackgroundColor="{StaticResource Primary}" />
+                            <Label IsVisible="{Binding Watched}" Text="✓" FontSize="13" FontAttributes="Bold"
+                                   HorizontalOptions="End" VerticalOptions="Start" Margin="0,4,6,0"
+                                   TextColor="{StaticResource Success}" />
+                            <ProgressBar Progress="{Binding ProgressPercent, Converter={StaticResource Percent}}"
+                                         IsVisible="{Binding ProgressPercent, Converter={StaticResource HasValue}}"
+                                         VerticalOptions="End" HeightRequest="4" ProgressColor="{StaticResource Primary}"
+                                         BackgroundColor="#66000000" />
+                        </Grid>
+                    </Border>
+                    <Label Grid.Row="1" Text="{Binding Title}" FontSize="13" LineBreakMode="TailTruncation" MaxLines="2" />
+                    <!-- A show's caption: the episode to carry on with, or how many seasons -->
+                    <Label Grid.Row="2" Style="{StaticResource Muted}" FontSize="12" LineBreakMode="TailTruncation" MaxLines="1">
+                        <Label.FormattedText>
+                            <FormattedString>
+                                <Span Text="{Binding Year}" />
+                                <Span Text="{Binding Caption, StringFormat='  ·  {0}'}" />
+                            </FormattedString>
+                        </Label.FormattedText>
+                    </Label>
+                </Grid>
+            </DataTemplate>
+
             <!-- Compact list row used in list mode and search -->
             <DataTemplate x:Key="MovieRow" x:DataType="dto:MovieSummaryDto">
                 <controls:MovieRowView />
