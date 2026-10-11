@@ -28,35 +28,55 @@ public class YtsSource(HttpClient http, IOptions<PhantomOptions> options, ILogge
         var pages = int.TryParse(source.Categories, out var n) && n > 0 ? Math.Min(n, 20) : 4;
 
         var results = new List<SourceRelease>();
+        Exception? failure = null;
 
         // The newest movies, every time.
-        for (var page = 1; page <= pages; page++)
+        try
         {
-            var batch = await PageAsync(baseUrl, source, page, ct);
-            results.AddRange(batch.Releases);
-            if (batch.MovieCount < PageSize) return results;
+            for (var page = 1; page <= pages; page++)
+            {
+                var batch = await PageAsync(baseUrl, source, page, ct);
+                results.AddRange(batch.Releases);
+                if (batch.MovieCount < PageSize) return results;
+            }
+        }
+        catch (Exception ex) when (SourceRequests.IsTransient(ex, ct))
+        {
+            log.LogWarning("YTS newest movies: {Error}", ex.Message);
+            failure = ex;
         }
 
-        // Then the next stretch of the back catalogue.
+        // Then the next stretch of the back catalogue. A page that won't load ends the stretch there, to be tried again
+        // next time; what came before it is kept.
         var crawl = Crawl(source);
         if (crawl.Next() is var (step, _))
         {
             var next = Math.Max(step, pages + 1);
             var finished = false;
-            for (var i = 0; i < BackfillPages; i++, next++)
+            try
             {
-                var batch = await PageAsync(baseUrl, source, next, ct);
-                results.AddRange(batch.Releases);
-                if (batch.MovieCount < PageSize)
+                for (var i = 0; i < BackfillPages; i++, next++)
                 {
-                    finished = true;
-                    break;
+                    var batch = await PageAsync(baseUrl, source, next, ct);
+                    results.AddRange(batch.Releases);
+                    if (batch.MovieCount < PageSize)
+                    {
+                        finished = true;
+                        break;
+                    }
                 }
+            }
+            catch (Exception ex) when (SourceRequests.IsTransient(ex, ct))
+            {
+                log.LogWarning("YTS catalogue page {Page}: {Error}", next, ex.Message);
+                failure = ex;
             }
             if (finished) crawl.Finish();
             else crawl.Save(next, 0);
             log.LogDebug("YTS catalogue at page {Page}", next);
         }
+        // Nothing at all: the site's down, which the admin should see.
+        if (results.Count == 0 && failure is not null) throw failure;
         return results;
     }
 
@@ -73,7 +93,7 @@ public class YtsSource(HttpClient http, IOptions<PhantomOptions> options, ILogge
     {
         var url = $"{baseUrl}/api/v2/list_movies.json?limit={PageSize}&page={page}&sort_by=date_added&order_by=desc";
         if (!string.IsNullOrWhiteSpace(source.Query)) url += $"&query_term={Uri.EscapeDataString(source.Query)}";
-        var json = await http.GetStringAsync(url, ct);
+        var json = await SourceRequests.RetryAsync(token => http.GetStringAsync(url, token), log, $"YTS page {page}", ct);
         using (var doc = JsonDocument.Parse(json))
             if (doc.RootElement.TryGetProperty("data", out var data) && data.TryGetProperty("movie_count", out var mc) && mc.TryGetInt(out var total))
                 _totalPages = (total + PageSize - 1) / PageSize;
