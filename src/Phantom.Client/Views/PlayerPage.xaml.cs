@@ -262,7 +262,6 @@ public partial class PlayerPage : ContentPage
         if (_vm.SourceUrl is not { } url) return;
         _upNextCancelled = false;
         _started = false;
-        _previewFrames.Clear();
         UpNextCard.IsVisible = false;
         _pendingResume = _vm.ResumePosition > TimeSpan.Zero;
         SetLoading(true);
@@ -496,7 +495,7 @@ public partial class PlayerPage : ContentPage
 
     private CancellationTokenSource? _preview;
     private string? _previewUrl;
-    private readonly Dictionary<string, byte[]> _previewFrames = [];
+    private byte[]? _shownFrame;
 
     // While dragging: show where the drag would land, and (after a short pause, so a fast drag doesn't ask the server
     // for every frame on the way) a preview frame from there. Only one frame is ever being fetched: moving on cancels
@@ -513,31 +512,30 @@ public partial class PlayerPage : ContentPage
         var half = SeekPreview.WidthRequest / 2;
         SeekPreview.TranslationX = Math.Clamp(Seek.Width * e.NewValue - half, 0, Math.Max(0, Seek.Width - SeekPreview.WidthRequest));
 
+        // Straight from the previews already downloaded (all of them, once the server has made them): the exact one,
+        // or the nearest while the exact one is fetched.
+        var frame = _vm.PreviewFrame(at, out var exact);
+        if (frame is not null) ShowPreviewFrame(frame);
+        if (exact) return;
+
         if (_vm.ThumbnailUrl(at) is not { } url)
         {
-            SeekPreviewImage.IsVisible = false;
+            if (frame is null) SeekPreviewImage.IsVisible = false;
             return;
         }
-        if (url == _previewUrl) return; // same frame (they're 10 s apart), already shown or on its way
+        if (url == _previewUrl) return; // same frame (they're 10 s apart), already on its way
         _previewUrl = url;
         _preview?.Cancel();
         var cts = _preview = new CancellationTokenSource();
         try
         {
-            if (!_previewFrames.TryGetValue(url, out byte[]? jpeg))
-            {
-                await Task.Delay(150, cts.Token);
-                jpeg = await _vm.ThumbnailAsync(url, cts.Token);
-                if (jpeg is not null) _previewFrames[url] = jpeg; // a miss may be a timeout, so it's asked again next time
-            }
+            await Task.Delay(80, cts.Token);
+            var jpeg = await _vm.ThumbnailAsync(url, cts.Token);
+            if (jpeg is not null) _vm.RememberPreviewFrame(at, jpeg); // a miss may be a timeout, so it's asked again next time
             if (cts.IsCancellationRequested) return;
-            // The last frame stays up while the next one loads; only hide it when there's none to show.
-            if (jpeg is null) SeekPreviewImage.IsVisible = false;
-            else
-            {
-                SeekPreviewImage.Source = ImageSource.FromStream(() => new MemoryStream(jpeg));
-                SeekPreviewImage.IsVisible = true;
-            }
+            // The frame on show stays up while the next one loads; only hide it when there's none at all.
+            if (jpeg is not null) ShowPreviewFrame(jpeg);
+            else if (frame is null) SeekPreviewImage.IsVisible = false;
         }
         catch (OperationCanceledException)
         {
@@ -548,6 +546,14 @@ public partial class PlayerPage : ContentPage
             // A preview is a nicety: losing one must never take the player down.
             System.Diagnostics.Debug.WriteLine($"Seek preview: {ex}");
         }
+    }
+
+    private void ShowPreviewFrame(byte[] jpeg)
+    {
+        SeekPreviewImage.IsVisible = true;
+        if (ReferenceEquals(jpeg, _shownFrame)) return; // the same picture: no need to decode it again
+        _shownFrame = jpeg;
+        SeekPreviewImage.Source = ImageSource.FromStream(() => new MemoryStream(jpeg));
     }
 
     private void OnSeekCompleted(object? sender, EventArgs e)
@@ -619,6 +625,7 @@ public partial class PlayerPage : ContentPage
         _skipDelay?.Cancel();
         _preview?.Cancel();
         _vm.StopLoadingStatus();
+        _vm.StopPreviewFrames();
         SetFullscreen(false);
 #if WINDOWS
         if (_keyRoot is not null && _keyHandler is not null) _keyRoot.RemoveHandler(Microsoft.UI.Xaml.UIElement.KeyDownEvent, _keyHandler);

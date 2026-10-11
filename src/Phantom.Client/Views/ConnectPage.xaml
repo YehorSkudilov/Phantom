@@ -2,6 +2,8 @@
 <ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
              xmlns:vm="clr-namespace:Phantom.ViewModels"
+             xmlns:skeleton="clr-namespace:AppSkeleton;assembly=AppSkeleton"
+             xmlns:toolkit="http://schemas.microsoft.com/dotnet/2022/maui/toolkit"
              x:Class="Phantom.Views.ConnectPage"
              x:DataType="vm:ConnectViewModel">
     <Grid>
@@ -54,8 +56,14 @@
                             <Label Text="This server is new. The first account becomes the administrator." Style="{StaticResource Muted}" IsVisible="{Binding IsFirstRun}" />
                             <Label Text="Sign in" Style="{StaticResource H2}" IsVisible="{Binding IsFirstRun, Converter={StaticResource Not}}" />
                             <Entry Text="{Binding Username}" Placeholder="Username" SemanticProperties.Description="Username" />
-                            <Entry Text="{Binding Password}" Placeholder="Password" IsPassword="True"
-                                   ReturnCommand="{Binding SignInCommand}" SemanticProperties.Description="Password" />
+                            <!-- With the eye button to show what's been typed -->
+                            <skeleton:CPasswordEntry Text="{Binding Password}" Placeholder="Password" ReturnType="Go"
+                                                     TextColor="{StaticResource TextPrimary}" PlaceholderColor="{StaticResource TextSecondary}"
+                                                     SemanticProperties.Description="Password">
+                                <skeleton:CPasswordEntry.Behaviors>
+                                    <toolkit:EventToCommandBehavior EventName="Completed" Command="{Binding SignInCommand}" x:DataType="vm:ConnectViewModel" />
+                                </skeleton:CPasswordEntry.Behaviors>
+                            </skeleton:CPasswordEntry>
                             <Button Text="Continue" Command="{Binding SignInCommand}" IsEnabled="{Binding IsNotBusy}" />
                             <Button Text="Sign in with a code instead" Style="{StaticResource GhostButton}" Command="{Binding UseCodeCommand}"
                                     IsVisible="{Binding IsTv}" />

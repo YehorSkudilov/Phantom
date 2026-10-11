@@ -227,7 +227,9 @@ public record StreamInfoDto(
     IReadOnlyList<SubtitleTrackDto> Subtitles,
     long ResumePositionMs,
     string? ThumbnailUrl = null,
-    int? EpisodeId = null);
+    int? EpisodeId = null,
+    // All the seek previews made so far in one download (see StreamControllerBase.Thumbnails).
+    string? ThumbnailPackUrl = null);
 
 /// <summary>
 /// What the server is doing to get a movie playing, for the player's loading screen: <see cref="Message"/> in words,

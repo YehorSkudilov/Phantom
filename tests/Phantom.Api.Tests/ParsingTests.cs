@@ -189,6 +189,37 @@ public class SubtitleConverterTests
     }
 
     [Fact]
+    public void Trickplay_takes_a_keyframe_every_step_in_one_pass()
+    {
+        var args = Transcoder.TrickplayArguments("in.mkv", 10, 320, "out/%d.jpg");
+        Assert.Equal("nokey", args[args.ToList().IndexOf("-skip_frame") + 1]);
+        Assert.Equal("fps=1/10,scale=320:-2", args[args.ToList().IndexOf("-vf") + 1]);
+        Assert.Equal("out/%d.jpg", args[^1]);
+    }
+
+    [Fact]
+    public void Trickplay_lists_the_frames_made_so_far_in_order()
+    {
+        var dir = Directory.CreateTempSubdirectory("phantom-trick-").FullName;
+        try
+        {
+            var options = Microsoft.Extensions.Options.Options.Create(new Phantom.Api.PhantomOptions { DataDirectory = dir, FfmpegPath = "/nonexistent" });
+            var service = new TrickplayService(new Transcoder(options, Microsoft.Extensions.Logging.Abstractions.NullLogger<Transcoder>.Instance),
+                options, Microsoft.Extensions.Logging.Abstractions.NullLogger<TrickplayService>.Instance);
+            Directory.CreateDirectory(service.Folder("7"));
+            foreach (var name in new[] { "20.jpg", "0.jpg", "10.jpg", "notes.txt" }) File.WriteAllText(Path.Combine(service.Folder("7"), name), "x");
+
+            Assert.Equal([0, 10, 20], service.Frames("7").Select(f => f.Seconds));
+            Assert.False(service.IsComplete("7"));
+            service.Request("7", "in.mkv"); // no ffmpeg: nothing is queued, and nothing throws
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    [Fact]
     public void Transcoder_arguments_seek_and_cap_bitrate()
     {
         var args = Transcoder.BuildArguments("in.mkv", 90.5, 2000, 720);

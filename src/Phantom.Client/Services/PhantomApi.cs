@@ -224,6 +224,35 @@ public class PhantomApi(HttpClient http, SettingsService settings)
         return bytes is [0xFF, 0xD8, ..] && bytes.Length > 64 ? bytes : null;
     }
 
+    /// <summary>
+    /// Every seek preview the server has made for a video, by second (see the server's stream "thumbnails" endpoint),
+    /// and whether that's all of them.
+    /// </summary>
+    public async Task<(Dictionary<int, byte[]> Frames, bool Complete)> ThumbnailPackAsync(string url, CancellationToken ct)
+    {
+        using var res = await http.GetAsync(url, ct);
+        if (!res.IsSuccessStatusCode) return ([], false);
+        var complete = res.Headers.TryGetValues("X-Thumbnails-Complete", out var values) && values.FirstOrDefault() == "1";
+        var data = await res.Content.ReadAsByteArrayAsync(ct);
+        var frames = new Dictionary<int, byte[]>();
+        using var reader = new BinaryReader(new MemoryStream(data));
+        try
+        {
+            var count = reader.ReadInt32();
+            for (var i = 0; i < count; i++)
+            {
+                var seconds = reader.ReadInt32();
+                var jpeg = reader.ReadBytes(reader.ReadInt32());
+                if (jpeg is [0xFF, 0xD8, ..]) frames[seconds] = jpeg;
+            }
+        }
+        catch (EndOfStreamException)
+        {
+            // Cut short: keep what came.
+        }
+        return (frames, complete);
+    }
+
     // ---------- Lists ----------
 
     public Task<List<MovieSummaryDto>> WatchlistAsync() => GetAsync<List<MovieSummaryDto>>("/api/watchlist");

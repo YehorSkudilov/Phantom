@@ -137,6 +137,70 @@ public partial class PlayerViewModel(PhantomApi api, SettingsService settings, D
     public string? ThumbnailUrl(TimeSpan at) =>
         Stream?.ThumbnailUrl is { } url && !_offline ? $"{url}&t={(int)at.TotalSeconds / 10 * 10}" : null;
 
+    // Seek previews by second (on 10 s steps), downloaded together so dragging shows them at once.
+    private readonly Dictionary<int, byte[]> _previewFrames = [];
+    private CancellationTokenSource? _previewFramesLoad;
+
+    private static int PreviewStep(TimeSpan at) => (int)Math.Max(0, at.TotalSeconds) / 10 * 10;
+
+    /// <summary>
+    /// The preview for <paramref name="at"/> if it's here (<paramref name="exact"/>), else the nearest one within a
+    /// minute to show meanwhile, else null.
+    /// </summary>
+    public byte[]? PreviewFrame(TimeSpan at, out bool exact)
+    {
+        var step = PreviewStep(at);
+        exact = _previewFrames.TryGetValue(step, out var frame);
+        if (exact) return frame;
+        var nearest = -1;
+        foreach (var key in _previewFrames.Keys)
+            if (Math.Abs(key - step) <= 60 && (nearest < 0 || Math.Abs(key - step) < Math.Abs(nearest - step))) nearest = key;
+        return nearest >= 0 ? _previewFrames[nearest] : null;
+    }
+
+    public void RememberPreviewFrame(TimeSpan at, byte[] jpeg) => _previewFrames[PreviewStep(at)] = jpeg;
+
+    /// <summary>
+    /// Downloads every preview the server has for this video, and again every 30 seconds until it has made them all
+    /// (it does once the file is complete on the server).
+    /// </summary>
+    private void StartPreviewFrames()
+    {
+        StopPreviewFrames();
+        _previewFrames.Clear();
+        if (_offline || Stream?.ThumbnailPackUrl is not { } url) return;
+        var cts = _previewFramesLoad = new CancellationTokenSource();
+        _ = LoadPreviewFramesAsync(url, cts.Token);
+    }
+
+    public void StopPreviewFrames()
+    {
+        _previewFramesLoad?.Cancel();
+        _previewFramesLoad = null;
+    }
+
+    private async Task LoadPreviewFramesAsync(string url, CancellationToken ct)
+    {
+        for (var attempt = 0; attempt < 40; attempt++)
+        {
+            try
+            {
+                var (frames, complete) = await api.ThumbnailPackAsync(url, ct);
+                foreach (var (seconds, jpeg) in frames) _previewFrames[seconds] = jpeg;
+                if (complete) return;
+                await Task.Delay(TimeSpan.FromSeconds(30), ct);
+            }
+            catch (OperationCanceledException)
+            {
+                return;
+            }
+            catch (Exception ex) when (ex is HttpRequestException or IOException)
+            {
+                try { await Task.Delay(TimeSpan.FromSeconds(30), ct); } catch (OperationCanceledException) { return; }
+            }
+        }
+    }
+
     /// <summary>
     /// Fetches the preview frame. Cancelling it (the drag moved on) closes the request, which stops the server's ffmpeg
     /// so it no longer pulls that part of the torrent ahead of playback. Null when there's no frame.
@@ -229,6 +293,7 @@ public partial class PlayerViewModel(PhantomApi api, SettingsService settings, D
         }
         Stream = await api.StreamInfoAsync(MovieId, _releaseId, episodeId: EpisodeId);
         _releaseId = Stream.ReleaseId;
+        StartPreviewFrames();
         ResumePosition = _resume ? TimeSpan.FromMilliseconds(Stream.ResumePositionMs) : TimeSpan.Zero;
         StatusPosition = ResumePosition;
 

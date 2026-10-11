@@ -24,8 +24,8 @@ public class StreamController(
     LibraryService library,
     TorrentEngine engine,
     Transcoder transcoder,
-    Microsoft.Extensions.Options.IOptions<PhantomOptions> options,
-    ILogger<StreamController> log) : StreamControllerBase(db, engine, transcoder, options, log)
+    TrickplayService trickplay,
+    ILogger<StreamController> log) : StreamControllerBase(db, engine, transcoder, trickplay, log)
 {
     protected override string RouteBase(int id) => $"/api/stream/{id}";
 
@@ -49,8 +49,8 @@ public class EpisodeStreamController(
     ShowLibraryService shows,
     TorrentEngine engine,
     Transcoder transcoder,
-    Microsoft.Extensions.Options.IOptions<PhantomOptions> options,
-    ILogger<EpisodeStreamController> log) : StreamControllerBase(db, engine, transcoder, options, log)
+    TrickplayService trickplay,
+    ILogger<EpisodeStreamController> log) : StreamControllerBase(db, engine, transcoder, trickplay, log)
 {
     protected override string RouteBase(int id) => $"/api/stream/episode/{id}";
 
@@ -80,7 +80,7 @@ public abstract class StreamControllerBase(
     PhantomDbContext db,
     TorrentEngine engine,
     Transcoder transcoder,
-    Microsoft.Extensions.Options.IOptions<PhantomOptions> options,
+    TrickplayService trickplay,
     ILogger log) : ControllerBase
 {
     protected PhantomDbContext Db => db;
@@ -89,7 +89,7 @@ public abstract class StreamControllerBase(
     private static readonly TimeSpan StartBuffer = TimeSpan.FromSeconds(30);
 
     /// <summary>Seek previews are cached per this many seconds of the video.</summary>
-    private const int ThumbnailStepSeconds = 10;
+    private const int ThumbnailStepSeconds = TrickplayService.StepSeconds;
 
     // A few ffmpeg processes at a time: scrubbing asks for many previews in a row.
     private static readonly SemaphoreSlim ThumbnailSlots = new(3, 3);
@@ -113,6 +113,15 @@ public abstract class StreamControllerBase(
 
     /// <summary>The finished file on the server's disk for this video, if there is one.</summary>
     private string? Local(StreamTarget target) => engine.LocalVideo(target.Release, target.Choice);
+
+    /// <summary>The video's whole file, when the server has it: saved, or a stream that has downloaded all of it.</summary>
+    private string? CompleteFile(StreamTarget target)
+    {
+        if (Local(target) is { } local) return local;
+        if (engine.Find(target.Release.InfoHash) is not { HasMetadata: true } manager) return null;
+        return TorrentEngine.Video(manager, target.Choice, target.Release.SeasonNumber) is { } video
+               && TorrentEngine.IsFileComplete(video) && System.IO.File.Exists(video.FullPath) ? video.FullPath : null;
+    }
 
     /// <summary>Our own direct endpoint, for ffmpeg to read a video that's still a torrent.</summary>
     private string Loopback(int id, StreamTarget target) =>
@@ -157,6 +166,9 @@ public abstract class StreamControllerBase(
             }
         }
 
+        // A finished file gets all its seek previews made now, so they're there to drag through.
+        if (CompleteFile(target) is { } complete) trickplay.Request(target.CacheKey, complete);
+
         return new StreamInfoDto(
             target.MovieId,
             release.Id,
@@ -167,7 +179,8 @@ public abstract class StreamControllerBase(
             subtitles,
             target.ResumePositionMs,
             transcoder.IsAvailable ? $"{baseUrl}/thumbnail?{auth}" : null,
-            target.EpisodeId);
+            target.EpisodeId,
+            transcoder.IsAvailable ? $"{baseUrl}/thumbnails?{auth}" : null);
 
         SubtitleTrackDto Subtitle(int index, string path)
         {
@@ -306,7 +319,7 @@ public abstract class StreamControllerBase(
         if (target is null) return NotFound();
 
         var step = (int)Math.Max(0, t) / ThumbnailStepSeconds * ThumbnailStepSeconds;
-        var cache = Path.Combine(options.Value.CacheDirectory, "thumbnails", target.CacheKey, $"{step}.jpg");
+        var cache = Path.Combine(trickplay.Folder(target.CacheKey), $"{step}.jpg");
         if (System.IO.File.Exists(cache)) return PhysicalFile(Path.GetFullPath(cache), "image/jpeg");
 
         var input = Local(target) is { } local ? Path.GetFullPath(local) : Loopback(id, target);
@@ -346,6 +359,45 @@ public abstract class StreamControllerBase(
             ThumbnailSlots.Release();
             ThumbnailsInFlight.TryRemove(new(viewer, timeout));
         }
+    }
+
+    /// <summary>
+    /// Every seek preview made so far, in one response, for the player to keep and show the moment the bar is dragged:
+    /// <c>[count]</c> then per frame <c>[seconds][length][JPEG bytes]</c>, all integers 32-bit little-endian. The
+    /// <c>X-Thumbnails-Complete</c> header says whether that's all of them (otherwise ask again later). Asking also
+    /// queues them to be made if the file is complete on the server.
+    /// </summary>
+    [HttpGet("thumbnails")]
+    public async Task<IActionResult> Thumbnails(int id, [FromQuery] int? releaseId, CancellationToken ct)
+    {
+        if (!transcoder.IsAvailable) return StatusCode(StatusCodes.Status501NotImplemented);
+        var target = await ResolveAsync(id, releaseId, ct);
+        if (target is null) return NotFound();
+        if (CompleteFile(target) is { } complete) trickplay.Request(target.CacheKey, complete);
+
+        var buffer = new MemoryStream();
+        await using (var writer = new BinaryWriter(buffer, Encoding.UTF8, leaveOpen: true))
+        {
+            var frames = trickplay.Frames(target.CacheKey);
+            writer.Write(frames.Count);
+            foreach (var (seconds, path) in frames)
+            {
+                byte[] jpeg;
+                try
+                {
+                    jpeg = await System.IO.File.ReadAllBytesAsync(path, ct);
+                }
+                catch (IOException)
+                {
+                    jpeg = []; // being written, or cleared for disk space; the player asks for it on its own
+                }
+                writer.Write(seconds);
+                writer.Write(jpeg.Length);
+                writer.Write(jpeg);
+            }
+        }
+        Response.Headers["X-Thumbnails-Complete"] = trickplay.IsComplete(target.CacheKey) ? "1" : "0";
+        return File(buffer.ToArray(), "application/octet-stream");
     }
 
     /// <summary>Returns a subtitle file from the torrent, converted to WebVTT unless format=srt.</summary>

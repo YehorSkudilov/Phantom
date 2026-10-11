@@ -4,6 +4,7 @@
              xmlns:vm="clr-namespace:Phantom.ViewModels"
              xmlns:controls="clr-namespace:Phantom.Controls"
              xmlns:dto="clr-namespace:Phantom.Shared;assembly=Phantom.Shared"
+             xmlns:skeleton="clr-namespace:AppSkeleton;assembly=AppSkeleton"
              x:Class="Phantom.Views.AdminPage"
              x:DataType="vm:AdminViewModel"
              Title="Manage server">
@@ -105,15 +106,16 @@
                                         <!-- Working on it right now -->
                                         <HorizontalStackLayout Spacing="8" IsVisible="{Binding IsSyncing}">
                                             <ActivityIndicator IsRunning="{Binding IsSyncing}" WidthRequest="16" HeightRequest="16" />
-                                            <Label Text="Checking for new movies now…" FontSize="12" TextColor="{StaticResource PrimaryLight}" VerticalOptions="Center" />
+                                            <Label Text="Checking for new titles now…" FontSize="12" TextColor="{StaticResource PrimaryLight}" VerticalOptions="Center" />
                                         </HorizontalStackLayout>
                                         <!-- The whole-catalogue import, while it's running -->
                                         <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8" IsVisible="{Binding CatalogueProgress, Converter={StaticResource Below100}}">
                                             <ProgressBar Progress="{Binding CatalogueProgress, Converter={StaticResource Percent}}" VerticalOptions="Center" />
                                             <Label Grid.Column="1" Text="{Binding CatalogueProgress, StringFormat='Catalogue {0:0}% imported'}" Style="{StaticResource Muted}" FontSize="12" />
                                         </Grid>
-                                        <Label Text="{Binding LastSyncResult}" Style="{StaticResource Muted}" FontSize="12"
-                                               IsVisible="{Binding LastSyncResult, Converter={StaticResource HasValue}}" />
+                                        <!-- Selectable, so an error can be copied into a bug report -->
+                                        <skeleton:CLabel Text="{Binding LastSyncResult}" Style="{StaticResource Muted}" FontSize="12"
+                                                         IsVisible="{Binding LastSyncResult, Converter={StaticResource HasValue}}" />
                                     </VerticalStackLayout>
                                     <ImageButton Grid.Column="1" Grid.RowSpan="3" Style="{StaticResource IconButton}" VerticalOptions="Center"
                                                  Source="{controls:Icon sync}" SemanticProperties.Description="Check now" ToolTipProperties.Text="Check now"

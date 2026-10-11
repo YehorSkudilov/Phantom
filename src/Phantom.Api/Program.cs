@@ -31,7 +31,10 @@ builder.Services.AddDbContext<PhantomDbContext>(o =>
 builder.Services.AddSingleton<TokenService>();
 builder.Services.AddSingleton<PasswordService>();
 builder.Services.AddSingleton<SessionTracker>();
+builder.Services.AddSingleton<PlaybackActivity>();
 builder.Services.AddSingleton<Transcoder>();
+builder.Services.AddSingleton<TrickplayService>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<TrickplayService>());
 builder.Services.AddScoped<LibraryService>();
 builder.Services.AddScoped<ShowLibraryService>();
 builder.Services.AddScoped<LibraryImporter>();
@@ -148,6 +151,10 @@ static async Task MigrateAsync(PhantomDbContext db)
             baseline, ProductInfo.GetVersion())));
     }
     await db.Database.MigrateAsync();
+
+    // Write-ahead logging: imports and metadata workers write while people browse and play, and with it reads carry on
+    // during a write instead of waiting for it. It's a setting of the database file, so it stays on.
+    await db.Database.ExecuteSqlRawAsync("PRAGMA journal_mode=WAL;");
 }
 
 // Changes made to EnsureCreated databases before there were migrations; they match the first migration afterwards.

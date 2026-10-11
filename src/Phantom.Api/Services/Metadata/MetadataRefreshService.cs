@@ -4,16 +4,23 @@ using Phantom.Api.Data;
 namespace Phantom.Api.Services.Metadata;
 
 /// <summary>
-/// Keeps the whole library's metadata (posters, cast, ratings...) fresh: every minute it refreshes the next batch of
-/// movies and shows that have never been refreshed or not for <see cref="RefreshAfter"/> (shows still airing every
+/// Keeps the whole library's metadata (posters, cast, ratings...) fresh: it fills in titles just imported (sources add
+/// them bare), and refreshes movies and shows that haven't been for <see cref="RefreshAfter"/> (shows still airing every
 /// <see cref="AiringRefreshAfter"/>, for their new episodes). An admin's "Refresh all metadata" (see ServerController)
 /// queues everything.
 /// </summary>
-public class MetadataRefreshService(IServiceScopeFactory scopes, ILogger<MetadataRefreshService> log) : BackgroundService
+/// <remarks>
+/// Several titles are looked up at once (<see cref="Workers"/>), and while there's a backlog it goes straight on to the
+/// next batch. While someone is watching it drops to one at a time and its usual pace (see <see cref="PlaybackActivity"/>).
+/// </remarks>
+public class MetadataRefreshService(IServiceScopeFactory scopes, PlaybackActivity activity, ILogger<MetadataRefreshService> log) : BackgroundService
 {
     public static readonly TimeSpan RefreshAfter = TimeSpan.FromDays(30);
     public static readonly TimeSpan AiringRefreshAfter = TimeSpan.FromDays(3);
-    private const int BatchSize = 100;
+
+    /// <summary>TMDB lookups at once; well inside its rate limit (about 40 requests a second).</summary>
+    private const int Workers = 6;
+    private const int BatchSize = 120;
 
     /// <summary>Movies waiting for a refresh.</summary>
     public static IQueryable<Movie> Due(PhantomDbContext db)
@@ -36,47 +43,82 @@ public class MetadataRefreshService(IServiceScopeFactory scopes, ILogger<Metadat
         await Task.Delay(TimeSpan.FromSeconds(30), stoppingToken);
         while (!stoppingToken.IsCancellationRequested)
         {
+            var backlog = false;
             try
             {
-                await RefreshBatchAsync(stoppingToken);
+                backlog = await RefreshBatchAsync(stoppingToken);
             }
             catch (Exception ex) when (!stoppingToken.IsCancellationRequested)
             {
                 log.LogWarning(ex, "Metadata refresh batch failed");
             }
-            await Task.Delay(TimeSpan.FromMinutes(1), stoppingToken);
+            await Task.Delay(backlog && !activity.IsWatching ? TimeSpan.FromSeconds(2) : TimeSpan.FromMinutes(1), stoppingToken);
         }
     }
 
-    private async Task RefreshBatchAsync(CancellationToken ct)
+    /// <summary>Refreshes the next batch of movies and shows. True when there was a full batch (so more are waiting).</summary>
+    private async Task<bool> RefreshBatchAsync(CancellationToken ct)
     {
-        using var scope = scopes.CreateScope();
-        var metadata = scope.ServiceProvider.GetRequiredService<IMetadataProvider>();
-        if (!metadata.IsConfigured) return;
-        var db = scope.ServiceProvider.GetRequiredService<PhantomDbContext>();
-
-        var batch = await Due(db).OrderBy(m => m.MetadataRefreshedAt).Take(BatchSize)
-            .Include(m => m.Genres).Include(m => m.Credits).ToListAsync(ct);
-        foreach (var movie in batch)
+        List<int> movieIds, showIds;
+        using (var scope = scopes.CreateScope())
         {
-            await metadata.EnrichAsync(db, movie, ct);
-            // Marked done even when the provider had nothing, so a movie it can't find isn't retried every minute.
-            if (movie.MetadataRefreshedAt is null || movie.MetadataRefreshedAt < DateTime.UtcNow - RefreshAfter)
-                movie.MetadataRefreshedAt = DateTime.UtcNow;
-            await db.SaveChangesAsync(ct);
+            if (!scope.ServiceProvider.GetRequiredService<IMetadataProvider>().IsConfigured) return false;
+            var db = scope.ServiceProvider.GetRequiredService<PhantomDbContext>();
+            // Titles never looked up (just imported) first.
+            movieIds = await Due(db).OrderBy(m => m.MetadataRefreshedAt != null).ThenBy(m => m.MetadataRefreshedAt)
+                .Select(m => m.Id).Take(BatchSize).ToListAsync(ct);
+            // Shows take a request per season, so fewer at a time.
+            showIds = await DueShows(db).OrderBy(s => s.MetadataRefreshedAt != null).ThenBy(s => s.MetadataRefreshedAt)
+                .Select(s => s.Id).Take(BatchSize / 6).ToListAsync(ct);
         }
-        if (batch.Count > 0) log.LogInformation("Refreshed metadata for {Count} movies", batch.Count);
+        if (movieIds.Count + showIds.Count == 0) return false;
 
-        // Shows take a request per season, so fewer at a time.
-        var shows = await DueShows(db).OrderBy(s => s.MetadataRefreshedAt).Take(BatchSize / 10)
-            .Include(s => s.Genres).Include(s => s.Credits).Include(s => s.Episodes).AsSplitQuery().ToListAsync(ct);
-        foreach (var show in shows)
+        var workers = activity.IsWatching ? 1 : Workers;
+        var options = new ParallelOptions { MaxDegreeOfParallelism = workers, CancellationToken = ct };
+        await Parallel.ForEachAsync(movieIds, options, (id, token) => new ValueTask(RefreshAsync(id, isShow: false, token)));
+        await Parallel.ForEachAsync(showIds, options, (id, token) => new ValueTask(RefreshAsync(id, isShow: true, token)));
+        log.LogInformation("Refreshed metadata for {Movies} movies and {Shows} shows ({Workers} at a time)", movieIds.Count, showIds.Count, workers);
+        return movieIds.Count == BatchSize || showIds.Count == BatchSize / 6;
+    }
+
+    /// <summary>
+    /// One title, in its own database context. Two lookups at once can both add the same new genre or collection; the
+    /// one that loses is simply run again, and finds it there.
+    /// </summary>
+    private async Task RefreshAsync(int id, bool isShow, CancellationToken ct)
+    {
+        for (var attempt = 0; attempt < 2; attempt++)
         {
-            await metadata.EnrichAsync(db, show, ct);
-            if (show.MetadataRefreshedAt is null || show.MetadataRefreshedAt < DateTime.UtcNow - AiringRefreshAfter)
-                show.MetadataRefreshedAt = DateTime.UtcNow;
-            await db.SaveChangesAsync(ct);
+            using var scope = scopes.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<PhantomDbContext>();
+            var metadata = scope.ServiceProvider.GetRequiredService<IMetadataProvider>();
+            try
+            {
+                if (isShow)
+                {
+                    var show = await db.Shows.Include(s => s.Genres).Include(s => s.Credits).Include(s => s.Episodes)
+                        .AsSplitQuery().FirstOrDefaultAsync(s => s.Id == id, ct);
+                    if (show is null) return;
+                    await metadata.EnrichAsync(db, show, ct);
+                    // Marked done even when the provider had nothing, so a show it can't find isn't retried every minute.
+                    if (show.MetadataRefreshedAt is null || show.MetadataRefreshedAt < DateTime.UtcNow - AiringRefreshAfter)
+                        show.MetadataRefreshedAt = DateTime.UtcNow;
+                }
+                else
+                {
+                    var movie = await db.Movies.Include(m => m.Genres).Include(m => m.Credits).FirstOrDefaultAsync(m => m.Id == id, ct);
+                    if (movie is null) return;
+                    await metadata.EnrichAsync(db, movie, ct);
+                    if (movie.MetadataRefreshedAt is null || movie.MetadataRefreshedAt < DateTime.UtcNow - RefreshAfter)
+                        movie.MetadataRefreshedAt = DateTime.UtcNow;
+                }
+                await db.SaveChangesAsync(ct);
+                return;
+            }
+            catch (DbUpdateException ex) when (attempt == 0)
+            {
+                log.LogDebug(ex, "Metadata for {Kind} {Id} clashed with another lookup; trying again", isShow ? "show" : "movie", id);
+            }
         }
-        if (shows.Count > 0) log.LogInformation("Refreshed metadata for {Count} shows", shows.Count);
     }
 }

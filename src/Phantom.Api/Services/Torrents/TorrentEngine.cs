@@ -258,6 +258,7 @@ public sealed class TorrentEngine : IHostedService, IAsyncDisposable
     /// </remarks>
     public async Task<TorrentMedia?> OpenAsync(Release release, CancellationToken ct, VideoChoice choice = default)
     {
+        Interlocked.Exchange(ref _lastStreamTicks, DateTime.UtcNow.Ticks);
         var manager = await EnsureStartedAsync(release, keep: _pinned.ContainsKey(release.InfoHash), ct, choice);
         var file = Video(manager, choice, release.SeasonNumber);
         if (file is null) return null;
@@ -290,6 +291,12 @@ public sealed class TorrentEngine : IHostedService, IAsyncDisposable
     }
 
     public void Touch(string infoHash) => _lastAccess[infoHash] = DateTime.UtcNow;
+
+    // When a player last opened a torrent stream (server downloads Touch torrents too, so that can't tell).
+    private long _lastStreamTicks;
+
+    /// <summary>A player has opened a torrent stream within <paramref name="window"/>.</summary>
+    public bool StreamedWithin(TimeSpan window) => DateTime.UtcNow.Ticks - Interlocked.Read(ref _lastStreamTicks) < window.Ticks;
 
     public void Unpin(string infoHash) => _pinned.TryRemove(infoHash, out _);
 

@@ -86,6 +86,56 @@ public class Transcoder(IOptions<PhantomOptions> options, ILogger<Transcoder> lo
         }
     }
 
+    public static IReadOnlyList<string> TrickplayArguments(string input, int stepSeconds, int width, string outputPattern) =>
+    [
+        "-hide_banner", "-loglevel", "error", "-skip_frame", "nokey", "-i", input, "-an", "-sn",
+        "-vf", $"fps=1/{stepSeconds},scale={width}:-2", "-q:v", "6", "-f", "image2", outputPattern,
+    ];
+
+    /// <summary>
+    /// Writes a preview frame for every <paramref name="stepSeconds"/> of a finished file into <paramref name="folder"/>,
+    /// named by its time in seconds ("0.jpg", "10.jpg", ...), in one pass that only decodes keyframes. Frames already
+    /// there (made one at a time while it streamed) are kept.
+    /// </summary>
+    public async Task TrickplayAsync(string input, string folder, int stepSeconds, int width, CancellationToken ct)
+    {
+        var work = Path.Combine(folder, ".work");
+        if (Directory.Exists(work)) Directory.Delete(work, recursive: true);
+        Directory.CreateDirectory(work);
+
+        var psi = new ProcessStartInfo(options.Value.FfmpegPath) { RedirectStandardError = true, UseShellExecute = false };
+        foreach (var a in TrickplayArguments(input, stepSeconds, width, Path.Combine(work, "%d.jpg"))) psi.ArgumentList.Add(a);
+        using var process = Process.Start(psi) ?? throw new InvalidOperationException("Could not start ffmpeg.");
+        try
+        {
+            // A whole film shouldn't hold up playback: it runs at a lower priority than the streams.
+            process.PriorityClass = ProcessPriorityClass.BelowNormal;
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or System.ComponentModel.Win32Exception or PlatformNotSupportedException)
+        {
+        }
+        var stderr = process.StandardError.ReadToEndAsync(CancellationToken.None);
+        try
+        {
+            await process.WaitForExitAsync(ct);
+        }
+        finally
+        {
+            if (!process.HasExited) process.Kill(entireProcessTree: true);
+        }
+        if (process.ExitCode != 0) throw new InvalidOperationException($"ffmpeg failed: {(await stderr).Trim()}");
+
+        // ffmpeg numbers them from 1, the first being the frame at 0 s.
+        foreach (var file in Directory.EnumerateFiles(work, "*.jpg"))
+        {
+            if (!int.TryParse(Path.GetFileNameWithoutExtension(file), out var n)) continue;
+            var target = Path.Combine(folder, $"{(n - 1) * stepSeconds}.jpg");
+            if (File.Exists(target)) File.Delete(file);
+            else File.Move(file, target);
+        }
+        Directory.Delete(work, recursive: true);
+    }
+
     /// <summary>Runs ffmpeg and copies its output to <paramref name="output"/> until done or cancelled.</summary>
     public async Task TranscodeAsync(string input, double startSeconds, int? maxVideoKbps, int? maxHeight, Stream output, CancellationToken ct)
     {

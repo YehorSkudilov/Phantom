@@ -3,6 +3,8 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
              xmlns:controls="clr-namespace:Phantom.Controls"
              xmlns:vm="clr-namespace:Phantom.ViewModels"
+             xmlns:skeleton="clr-namespace:AppSkeleton;assembly=AppSkeleton"
+             xmlns:toolkit="http://schemas.microsoft.com/dotnet/2022/maui/toolkit"
              x:Class="Phantom.Views.AccountPage"
              x:DataType="vm:AccountViewModel"
              Title="Username and password">
@@ -17,10 +19,17 @@
                     <Label Text="Username" Style="{StaticResource Muted}" />
                     <Entry Text="{Binding Username}" />
                     <Label Text="New password (leave empty to keep it)" Style="{StaticResource Muted}" />
-                    <Entry Text="{Binding NewPassword}" IsPassword="True" />
-                    <Entry Text="{Binding ConfirmPassword}" IsPassword="True" Placeholder="Repeat the new password" />
+                    <skeleton:CPasswordEntry Text="{Binding NewPassword}" ReturnType="Next"
+                                             TextColor="{StaticResource TextPrimary}" PlaceholderColor="{StaticResource TextSecondary}" />
+                    <skeleton:CPasswordEntry Text="{Binding ConfirmPassword}" Placeholder="Repeat the new password" ReturnType="Next"
+                                             TextColor="{StaticResource TextPrimary}" PlaceholderColor="{StaticResource TextSecondary}" />
                     <Label Text="Current password, to confirm" Style="{StaticResource Muted}" />
-                    <Entry Text="{Binding CurrentPassword}" IsPassword="True" ReturnCommand="{Binding SaveCommand}" />
+                    <skeleton:CPasswordEntry Text="{Binding CurrentPassword}" ReturnType="Done"
+                                             TextColor="{StaticResource TextPrimary}" PlaceholderColor="{StaticResource TextSecondary}">
+                        <skeleton:CPasswordEntry.Behaviors>
+                            <toolkit:EventToCommandBehavior EventName="Completed" Command="{Binding SaveCommand}" x:DataType="vm:AccountViewModel" />
+                        </skeleton:CPasswordEntry.Behaviors>
+                    </skeleton:CPasswordEntry>
                     <Button Text="Save" Command="{Binding SaveCommand}" IsEnabled="{Binding IsNotBusy}" />
                 </VerticalStackLayout>
             </Border>

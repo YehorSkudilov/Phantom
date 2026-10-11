@@ -125,6 +125,6 @@ public class SourcesController(PhantomDbContext db, SourceSyncService sync, IEnu
     private SourceDto ToDto(Source s) =>
         new(s.Id, s.Name, s.Type, s.BaseUrl, !string.IsNullOrEmpty(s.ApiKey), s.Categories, s.Query, s.Enabled,
             s.SyncIntervalMinutes, s.LastSyncAt, s.LastSyncResult,
-            sync.CurrentSourceId == s.Id,
+            sync.IsSyncing(s.Id),
             providers.FirstOrDefault(p => p.Type == s.Type) is IBackfillingSource backfill ? backfill.CatalogueProgress(s) : null);
 }

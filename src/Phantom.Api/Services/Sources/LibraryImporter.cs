@@ -1,23 +1,58 @@
 using Microsoft.EntityFrameworkCore;
 using Phantom.Api.Data;
-using Phantom.Api.Services.Metadata;
 
 namespace Phantom.Api.Services.Sources;
 
 public record ImportResult(int Releases, int NewMovies, int NewReleases, int NewShows = 0);
 
-/// <summary>Matches source releases to library movies and shows, creating them and their releases as needed.</summary>
-public class LibraryImporter(PhantomDbContext db, IMetadataProvider metadata, ILogger<LibraryImporter> log)
+/// <summary>
+/// Matches source releases to library movies and shows, creating them and their releases as needed. New titles come in
+/// bare and MetadataRefreshService fills in their artwork and details from TMDB in the background, so an import is
+/// database work only, and quick.
+/// </summary>
+public class LibraryImporter(PhantomDbContext db, ILogger<LibraryImporter> log)
 {
+    /// <summary>Saved together, rather than one database write per release.</summary>
+    private const int SaveEvery = 100;
+
+    // Sources sync in parallel, but their imports take turns: SQLite has one writer at a time, and two imports adding
+    // the same new movie at once would clash on its key.
+    private static readonly SemaphoreSlim OneAtATime = new(1, 1);
+
     public async Task<ImportResult> ImportAsync(Source source, IReadOnlyList<SourceRelease> releases, CancellationToken ct)
     {
-        int newMovies = 0, newReleases = 0, newShows = 0;
-        var settings = await db.Settings.FirstAsync(ct);
-
-        foreach (var sr in releases.Where(r => r.Seeders >= settings.MinSeeders || r.TorrentUrl is not null))
+        await OneAtATime.WaitAsync(ct);
+        try
         {
-            var existing = await db.Releases.FirstOrDefaultAsync(r => r.InfoHash == sr.InfoHash, ct);
-            if (existing is not null)
+            return await ImportBatchAsync(source, releases, ct);
+        }
+        finally
+        {
+            OneAtATime.Release();
+        }
+    }
+
+    private async Task<ImportResult> ImportBatchAsync(Source source, IReadOnlyList<SourceRelease> releases, CancellationToken ct)
+    {
+        int newMovies = 0, newReleases = 0, newShows = 0, unsaved = 0;
+        var settings = await db.Settings.FirstAsync(ct);
+        var wanted = releases.Where(r => r.Seeders >= settings.MinSeeders || r.TorrentUrl is not null).DistinctBy(r => r.InfoHash).ToList();
+
+        // The releases already known, looked up together rather than one query each.
+        var known = new Dictionary<string, Release>();
+        foreach (var chunk in wanted.Select(r => r.InfoHash).Chunk(500))
+            foreach (var r in await db.Releases.Where(r => chunk.Contains(r.InfoHash)).ToListAsync(ct))
+                known[r.InfoHash] = r;
+
+        foreach (var sr in wanted)
+        {
+            if (++unsaved >= SaveEvery)
+            {
+                await SaveAsync(ct);
+                unsaved = 0;
+            }
+
+            if (known.TryGetValue(sr.InfoHash, out var existing))
             {
                 existing.Seeders = sr.Seeders;
                 existing.Leechers = sr.Leechers;
@@ -30,16 +65,11 @@ public class LibraryImporter(PhantomDbContext db, IMetadataProvider metadata, IL
             {
                 if (await ImportShowReleaseAsync(source, sr, ct)) newShows++;
                 newReleases++;
-                await db.SaveChangesAsync(ct);
                 continue;
             }
 
             var (movie, created) = await FindOrCreateMovieAsync(sr, ct);
-            if (created)
-            {
-                newMovies++;
-                await metadata.EnrichAsync(db, movie, ct);
-            }
+            if (created) newMovies++;
 
             movie.Releases.Add(new Release
             {
@@ -59,24 +89,38 @@ public class LibraryImporter(PhantomDbContext db, IMetadataProvider metadata, IL
 
             if (settings.AutoDownloadNewReleases && created)
             {
-                await db.SaveChangesAsync(ct);
+                await SaveAsync(ct);
                 db.ServerDownloads.Add(new ServerDownload { MovieId = movie.Id, ReleaseId = movie.Releases[^1].Id });
             }
-
-            // Save per movie so a later failure does not lose the whole batch.
-            await db.SaveChangesAsync(ct);
         }
+        await SaveAsync(ct);
 
         log.LogInformation("Imported {Count} releases from {Source}: {Movies} new movies, {Shows} new shows, {New} new releases",
             releases.Count, source.Name, newMovies, newShows, newReleases);
         return new ImportResult(releases.Count, newMovies, newReleases, newShows);
     }
 
+    /// <summary>
+    /// Saves what's been added. A batch that can't be saved is dropped rather than stopping the import: its releases
+    /// come round again on the next sync.
+    /// </summary>
+    private async Task SaveAsync(CancellationToken ct)
+    {
+        try
+        {
+            await db.SaveChangesAsync(ct);
+        }
+        catch (DbUpdateException ex)
+        {
+            log.LogWarning(ex, "Couldn't save part of an import; it's tried again next sync");
+            db.ChangeTracker.Clear();
+        }
+    }
+
     /// <summary>Adds a show's release, and the show if it's new (returning true then).</summary>
     private async Task<bool> ImportShowReleaseAsync(Source source, SourceRelease sr, CancellationToken ct)
     {
         var (show, created) = await FindOrCreateShowAsync(sr, ct);
-        if (created) await metadata.EnrichAsync(db, show, ct);
 
         // An episode's release makes sure the episode is listed, even before (or without) TMDB.
         if (sr is { Season: { } season, Episode: { } number }
@@ -105,8 +149,8 @@ public class LibraryImporter(PhantomDbContext db, IMetadataProvider metadata, IL
     private async Task<(Show, bool)> FindOrCreateShowAsync(SourceRelease sr, CancellationToken ct)
     {
         IQueryable<Show> shows = db.Shows.Include(s => s.Episodes).Include(s => s.Genres).Include(s => s.Credits).AsSplitQuery();
-        Show? show = null;
-        if (sr.ImdbId is not null) show = await shows.FirstOrDefaultAsync(s => s.ImdbId == sr.ImdbId, ct);
+        var show = sr.ImdbId is null ? null : db.Shows.Local.FirstOrDefault(s => s.ImdbId == sr.ImdbId);
+        if (show is null && sr.ImdbId is not null) show = await shows.FirstOrDefaultAsync(s => s.ImdbId == sr.ImdbId, ct);
         if (show is null && sr.TmdbId is not null) show = await shows.FirstOrDefaultAsync(s => s.TmdbId == sr.TmdbId, ct);
 
         // Episode names seldom carry the year, so the name alone is the key (with the year when there is one, for
@@ -141,13 +185,15 @@ public class LibraryImporter(PhantomDbContext db, IMetadataProvider metadata, IL
 
     private async Task<(Movie, bool)> FindOrCreateMovieAsync(SourceRelease sr, CancellationToken ct)
     {
-        Movie? movie = null;
-        if (sr.ImdbId is not null)
+        // Movies added earlier in this batch aren't saved yet, so they're looked for among those first.
+        var key = ReleaseNameParser.NormalizeKey(sr.Title, sr.Year);
+        var movie = db.Movies.Local.FirstOrDefault(m => sr.ImdbId is not null && m.ImdbId == sr.ImdbId
+                                                       || sr.TmdbId is not null && m.TmdbId == sr.TmdbId
+                                                       || m.ExternalKey == key);
+        if (movie is null && sr.ImdbId is not null)
             movie = await db.Movies.Include(m => m.Releases).Include(m => m.Genres).FirstOrDefaultAsync(m => m.ImdbId == sr.ImdbId, ct);
         if (movie is null && sr.TmdbId is not null)
             movie = await db.Movies.Include(m => m.Releases).Include(m => m.Genres).FirstOrDefaultAsync(m => m.TmdbId == sr.TmdbId, ct);
-
-        var key = ReleaseNameParser.NormalizeKey(sr.Title, sr.Year);
         movie ??= await db.Movies.Include(m => m.Releases).Include(m => m.Genres).FirstOrDefaultAsync(m => m.ExternalKey == key, ct);
         if (movie is not null) return (movie, false);
 
