@@ -37,6 +37,12 @@ public partial class MainPage : ContentPage
         TabContent.PropertyChanged += OnTabContentChanged;
         NavBar.LoadPageCommand = new Command<CNavItem>(Show);
         NavBar.CNavIconItems = _tabs;
+        // On a wide window the bar would stretch edge to edge; there it sits centred, only as wide as its items.
+        if (DeviceInfo.Platform == DevicePlatform.WinUI)
+        {
+            NavBar.HorizontalOptions = LayoutOptions.Center;
+            NavBar.WidthRequest = _tabs.Count * 80 + 16;
+        }
         NavBar.SelectItem(_tabs[(int)AppTab.Home]);
 
         _instance = new(this);

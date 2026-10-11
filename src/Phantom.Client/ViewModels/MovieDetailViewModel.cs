@@ -17,7 +17,16 @@ public partial class MovieDetailViewModel(PhantomApi api, SettingsService settin
     [NotifyPropertyChangedFor(nameof(Meta), nameof(CanResume), nameof(PlayLabel), nameof(Directors), nameof(Writers), nameof(GenreText), nameof(IsWatched), nameof(IsOnWatchlist), nameof(WatchedLabel), nameof(WatchlistLabel), nameof(WatchlistGlyph))]
     private MovieDetailDto? movie;
 
-    [ObservableProperty] private ReleaseDto? selectedRelease;
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ReleaseDetails))]
+    private ReleaseDto? selectedRelease;
+
+    /// <summary>The selected version's quality, codec, size, seeders and source - whichever it has.</summary>
+    public string ReleaseDetails => SelectedRelease is not { } r ? "" : string.Join("  ·  ", new[]
+    {
+        r.Quality, r.Codec, r.SizeBytes > 0 ? BytesConverter.Format(r.SizeBytes) : null,
+        r.Seeders > 0 ? $"{r.Seeders} seeders" : null, r.Source,
+    }.Where(s => !string.IsNullOrWhiteSpace(s)));
     [ObservableProperty] private OfflineDownload? offlineItem;
     [ObservableProperty] private bool isAdmin;
 
@@ -181,8 +190,14 @@ public partial class MovieDetailViewModel(PhantomApi api, SettingsService settin
     }, showBusy: false);
 
     [RelayCommand]
-    private Task PlayTrailer() =>
-        Movie?.TrailerUrl is { } url ? Launcher.Default.OpenAsync(new Uri(url)) : Task.CompletedTask;
+    private Task PlayTrailer()
+    {
+        if (Movie?.TrailerUrl is not { } url) return Task.CompletedTask;
+        // YouTube trailers play in the app; anything else opens in the browser.
+        return Views.TrailerPage.VideoId(url) is null
+            ? Launcher.Default.OpenAsync(new Uri(url))
+            : GoToAsync($"{nameof(Views.TrailerPage)}?url={Uri.EscapeDataString(url)}&title={Uri.EscapeDataString(Movie.Title)}");
+    }
 
     [RelayCommand]
     private Task OpenPerson(string name) => Views.MainPage.ShowLibrary($"actor={Uri.EscapeDataString(name)}");

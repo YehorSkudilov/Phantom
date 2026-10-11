@@ -61,6 +61,7 @@ public static class MauiProgram
         builder.Services.AddTransient<ProfilesPage>();
         builder.Services.AddTransient<MovieDetailPage>();
         builder.Services.AddTransient<PlayerPage>();
+        builder.Services.AddTransient<TrailerPage>();
         builder.Services.AddTransient<MovieListPage>();
         builder.Services.AddTransient<CollectionsPage>();
         builder.Services.AddTransient<PlaylistsPage>();

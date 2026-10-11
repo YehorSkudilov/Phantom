@@ -8,7 +8,7 @@
              x:DataType="vm:MovieDetailViewModel"
              Title="{Binding Title}">
     <ContentPage.ToolbarItems>
-        <ToolbarItem Text="More" IconImageSource="{controls:Icon more_vert}" Command="{Binding MoreCommand}" />
+        <ToolbarItem Text="More" IconImageSource="{controls:Icon more_vert, Size=20}" Command="{Binding MoreCommand}" />
     </ContentPage.ToolbarItems>
 
     <Grid>
@@ -41,10 +41,10 @@
                 <!-- Primary actions -->
                 <VerticalStackLayout Padding="16,0" Spacing="10">
                     <Button Text="{Binding PlayLabel}" Command="{Binding PlayCommand}" FontSize="16" HeightRequest="52"
-                            ImageSource="{controls:Icon play_arrow, Color=White}" ContentLayout="Left,8" />
+                            ImageSource="{controls:Icon play_arrow, Color=White, Size=20}" ContentLayout="Left,8" />
                     <ProgressBar Progress="{Binding Movie.Playback.ProgressPercent, Converter={StaticResource Percent}}" IsVisible="{Binding CanResume}" />
                     <Button Text="Start over" Style="{StaticResource SecondaryButton}" Command="{Binding PlayFromStartCommand}" IsVisible="{Binding CanResume}"
-                            ImageSource="{controls:Icon replay}" ContentLayout="Left,8" />
+                            ImageSource="{controls:Icon replay, Size=20}" ContentLayout="Left,8" />
                     <Grid ColumnDefinitions="*,*,*,*" ColumnSpacing="8">
                         <controls:ActionTile Glyph="{Binding WatchlistGlyph}"
                                              Text="{Binding WatchlistLabel}" IsActive="{Binding IsOnWatchlist}" Command="{Binding ToggleWatchlistCommand}" />
@@ -65,7 +65,7 @@
                     </Border>
 
                     <Button Text="Watch trailer" Style="{StaticResource GhostButton}" HorizontalOptions="Start"
-                            ImageSource="{controls:Icon smart_display, Color={StaticResource PrimaryLight}}" ContentLayout="Left,6"
+                            ImageSource="{controls:Icon smart_display, Color={StaticResource PrimaryLight}, Size=20}" ContentLayout="Left,6"
                             Command="{Binding PlayTrailerCommand}" IsVisible="{Binding Movie.TrailerUrl, Converter={StaticResource HasValue}}" />
                 </VerticalStackLayout>
 
@@ -100,21 +100,7 @@
                 <VerticalStackLayout Padding="16,0" Spacing="6" IsVisible="{Binding Releases.Count, Converter={StaticResource HasValue}}">
                     <Label Text="Version" Style="{StaticResource H2}" />
                     <Picker ItemsSource="{Binding Releases}" SelectedItem="{Binding SelectedRelease}" ItemDisplayBinding="{Binding Name, x:DataType=dto:ReleaseDto}" />
-                    <Label Style="{StaticResource Muted}">
-                        <Label.FormattedText>
-                            <FormattedString>
-                                <Span Text="{Binding SelectedRelease.Quality}" />
-                                <Span Text="  ·  " />
-                                <Span Text="{Binding SelectedRelease.Codec}" />
-                                <Span Text="  ·  " />
-                                <Span Text="{Binding SelectedRelease.SizeBytes, Converter={StaticResource Bytes}}" />
-                                <Span Text="  ·  " />
-                                <Span Text="{Binding SelectedRelease.Seeders, StringFormat='{0} seeders'}" />
-                                <Span Text="  ·  " />
-                                <Span Text="{Binding SelectedRelease.Source}" />
-                            </FormattedString>
-                        </Label.FormattedText>
-                    </Label>
+                    <Label Text="{Binding ReleaseDetails}" Style="{StaticResource Muted}" />
                 </VerticalStackLayout>
 
                 <!-- Cast -->

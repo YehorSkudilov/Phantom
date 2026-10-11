@@ -1,7 +1,6 @@
 <?xml version="1.0" encoding="utf-8" ?>
 <ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
-             xmlns:controls="clr-namespace:Phantom.Controls"
              xmlns:vm="clr-namespace:Phantom.ViewModels"
              xmlns:dto="clr-namespace:Phantom.Shared;assembly=Phantom.Shared"
              xmlns:controls="clr-namespace:Phantom.Controls"
@@ -12,7 +11,7 @@
         <VerticalStackLayout Padding="16,8" Spacing="10">
             <Label Text="{Binding Summary}" Style="{StaticResource Muted}" />
             <Grid ColumnDefinitions="*,*" ColumnSpacing="10">
-                <Button Text="Play" Command="{Binding PlayAllCommand}" ImageSource="{controls:Icon play_arrow, Color=White}" ContentLayout="Left,8" />
+                <Button Text="Play" Command="{Binding PlayAllCommand}" ImageSource="{controls:Icon play_arrow, Color=White, Size=20}" ContentLayout="Left,8" />
                 <Button Grid.Column="1" Text="⤨  Shuffle" Style="{StaticResource SecondaryButton}" Command="{Binding ShuffleCommand}" />
             </Grid>
         </VerticalStackLayout>

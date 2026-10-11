@@ -112,3 +112,28 @@ public class InitialConverter : IValueConverter
 
     public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture) => throw new NotSupportedException();
 }
+
+/// <summary>A source's kind as people say it: YTS, The Pirate Bay, Internet Archive, Torznab indexer.</summary>
+public class SourceTypeConverter : IValueConverter
+{
+    public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture) => value switch
+    {
+        Phantom.Shared.SourceType.InternetArchive => "Internet Archive",
+        Phantom.Shared.SourceType.Torznab => "Torznab indexer",
+        Phantom.Shared.SourceType.Yts => "YTS",
+        Phantom.Shared.SourceType.PirateBay => "The Pirate Bay",
+        _ => value?.ToString() ?? "",
+    };
+
+    public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture) => throw new NotSupportedException();
+}
+
+/// <summary>A sync interval in minutes as "every 3 hours" / "every 45 minutes".</summary>
+public class IntervalConverter : IValueConverter
+{
+    public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture) => value is int m
+        ? m % 60 == 0 ? (m == 60 ? "every hour" : $"every {m / 60} hours") : $"every {m} minutes"
+        : "";
+
+    public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture) => throw new NotSupportedException();
+}

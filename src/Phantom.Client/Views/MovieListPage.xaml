@@ -7,7 +7,7 @@
              x:DataType="vm:MovieListViewModel"
              Title="{Binding Title}">
     <ContentPage.ToolbarItems>
-        <ToolbarItem Text="Play all" IconImageSource="{controls:Icon playlist_play}" Command="{Binding PlayAllCommand}" />
+        <ToolbarItem Text="Play all" IconImageSource="{controls:Icon playlist_play, Size=20}" Command="{Binding PlayAllCommand}" />
     </ContentPage.ToolbarItems>
     <Grid RowDefinitions="Auto,*">
         <Label Text="{Binding Subtitle}" Style="{StaticResource Muted}" Margin="16,8" IsVisible="{Binding Subtitle, Converter={StaticResource HasValue}}" />

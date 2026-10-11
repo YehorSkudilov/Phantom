@@ -2,10 +2,11 @@
 <ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
              xmlns:vm="clr-namespace:Phantom.ViewModels"
+             xmlns:controls="clr-namespace:Phantom.Controls"
              xmlns:dto="clr-namespace:Phantom.Shared;assembly=Phantom.Shared"
              x:Class="Phantom.Views.AdminPage"
              x:DataType="vm:AdminViewModel"
-             Title="Server dashboard">
+             Title="Manage server">
     <RefreshView IsRefreshing="{Binding IsBusy}" Command="{Binding LoadCommand}">
         <ScrollView>
             <VerticalStackLayout Padding="16" Spacing="14">
@@ -25,14 +26,12 @@
                 <Label Style="{StaticResource Muted}" FontSize="12">
                     <Label.FormattedText>
                         <FormattedString>
-                            <Span Text="↓ " />
+                            <Span Text="Downloading " />
                             <Span Text="{Binding Info.DownloadRate, Converter={StaticResource Bytes}, ConverterParameter=rate}" />
-                            <Span Text="   ↑ " />
+                            <Span Text="   ·   Uploading " />
                             <Span Text="{Binding Info.UploadRate, Converter={StaticResource Bytes}, ConverterParameter=rate}" />
-                            <Span Text="   ·   Transcoder: " />
-                            <Span Text="{Binding Info.TranscoderAvailable}" />
-                            <Span Text="   ·   TMDB: " />
-                            <Span Text="{Binding Info.MetadataProviderConfigured}" />
+                            <Span Text="&#10;" />
+                            <Span Text="{Binding FeaturesText}" />
                         </FormattedString>
                     </Label.FormattedText>
                 </Label>
@@ -40,7 +39,8 @@
                 <!-- Now playing -->
                 <Grid ColumnDefinitions="*,Auto">
                     <Label Text="Now playing" Style="{StaticResource H2}" VerticalOptions="Center" />
-                    <Button Grid.Column="1" Text="Refresh" Style="{StaticResource GhostButton}" Command="{Binding RefreshActivityCommand}" />
+                    <ImageButton Grid.Column="1" Style="{StaticResource IconButton}" Source="{controls:Icon refresh}" Command="{Binding RefreshActivityCommand}"
+                                 SemanticProperties.Description="Refresh" ToolTipProperties.Text="Refresh" />
                 </Grid>
                 <Label Text="Nobody is watching right now." Style="{StaticResource Muted}" IsVisible="{Binding Sessions.Count, Converter={StaticResource HasValue}, ConverterParameter=invert}" />
                 <VerticalStackLayout BindableLayout.ItemsSource="{Binding Sessions}" Spacing="8">
@@ -76,42 +76,43 @@
                 <!-- Sources -->
                 <Grid ColumnDefinitions="*,Auto">
                     <Label Text="Sources" Style="{StaticResource H2}" VerticalOptions="Center" />
-                    <Button Grid.Column="1" Text="Sync all" Style="{StaticResource GhostButton}" Command="{Binding SyncAllCommand}" />
+                    <Button Grid.Column="1" Text="Check all now" Style="{StaticResource GhostButton}" Command="{Binding SyncAllCommand}"
+                            ImageSource="{controls:Icon sync, Color={StaticResource PrimaryLight}, Size=20}" ContentLayout="Left,6" />
                 </Grid>
-                <Label Text="Phantom pulls new movies from these on a schedule. Only add indexers for content you have the right to download."
+                <Label Text="Phantom checks these for new movies on a schedule. Turn one off to pause it."
                        Style="{StaticResource Muted}" FontSize="12" />
                 <VerticalStackLayout BindableLayout.ItemsSource="{Binding Sources}" Spacing="8">
                     <BindableLayout.ItemTemplate>
                         <DataTemplate x:DataType="dto:SourceDto">
                             <Border Style="{StaticResource Card}">
-                                <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto,Auto,Auto">
-                                    <Label Text="{Binding Name}" FontFamily="OpenSansSemibold" />
-                                    <Switch Grid.Column="1" Grid.RowSpan="2" IsToggled="{Binding Enabled, Mode=OneWay}" IsEnabled="False" />
+                                <Grid ColumnDefinitions="*,Auto,Auto,Auto" RowDefinitions="Auto,Auto,Auto" ColumnSpacing="2">
+                                    <Label Text="{Binding Name}" FontFamily="OpenSansSemibold" FontSize="15" VerticalOptions="Center" />
                                     <Label Grid.Row="1" Style="{StaticResource Muted}" FontSize="12">
                                         <Label.FormattedText>
                                             <FormattedString>
-                                                <Span Text="{Binding Type}" />
-                                                <Span Text="  ·  every " />
-                                                <Span Text="{Binding SyncIntervalMinutes}" />
-                                                <Span Text=" min" />
+                                                <Span Text="{Binding Type, Converter={StaticResource SourceType}}" />
+                                                <Span Text="  ·  checks " />
+                                                <Span Text="{Binding SyncIntervalMinutes, Converter={StaticResource Interval}}" />
                                             </FormattedString>
                                         </Label.FormattedText>
                                     </Label>
-                                    <Label Grid.Row="2" Grid.ColumnSpan="2" Text="{Binding LastSyncResult}" Style="{StaticResource Muted}" FontSize="12" />
-                                    <HorizontalStackLayout Grid.Row="3" Grid.ColumnSpan="2" Spacing="4">
-                                        <Button Text="Sync now" Style="{StaticResource GhostButton}"
-                                                Command="{Binding Source={RelativeSource AncestorType={x:Type vm:AdminViewModel}}, Path=SyncCommand, x:DataType=vm:AdminViewModel}" CommandParameter="{Binding .}" />
-                                        <Button Text="Enable / disable" Style="{StaticResource GhostButton}"
-                                                Command="{Binding Source={RelativeSource AncestorType={x:Type vm:AdminViewModel}}, Path=ToggleSourceCommand, x:DataType=vm:AdminViewModel}" CommandParameter="{Binding .}" />
-                                        <Button Text="Remove" Style="{StaticResource GhostButton}" TextColor="{StaticResource Danger}"
-                                                Command="{Binding Source={RelativeSource AncestorType={x:Type vm:AdminViewModel}}, Path=DeleteSourceCommand, x:DataType=vm:AdminViewModel}" CommandParameter="{Binding .}" />
-                                    </HorizontalStackLayout>
+                                    <Label Grid.Row="2" Text="{Binding LastSyncResult}" Style="{StaticResource Muted}" FontSize="12" Margin="0,4,0,0"
+                                           IsVisible="{Binding LastSyncResult, Converter={StaticResource HasValue}}" />
+                                    <ImageButton Grid.Column="1" Grid.RowSpan="3" Style="{StaticResource IconButton}" VerticalOptions="Center"
+                                                 Source="{controls:Icon sync}" SemanticProperties.Description="Check now" ToolTipProperties.Text="Check now"
+                                                 Command="{Binding Source={RelativeSource AncestorType={x:Type vm:AdminViewModel}}, Path=SyncCommand, x:DataType=vm:AdminViewModel}" CommandParameter="{Binding .}" />
+                                    <ImageButton Grid.Column="2" Grid.RowSpan="3" Style="{StaticResource IconButton}" VerticalOptions="Center"
+                                                 Source="{controls:Icon delete, Outlined=True, Color={StaticResource Danger}}" SemanticProperties.Description="Remove" ToolTipProperties.Text="Remove"
+                                                 Command="{Binding Source={RelativeSource AncestorType={x:Type vm:AdminViewModel}}, Path=DeleteSourceCommand, x:DataType=vm:AdminViewModel}" CommandParameter="{Binding .}" />
+                                    <Switch Grid.Column="3" Grid.RowSpan="3" VerticalOptions="Center" IsToggled="{Binding Enabled, Mode=OneWay}" Toggled="OnSourceToggled"
+                                            SemanticProperties.Description="On or off" />
                                 </Grid>
                             </Border>
                         </DataTemplate>
                     </BindableLayout.ItemTemplate>
                 </VerticalStackLayout>
-                <Button Text="+ Add source" Style="{StaticResource SecondaryButton}" Command="{Binding AddSourceCommand}" />
+                <Button Text="Add source" Style="{StaticResource SecondaryButton}" Command="{Binding AddSourceCommand}"
+                        ImageSource="{controls:Icon add, Size=20}" ContentLayout="Left,6" />
 
                 <!-- Settings -->
                 <Label Text="Server settings" Style="{StaticResource H2}" Margin="0,8,0,0" />

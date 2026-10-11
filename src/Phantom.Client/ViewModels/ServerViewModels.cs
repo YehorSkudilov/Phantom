@@ -124,7 +124,15 @@ public partial class AdminViewModel(PhantomApi api) : BaseViewModel
     public ObservableCollection<SourceDto> Sources { get; } = [];
     public IReadOnlyList<string> QualityChoices { get; } = ["2160p", "1080p", "720p", "SD"];
 
-    [ObservableProperty] private ServerInfoDto? info;
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(FeaturesText))]
+    private ServerInfoDto? info;
+
+    /// <summary>The optional server features, in words.</summary>
+    public string FeaturesText => Info is null ? "" : string.Join("   ·   ",
+        Info.TranscoderAvailable ? "Transcoding on" : "Transcoding off (ffmpeg not installed)",
+        Info.MetadataProviderConfigured ? "TMDB artwork on" : "TMDB artwork off (no API key)");
+
     [ObservableProperty] private string serverName = "";
     [ObservableProperty] private int maxActiveDownloads;
     [ObservableProperty] private int maxDownloadKbps;
