@@ -16,4 +16,10 @@ public class TabView : PageBase
     {
         Padding = 0;
     }
+
+    /// <summary>
+    /// The system Back button, offered to the visible tab first (by MainPage): true when the tab used it, e.g. to close
+    /// something open on it, so it doesn't leave the app.
+    /// </summary>
+    public virtual bool HandleBack() => false;
 }

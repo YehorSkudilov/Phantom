@@ -23,6 +23,14 @@ public partial class LibraryPage : TabView
         };
     }
 
+    /// <summary>Back closes the filters popup when it's open.</summary>
+    public override bool HandleBack()
+    {
+        if (!_vm.ShowFilters) return false;
+        _vm.ShowFilters = false;
+        return true;
+    }
+
     public override void Load()
     {
         if (_vm.Movies.Count == 0) _vm.ReloadCommand.Execute(null);
