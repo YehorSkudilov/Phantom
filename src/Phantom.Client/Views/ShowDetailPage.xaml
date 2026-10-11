@@ -11,6 +11,7 @@
         <!-- Shared by every episode row, rather than a new icon per row -->
         <FontImageSource x:Key="EpisodeWatchedIcon" Glyph="check_circle" FontFamily="RegularIcons" Size="24" Color="{StaticResource Primary}" />
         <FontImageSource x:Key="EpisodeUnwatchedIcon" Glyph="radio_button_unchecked" FontFamily="RegularIcons" Size="24" Color="{StaticResource TextSecondary}" />
+        <FontImageSource x:Key="EpisodeMoreIcon" Glyph="more_vert" FontFamily="RegularIcons" Size="24" Color="{StaticResource TextSecondary}" />
     </ContentPage.Resources>
 
     <RefreshView IsRefreshing="{Binding IsRefreshing}" Command="{Binding LoadCommand}">
@@ -72,16 +73,20 @@
 
                 <!-- Seasons and their episodes -->
                 <VerticalStackLayout Padding="16,0" Spacing="10" IsVisible="{Binding Seasons.Count, Converter={StaticResource HasValue}}">
-                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
+                    <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="10">
                         <Label Text="Episodes" Style="{StaticResource H2}" VerticalOptions="Center" />
                         <Picker Grid.Column="1" ItemsSource="{Binding Seasons}" SelectedItem="{Binding SelectedSeason}" MinimumWidthRequest="140"
                                 ItemDisplayBinding="{Binding Title, x:DataType=dto:SeasonDto}" SemanticProperties.Description="Season" />
+                        <!-- The season: to this device, or saved on the server -->
+                        <ImageButton Grid.Column="2" VerticalOptions="Center" Style="{StaticResource IconButton}"
+                                     Source="{controls:Icon download, Size=24}" Command="{Binding DownloadSeasonCommand}"
+                                     SemanticProperties.Description="Download season" ToolTipProperties.Text="Download season" />
                     </Grid>
                     <VerticalStackLayout BindableLayout.ItemsSource="{Binding Episodes}" Spacing="12">
                         <BindableLayout.ItemTemplate>
                             <DataTemplate x:DataType="dto:EpisodeDto">
                                 <!-- Not found yet: shown faded, and says so -->
-                                <Grid ColumnDefinitions="150,*,Auto" ColumnSpacing="12">
+                                <Grid ColumnDefinitions="150,*,Auto,Auto" ColumnSpacing="12">
                                     <Grid.Triggers>
                                         <DataTrigger TargetType="Grid" Binding="{Binding Available}" Value="False">
                                             <Setter Property="Opacity" Value="0.45" />
@@ -127,6 +132,12 @@
                                             </DataTrigger>
                                         </ImageButton.Triggers>
                                     </ImageButton>
+                                    <!-- Download (to this device or the server), play from the start, mark -->
+                                    <ImageButton Grid.Column="3" VerticalOptions="Center" Style="{StaticResource IconButton}" Margin="-8,0,0,0"
+                                                 Source="{StaticResource EpisodeMoreIcon}"
+                                                 Command="{Binding Source={RelativeSource AncestorType={x:Type vm:ShowDetailViewModel}}, Path=EpisodeOptionsCommand, x:DataType=vm:ShowDetailViewModel}"
+                                                 CommandParameter="{Binding .}"
+                                                 SemanticProperties.Description="More options" ToolTipProperties.Text="More" />
                                 </Grid>
                             </DataTemplate>
                         </BindableLayout.ItemTemplate>

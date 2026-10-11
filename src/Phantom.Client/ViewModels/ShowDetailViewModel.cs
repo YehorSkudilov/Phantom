@@ -7,7 +7,7 @@ using Phantom.Shared;
 namespace Phantom.ViewModels;
 
 /// <summary>A show's page: its details, Play (the next episode), and a season's episodes to pick from.</summary>
-public partial class ShowDetailViewModel(PhantomApi api) : BaseViewModel, IQueryAttributable
+public partial class ShowDetailViewModel(PhantomApi api, SettingsService settings, DownloadManager downloads) : BaseViewModel, IQueryAttributable
 {
     private int _id;
 
@@ -128,6 +128,99 @@ public partial class ShowDetailViewModel(PhantomApi api) : BaseViewModel, IQuery
             return;
         }
         await GoToAsync($"{nameof(Views.PlayerPage)}?episode={episode.Id}&resume={InProgress(episode)}");
+    }
+
+    /// <summary>An episode's "⋯" menu: play from the start, download it (to this device or the server), mark it.</summary>
+    [RelayCommand]
+    private async Task EpisodeOptions(EpisodeDto? episode)
+    {
+        if (episode is null || Show is not { } show) return;
+        const string playFromStart = "Play from the beginning", toDevice = "Download to this device", onServer = "Save on the server",
+            deleteDownload = "Delete download", resumeDownload = "Resume download", goToDownloads = "Go to Downloads";
+        var offline = downloads.FindEpisode(episode.Id);
+        var options = new List<string>();
+        if (episode.Available && InProgress(episode)) options.Add(playFromStart);
+        if (episode.Available)
+        {
+            if (offline is null) options.Add(toDevice);
+            else if (offline.Status is OfflineStatus.Paused or OfflineStatus.Failed) options.Add(resumeDownload);
+            else options.Add(goToDownloads);
+            options.Add(onServer);
+        }
+        var markWatched = episode.Playback.Watched ? "Mark unwatched" : "Mark watched";
+        options.Add(markWatched);
+
+        var choice = await Shell.Current.DisplayActionSheetAsync($"S{episode.SeasonNumber}:E{episode.EpisodeNumber} {episode.Title}".Trim(),
+            "Cancel", offline is null ? null : deleteDownload, [.. options]);
+        switch (choice)
+        {
+            case playFromStart:
+                await GoToAsync($"{nameof(Views.PlayerPage)}?episode={episode.Id}&resume=false");
+                break;
+            case toDevice:
+                await downloads.EnqueueEpisodeAsync(show, episode);
+                await ToastAsync(settings.DownloadOnWifiOnly ? "Downloading to this device (Wi-Fi only)" : "Downloading to this device");
+                break;
+            case resumeDownload:
+                downloads.Resume(offline!);
+                break;
+            case goToDownloads:
+                await Views.MainPage.ShowTab(Views.AppTab.Downloads);
+                break;
+            case deleteDownload:
+                await downloads.DeleteAsync(offline!);
+                await ToastAsync("Download deleted");
+                break;
+            case onServer:
+                await RunAsync(async () =>
+                {
+                    var d = await api.QueueServerDownloadAsync(0, null, episode.Id);
+                    await ToastAsync(d.Status == DownloadStatus.Completed ? "Already on the server" : "Queued on the server");
+                }, showBusy: false);
+                break;
+            default:
+                if (choice == markWatched) await ToggleEpisodeWatchedCommand.ExecuteAsync(episode);
+                break;
+        }
+    }
+
+    /// <summary>The season on screen to this device or the server: each of its episodes that can be played.</summary>
+    [RelayCommand]
+    private async Task DownloadSeason()
+    {
+        if (Show is not { } show || SelectedSeason is not { } season) return;
+        var episodes = Episodes.Where(e => e.Available && e.SeasonNumber == season.Number).ToList();
+        if (episodes.Count == 0)
+        {
+            await ToastAsync("No episodes of this season have been found yet.");
+            return;
+        }
+        var missing = episodes.Where(e => downloads.FindEpisode(e.Id) is null).ToList();
+        var name = season.Number == 0 ? "the specials" : $"season {season.Number}";
+        var count = episodes.Count == 1 ? "1 episode" : $"{episodes.Count} episodes";
+        var toDevice = missing.Count == 0 ? null
+            : missing.Count == episodes.Count ? $"Download {name} to this device ({count})"
+            : $"Download the rest of {name} to this device ({missing.Count} of {episodes.Count})";
+        var onServer = $"Save {name} on the server ({count})";
+        var choice = await Shell.Current.DisplayActionSheetAsync(show.Title, "Cancel", null,
+            [.. toDevice is null ? new[] { "Go to Downloads", onServer } : [toDevice, onServer]]);
+
+        if (choice == "Go to Downloads") await Views.MainPage.ShowTab(Views.AppTab.Downloads);
+        else if (choice == toDevice)
+        {
+            foreach (var e in missing) await downloads.EnqueueEpisodeAsync(show, e);
+            await ToastAsync((missing.Count == 1 ? "Downloading 1 episode" : $"Downloading {missing.Count} episodes")
+                             + (settings.DownloadOnWifiOnly ? " to this device (Wi-Fi only)" : " to this device"));
+        }
+        else if (choice == onServer)
+        {
+            // The server keeps one download per torrent, so a season pack is only fetched once.
+            await RunAsync(async () =>
+            {
+                foreach (var e in episodes) await api.QueueServerDownloadAsync(0, null, e.Id);
+                await ToastAsync($"Saving {name} on the server");
+            }, showBusy: false);
+        }
     }
 
     /// <summary>

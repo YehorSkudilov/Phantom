@@ -209,7 +209,9 @@ public partial class DownloadsViewModel(DownloadManager manager, SettingsService
 
     [RelayCommand]
     private Task Play(OfflineDownload item) => item.IsComplete
-        ? GoToAsync($"{nameof(Views.PlayerPage)}?id={item.MovieId}&offline=true&resume={item.OfflinePositionMs > 0}")
+        ? GoToAsync(item.EpisodeId is { } episode
+            ? $"{nameof(Views.PlayerPage)}?episode={episode}&offline=true&resume={item.OfflinePositionMs > 0}"
+            : $"{nameof(Views.PlayerPage)}?id={item.MovieId}&offline=true&resume={item.OfflinePositionMs > 0}")
         : Task.CompletedTask;
 
     [RelayCommand]
@@ -231,5 +233,7 @@ public partial class DownloadsViewModel(DownloadManager manager, SettingsService
     }
 
     [RelayCommand]
-    private Task Open(OfflineDownload item) => GoToAsync($"{nameof(Views.MovieDetailPage)}?id={item.MovieId}");
+    private Task Open(OfflineDownload item) => GoToAsync(item.ShowId is { } show
+        ? $"{nameof(Views.ShowDetailPage)}?id={show}"
+        : $"{nameof(Views.MovieDetailPage)}?id={item.MovieId}");
 }

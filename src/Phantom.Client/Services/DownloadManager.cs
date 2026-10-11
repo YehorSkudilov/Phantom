@@ -9,10 +9,25 @@ namespace Phantom.Services;
 
 public enum OfflineStatus { Queued, Downloading, Paused, Completed, Failed, WaitingForWifi }
 
-/// <summary>A movie copied to this device for offline playback ("Downloads" in Plex).</summary>
+/// <summary>A movie or a show's episode copied to this device for offline playback ("Downloads" in Plex).</summary>
 public partial class OfflineDownload : ObservableObject
 {
+    /// <summary>The movie's id; 0 for an episode.</summary>
     public int MovieId { get; set; }
+
+    /// <summary>Set for a show's episode (then Title is the show's, and Subtitle names the episode).</summary>
+    public int? EpisodeId { get; set; }
+    public int? ShowId { get; set; }
+    public int? SeasonNumber { get; set; }
+    public int? EpisodeNumber { get; set; }
+
+    /// <summary>"S1 · E2 · The Title" for an episode.</summary>
+    public string? Subtitle { get; set; }
+
+    public bool IsEpisode => EpisodeId is not null;
+
+    /// <summary>Names its files: the movie's id, or "ep" and the episode's.</summary>
+    public string FileKey => EpisodeId is { } e ? $"ep{e}" : MovieId.ToString();
     public int? ReleaseId { get; set; }
     public string Title { get; set; } = "";
     public int? Year { get; set; }
@@ -115,19 +130,23 @@ public class DownloadManager
         Connectivity.Current.ConnectivityChanged += (_, _) => Kick();
     }
 
-    public OfflineDownload? Find(int movieId) => Items.FirstOrDefault(i => i.MovieId == movieId);
+    public OfflineDownload? Find(int movieId) => Items.FirstOrDefault(i => i.EpisodeId is null && i.MovieId == movieId);
+
+    public OfflineDownload? FindEpisode(int episodeId) => Items.FirstOrDefault(i => i.EpisodeId == episodeId);
+
+    /// <summary>The downloaded episode of the same show after <paramref name="item"/>, for playing on offline.</summary>
+    public OfflineDownload? NextDownloadedEpisode(OfflineDownload item) => Items
+        .Where(i => i.IsComplete && i.ShowId == item.ShowId && i.EpisodeId != item.EpisodeId
+                    && (i.SeasonNumber > item.SeasonNumber || i.SeasonNumber == item.SeasonNumber && i.EpisodeNumber > item.EpisodeNumber))
+        .OrderBy(i => i.SeasonNumber).ThenBy(i => i.EpisodeNumber)
+        .FirstOrDefault();
 
     public long UsedBytes => Items.Sum(i => i.DownloadedBytes);
 
-    public async Task EnqueueAsync(MovieDetailDto movie, int? releaseId)
+    public Task EnqueueAsync(MovieDetailDto movie, int? releaseId)
     {
-        if (Find(movie.Id) is { } existing)
-        {
-            if (existing.Status is OfflineStatus.Failed or OfflineStatus.Paused) Resume(existing);
-            return;
-        }
-
-        var item = new OfflineDownload
+        if (Find(movie.Id) is { } existing) return ResumeIfStopped(existing);
+        return AddAsync(new OfflineDownload
         {
             MovieId = movie.Id,
             ReleaseId = releaseId,
@@ -137,7 +156,37 @@ public class DownloadManager
             RuntimeMinutes = movie.RuntimeMinutes,
             PosterUrl = movie.PosterUrl,
             Status = OfflineStatus.Queued,
-        };
+        });
+    }
+
+    /// <summary>A show's episode to the device. It's listed under the show (its poster and title), with the episode below.</summary>
+    public Task EnqueueEpisodeAsync(ShowDetailDto show, EpisodeDto episode)
+    {
+        if (FindEpisode(episode.Id) is { } existing) return ResumeIfStopped(existing);
+        return AddAsync(new OfflineDownload
+        {
+            EpisodeId = episode.Id,
+            ShowId = show.Id,
+            SeasonNumber = episode.SeasonNumber,
+            EpisodeNumber = episode.EpisodeNumber,
+            Subtitle = $"S{episode.SeasonNumber} · E{episode.EpisodeNumber}" + (string.IsNullOrWhiteSpace(episode.Title) ? "" : $" · {episode.Title}"),
+            Title = show.Title,
+            Year = show.Year,
+            Overview = episode.Overview ?? show.Overview,
+            RuntimeMinutes = episode.RuntimeMinutes,
+            PosterUrl = show.PosterUrl,
+            Status = OfflineStatus.Queued,
+        });
+    }
+
+    private Task ResumeIfStopped(OfflineDownload existing)
+    {
+        if (existing.Status is OfflineStatus.Failed or OfflineStatus.Paused) Resume(existing);
+        return Task.CompletedTask;
+    }
+
+    private async Task AddAsync(OfflineDownload item)
+    {
         Items.Insert(0, item);
         await CachePosterAsync(item);
         await SaveAsync();
@@ -147,7 +196,7 @@ public class DownloadManager
         // this device copies from it, and a paused or interrupted device download picks up from the server's copy.
         try
         {
-            await _api.QueueServerDownloadAsync(movie.Id, releaseId);
+            await _api.QueueServerDownloadAsync(item.MovieId, item.ReleaseId, item.EpisodeId);
         }
         catch (Exception ex) when (ex is HttpRequestException or ApiException or TaskCanceledException)
         {
@@ -181,15 +230,16 @@ public class DownloadManager
             _waiting.Remove(item);
         }
         Items.Remove(item);
-        foreach (var path in new[] { item.FilePath, item.FilePath + ".part", item.LocalPosterPath })
+        var posterShared = Items.Any(i => i.LocalPosterPath == item.LocalPosterPath);
+        foreach (var path in new[] { item.FilePath, item.FilePath + ".part", posterShared ? null : item.LocalPosterPath })
             if (!string.IsNullOrEmpty(path) && File.Exists(path)) File.Delete(path);
         await SaveAsync();
     }
 
-    /// <summary>Records an offline resume point, synced to the server later.</summary>
-    public async Task RecordOfflineProgressAsync(int movieId, long positionMs, long durationMs)
+    /// <summary>Records an offline resume point (a movie's, or with <paramref name="episodeId"/> an episode's), synced to the server later.</summary>
+    public async Task RecordOfflineProgressAsync(int movieId, long positionMs, long durationMs, int? episodeId = null)
     {
-        if (Find(movieId) is not { } item) return;
+        if ((episodeId is { } e ? FindEpisode(e) : Find(movieId)) is not { } item) return;
         item.OfflinePositionMs = positionMs;
         item.OfflineDurationMs = durationMs;
         item.PendingSync = true;
@@ -202,7 +252,8 @@ public class DownloadManager
         {
             try
             {
-                await _api.ReportTimelineAsync(new TimelineUpdate(item.MovieId, item.ReleaseId, item.OfflinePositionMs, item.OfflineDurationMs, PlayerState.Stopped, _settings.ClientName));
+                await _api.ReportTimelineAsync(new TimelineUpdate(item.MovieId, item.ReleaseId, item.OfflinePositionMs, item.OfflineDurationMs,
+                    PlayerState.Stopped, _settings.ClientName, item.EpisodeId));
                 item.PendingSync = false;
             }
             catch (Exception ex) when (ex is HttpRequestException or ApiException or TaskCanceledException)
@@ -315,10 +366,10 @@ public class DownloadManager
         MainThread.BeginInvokeOnMainThread(() => item.Status = OfflineStatus.Downloading);
 
         // Fresh URL every attempt: it embeds an auth token.
-        var info = await _api.StreamInfoAsync(item.MovieId, item.ReleaseId, ct);
+        var info = await _api.StreamInfoAsync(item.MovieId, item.ReleaseId, ct, item.EpisodeId);
         item.ReleaseId = info.ReleaseId;
         var ext = Path.GetExtension(info.FileName);
-        item.FilePath = Path.Combine(_root, $"{item.MovieId}{(string.IsNullOrEmpty(ext) ? ".mp4" : ext)}");
+        item.FilePath = Path.Combine(_root, $"{item.FileKey}{(string.IsNullOrEmpty(ext) ? ".mp4" : ext)}");
         var part = item.FilePath + ".part";
 
         var existing = File.Exists(part) ? new FileInfo(part).Length : 0;
@@ -397,7 +448,8 @@ public class DownloadManager
         try
         {
             var bytes = await _http.GetByteArrayAsync(item.PosterUrl);
-            item.LocalPosterPath = Path.Combine(_root, $"{item.MovieId}.poster.jpg");
+            // Episodes of one show share its poster.
+            item.LocalPosterPath = Path.Combine(_root, item.ShowId is { } show ? $"show{show}.poster.jpg" : $"{item.MovieId}.poster.jpg");
             await File.WriteAllBytesAsync(item.LocalPosterPath, bytes);
         }
         catch (Exception ex) when (ex is HttpRequestException or IOException or TaskCanceledException)
@@ -408,7 +460,9 @@ public class DownloadManager
 
     private record Snapshot(int MovieId, int? ReleaseId, string Title, int? Year, string? Overview, int? RuntimeMinutes, string? PosterUrl,
         string? LocalPosterPath, string FilePath, DateTime AddedAt, OfflineStatus Status, long TotalBytes, long DownloadedBytes, string? Error,
-        long OfflinePositionMs, long OfflineDurationMs, bool PendingSync);
+        long OfflinePositionMs, long OfflineDurationMs, bool PendingSync,
+        // Episodes (absent, so null, in indexes written before they could be downloaded).
+        int? EpisodeId = null, int? ShowId = null, int? SeasonNumber = null, int? EpisodeNumber = null, string? Subtitle = null);
 
     private async Task SaveAsync()
     {
@@ -417,7 +471,8 @@ public class DownloadManager
         {
             var snapshot = Items.Select(i => new Snapshot(i.MovieId, i.ReleaseId, i.Title, i.Year, i.Overview, i.RuntimeMinutes, i.PosterUrl,
                 i.LocalPosterPath, i.FilePath, i.AddedAt, i.Status == OfflineStatus.Downloading ? OfflineStatus.Queued : i.Status,
-                i.TotalBytes, i.DownloadedBytes, i.Error, i.OfflinePositionMs, i.OfflineDurationMs, i.PendingSync)).ToList();
+                i.TotalBytes, i.DownloadedBytes, i.Error, i.OfflinePositionMs, i.OfflineDurationMs, i.PendingSync,
+                i.EpisodeId, i.ShowId, i.SeasonNumber, i.EpisodeNumber, i.Subtitle)).ToList();
             await File.WriteAllTextAsync(_indexPath, JsonSerializer.Serialize(snapshot));
         }
         finally
@@ -443,6 +498,7 @@ public class DownloadManager
                     Status = complete ? OfflineStatus.Completed : s.Status == OfflineStatus.Completed ? OfflineStatus.Queued : s.Status,
                     TotalBytes = s.TotalBytes, DownloadedBytes = s.DownloadedBytes, Error = s.Error,
                     OfflinePositionMs = s.OfflinePositionMs, OfflineDurationMs = s.OfflineDurationMs, PendingSync = s.PendingSync,
+                    EpisodeId = s.EpisodeId, ShowId = s.ShowId, SeasonNumber = s.SeasonNumber, EpisodeNumber = s.EpisodeNumber, Subtitle = s.Subtitle,
                 });
             }
             Kick();
