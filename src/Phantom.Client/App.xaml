@@ -31,14 +31,7 @@
                 <Grid RowDefinitions="Auto,Auto,Auto" WidthRequest="124" Padding="0,0,0,6" RowSpacing="4">
                     <Border StrokeShape="RoundRectangle 8" HeightRequest="184" BackgroundColor="{StaticResource Surface}">
                         <Grid>
-                            <Image Source="{Binding PosterUrl, Converter={StaticResource Poster}}" Aspect="AspectFill"
-                                   IsVisible="{Binding PosterUrl, Converter={StaticResource HasValue}}" />
-                            <!-- No cover (yet): the title on the brand colours, rather than a stretched logo -->
-                            <Grid Background="{StaticResource BrandGradient}" Opacity="0.85"
-                                  IsVisible="{Binding PosterUrl, Converter={StaticResource HasValue}, ConverterParameter=invert}">
-                                <Label Text="{Binding Title}" TextColor="White" FontFamily="OpenSansSemibold" FontSize="15" Margin="10"
-                                       HorizontalTextAlignment="Center" VerticalOptions="Center" MaxLines="5" LineBreakMode="TailTruncation" />
-                            </Grid>
+                            <Image Source="{Binding PosterUrl, Converter={StaticResource Poster}}" Aspect="AspectFill" />
                             <!-- Unwatched marker, like Plex's corner triangle -->
                             <Border IsVisible="{Binding Watched, Converter={StaticResource Not}}"
                                     HorizontalOptions="End" VerticalOptions="Start"
