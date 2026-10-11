@@ -132,6 +132,11 @@ public partial class MainPage : ContentPage
         return null;
     }
 
+    // Android's Back button (Shell hands it to this page): the visible tab gets it first, so it can close what's open
+    // on it (the Library's filters popup) instead of the app closing.
+    protected override bool OnBackButtonPressed() =>
+        _current?.Page is TabView tab && tab.HandleBack() || base.OnBackButtonPressed();
+
     // Tabs only count as visible while this page is on top, as they did when each tab was its own Shell page:
     // coming back from a detail page or the player reloads the current tab.
     protected override void OnAppearing()
