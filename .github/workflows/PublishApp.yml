@@ -559,8 +559,8 @@ jobs:
         run: |
           workloads=$(dotnet workload list)
           echo "$workloads"
-          has() { echo "$workloads" | grep -qE "^\s*$1\s"; }
-          if has 'maui(-\w+)?' && has android && has ios && has maccatalyst; then
+          has() { echo "$workloads" | grep -qE "^[[:space:]]*$1[[:space:]]"; }
+          if has 'maui(-[a-z]+)?' && has android && has ios && has maccatalyst; then
             echo "MAUI workloads already installed"
           else
             dotnet workload install maui
@@ -755,8 +755,8 @@ jobs:
         run: |
           workloads=$(dotnet workload list)
           echo "$workloads"
-          has() { echo "$workloads" | grep -qE "^\s*$1\s"; }
-          if has 'maui(-\w+)?' && has android && has ios && has maccatalyst; then
+          has() { echo "$workloads" | grep -qE "^[[:space:]]*$1[[:space:]]"; }
+          if has 'maui(-[a-z]+)?' && has android && has ios && has maccatalyst; then
             echo "MAUI workloads already installed"
           else
             dotnet workload install maui
