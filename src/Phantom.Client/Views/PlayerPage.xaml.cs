@@ -42,6 +42,8 @@ public partial class PlayerPage : ContentPage
                 message += $"\n\nDetails{(_vm.IsTranscoding ? " (converted by the server)" : "")}: {(raw.Length > 300 ? raw[..300] + "…" : raw)}";
             Guard(async () =>
             {
+                // A failed conversion: the player only knows it got no video; the server knows why.
+                if (await _vm.ConversionErrorAsync() is { } reason) message += $"\n\nServer: {reason}";
                 await Dialog.ErrorAsync(message, "Can't play this");
                 await Shell.Current.GoToAsync("..");
             });
@@ -255,11 +257,11 @@ public partial class PlayerPage : ContentPage
         var text = raw ?? "";
         if (text.Contains("502") || text.Contains("503") || text.Contains("504") || text.Contains("Gateway", StringComparison.OrdinalIgnoreCase))
             return "The Phantom server isn't responding right now. It may be restarting — try again in a minute.";
-        if (text.Contains("404")) return "The server couldn't find this movie's file. Try another version.";
+        if (text.Contains("404")) return "The server couldn't find this file. Try another source.";
         if (text.Contains("401") || text.Contains("403")) return "Your sign-in has expired. Sign in again.";
         return canConvert
-            ? "This couldn't be played, even converted by the server. Try again, or choose another version."
-            : "This device can't play this file's format, and the server can't convert it (ffmpeg isn't installed there). Choose another version.";
+            ? "This couldn't be played, even converted by the server. Try again, or choose another source."
+            : "This device can't play this file's format, and the server can't convert it (ffmpeg isn't installed there). Choose another source.";
     }
 
     private static bool IsServerError(string? raw) =>

@@ -136,7 +136,12 @@ public class Transcoder(IOptions<PhantomOptions> options, ILogger<Transcoder> lo
         Directory.Delete(work, recursive: true);
     }
 
-    /// <summary>Runs ffmpeg and copies its output to <paramref name="output"/> until done or cancelled.</summary>
+    /// <summary>
+    /// Runs ffmpeg and copies its output to <paramref name="output"/> until done or cancelled. Nothing is written until
+    /// ffmpeg has produced its first bytes: if it fails before that (it can't read or decode the input), a
+    /// <see cref="TranscodeFailedException"/> says why, while there's still time to answer with an error rather than an
+    /// empty "video" (which a player can only report as an unreadable file).
+    /// </summary>
     public async Task TranscodeAsync(string input, double startSeconds, int? maxVideoKbps, int? maxHeight, Stream output, CancellationToken ct)
     {
         var psi = new ProcessStartInfo(options.Value.FfmpegPath)
@@ -149,16 +154,44 @@ public class Transcoder(IOptions<PhantomOptions> options, ILogger<Transcoder> lo
 
         using var process = Process.Start(psi) ?? throw new InvalidOperationException("Could not start ffmpeg.");
         var stderr = process.StandardError.ReadToEndAsync(CancellationToken.None);
+        var failed = false;
         try
         {
-            await process.StandardOutput.BaseStream.CopyToAsync(output, ct);
+            var stdout = process.StandardOutput.BaseStream;
+            var first = new byte[64 * 1024];
+            var read = await stdout.ReadAsync(first, ct);
+            if (read == 0)
+            {
+                await process.WaitForExitAsync(ct);
+                failed = true;
+                var err = (await stderr).Trim();
+                throw new TranscodeFailedException(
+                    err.Length > 0 ? err.Split('\n').Last(l => l.Trim().Length > 0).Trim() : $"ffmpeg stopped (exit code {process.ExitCode}) without any output.");
+            }
+            await output.WriteAsync(first.AsMemory(0, read), ct);
+            await stdout.CopyToAsync(output, ct);
             await process.WaitForExitAsync(ct);
+            failed = process.ExitCode != 0;
         }
         finally
         {
             if (!process.HasExited) process.Kill(entireProcessTree: true);
             var err = await stderr;
-            if (!string.IsNullOrWhiteSpace(err)) log.LogDebug("ffmpeg: {Err}", err);
+            // A failure is worth seeing in the server's log (it used to be hidden at debug level); a cancelled one isn't.
+            if (failed && !ct.IsCancellationRequested) log.LogWarning("ffmpeg couldn't convert {Input}: {Err}", Redact(input), err.Trim());
+            else if (!string.IsNullOrWhiteSpace(err)) log.LogDebug("ffmpeg: {Err}", err);
         }
     }
+
+    /// <summary>The input as it can be logged: a loopback URL's access token left out.</summary>
+    private static string Redact(string input)
+    {
+        var i = input.IndexOf("access_token=", StringComparison.Ordinal);
+        return i < 0 ? input : input[..i] + "access_token=…";
+    }
+}
+
+/// <summary>ffmpeg couldn't convert a video: its own last word on why.</summary>
+public class TranscodeFailedException(string message) : Exception(message)
+{
 }

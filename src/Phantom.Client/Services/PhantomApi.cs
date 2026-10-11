@@ -104,6 +104,25 @@ public class PhantomApi(HttpClient http, SettingsService settings)
 
     // ---------- Server & auth ----------
 
+    /// <summary>
+    /// Why a stream URL the player couldn't play fails, as the server says (a conversion that failed answers with
+    /// ffmpeg's reason), or null when it answers fine. The answer is only looked at, never read through.
+    /// </summary>
+    public async Task<string?> StreamErrorAsync(string url)
+    {
+        try
+        {
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+            using var res = await http.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, cts.Token);
+            if (res.IsSuccessStatusCode) return null;
+            return Describe(res.StatusCode, await res.Content.ReadAsStringAsync(cts.Token));
+        }
+        catch (Exception ex) when (ex is HttpRequestException or OperationCanceledException)
+        {
+            return null;
+        }
+    }
+
     public async Task<ServerInfoDto> ProbeAsync(string serverUrl, CancellationToken ct = default)
     {
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);

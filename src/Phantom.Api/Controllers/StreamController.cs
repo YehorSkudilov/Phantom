@@ -253,6 +253,13 @@ public abstract class StreamControllerBase(
         {
             log.LogDebug("Transcode of {Route} cancelled by client", RouteBase(id));
         }
+        catch (TranscodeFailedException ex) when (!Response.HasStarted)
+        {
+            // Said as an error, with ffmpeg's reason: the player (and the app's error message) can show why.
+            Response.StatusCode = StatusCodes.Status502BadGateway;
+            Response.ContentType = "text/plain; charset=utf-8";
+            await Response.WriteAsync($"The server couldn't convert this video: {ex.Message}", CancellationToken.None);
+        }
     }
 
     /// <summary>

@@ -330,6 +330,12 @@ public partial class PlayerViewModel(PhantomApi api, SettingsService settings, D
     /// After direct play fails: switches to the server's conversion at <paramref name="position"/> (the file's video or
     /// audio is something this device can't decode). False when it was already converting, or the server can't.
     /// </summary>
+    /// <summary>Why the server's conversion failed, in its own words, when it's the converted stream that wouldn't play.</summary>
+    public Task<string?> ConversionErrorAsync() =>
+        IsTranscoding && SourceUrl is { } url && url.StartsWith("http", StringComparison.OrdinalIgnoreCase)
+            ? api.StreamErrorAsync(url)
+            : Task.FromResult<string?>(null);
+
     public bool TryConvertAfterFailure(TimeSpan position)
     {
         if (IsTranscoding || _forceConvert || Stream?.TranscodeUrl is null || _offline) return false;
