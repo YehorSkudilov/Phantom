@@ -4,7 +4,7 @@ using AppSkeleton;
 namespace Phantom.Views;
 
 /// <summary>The tabs, in the order they sit in the nav bar (and swipe).</summary>
-public enum AppTab { Discover, Search, MyStuff, Downloads, More }
+public enum AppTab { Discover, Search, MyStuff, Downloads, Profile }
 
 /// <summary>The signed-in root: the tabs live in a swipeable CView with a CNavBar underneath. Detail pages still push through Shell.</summary>
 public partial class MainPage : ContentPage
@@ -30,7 +30,7 @@ public partial class MainPage : ContentPage
             new() { Glyph = "search", PageName = "Search", Page = library, Color = color, SelectedColor = selected },
             new() { Glyph = "bookmarks", PageName = "My Stuff", Page = myStuff, Color = color, SelectedColor = selected },
             new() { Glyph = "download_for_offline", PageName = "Downloads", Page = downloads, Color = color, SelectedColor = selected },
-            new() { Glyph = "account_circle", PageName = "More", Page = more, Color = color, SelectedColor = selected },
+            new() { Glyph = "account_circle", PageName = "Profile", Page = more, Color = color, SelectedColor = selected },
         ];
 
         TabContent.CNavIconItems = _tabs;

@@ -13,10 +13,7 @@
                 <Border WidthRequest="56" HeightRequest="56" StrokeShape="RoundRectangle 16" BackgroundColor="{Binding AvatarColor}">
                     <Label Text="{Binding Initial}" FontSize="24" FontFamily="OpenSansSemibold" HorizontalOptions="Center" VerticalOptions="Center" />
                 </Border>
-                <VerticalStackLayout Grid.Column="1" VerticalOptions="Center">
-                    <Label Text="{Binding Username}" Style="{StaticResource H2}" />
-                    <Label Text="{Binding ServerText}" Style="{StaticResource Muted}" />
-                </VerticalStackLayout>
+                <Label Grid.Column="1" Text="{Binding Username}" Style="{StaticResource H2}" VerticalOptions="Center" />
             </Grid>
 
             <Label Text="PROFILE" Style="{StaticResource SectionLabel}" />

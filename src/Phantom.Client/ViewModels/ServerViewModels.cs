@@ -55,7 +55,6 @@ public partial class ServerDownloadsViewModel(PhantomApi api, SettingsService se
 public partial class MoreViewModel(PhantomApi api, SettingsService settings) : BaseViewModel
 {
     [ObservableProperty] private string username = "";
-    [ObservableProperty] private string serverText = "";
     [ObservableProperty] private bool isAdmin;
     [ObservableProperty] private string avatarColor = "#8B5CF6";
     [ObservableProperty] private string initial = "?";
@@ -70,8 +69,7 @@ public partial class MoreViewModel(PhantomApi api, SettingsService settings) : B
         Initial = Username.Length > 0 ? Username[..1].ToUpperInvariant() : "?";
         AvatarColor = user?.AvatarColor ?? "#8B5CF6";
         IsAdmin = user?.IsAdmin == true;
-        var info = await api.ServerInfoAsync();
-        ServerText = $"{info.Name} · v{info.Version} · {info.MovieCount} movies";
+        await Task.CompletedTask;
     }, showBusy: false);
 
     [RelayCommand]
