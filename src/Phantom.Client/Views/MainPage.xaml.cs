@@ -51,6 +51,8 @@ public partial class MainPage : ContentPage
         NavBar.SelectItem(_tabs[(int)AppTab.Discover]);
 
         _instance = new(this);
+        // The offline state's "Go to Downloads", wherever it shows.
+        Phantom.Controls.StateView.OpenDownloads = () => ShowTab(AppTab.Downloads);
     }
 
     /// <summary>Pops back to the tabs and switches to <paramref name="tab"/>.</summary>

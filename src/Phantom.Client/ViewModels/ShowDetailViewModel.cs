@@ -10,6 +10,8 @@ namespace Phantom.ViewModels;
 /// <summary>A show's page: its details, Play (the next episode), and a season's episodes to pick from.</summary>
 public partial class ShowDetailViewModel(PhantomApi api, SettingsService settings, DownloadManager downloads) : BaseViewModel, IQueryAttributable
 {
+    protected override bool ShowsOfflineState => true;
+
     private int _id;
 
     public ObservableList<SeasonDto> Seasons { get; } = [];

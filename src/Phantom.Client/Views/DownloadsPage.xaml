@@ -25,14 +25,6 @@
             </Grid>
         </Border>
 
-        <!-- Empty state outside the list: on Windows a CollectionView with a footer never shows its EmptyView. -->
-        <VerticalStackLayout Grid.Row="1" Spacing="8" Margin="32,48" HorizontalOptions="Center"
-                             IsVisible="{Binding Items.Count, Converter={StaticResource HasValue}, ConverterParameter=invert}">
-            <Image Source="logo_mark.png" HeightRequest="56" Opacity="0.6" />
-            <Label Text="No downloads yet" Style="{StaticResource H2}" HorizontalOptions="Center" />
-            <Label Text="Open a movie and tap Download to watch it without a connection." Style="{StaticResource Muted}" HorizontalTextAlignment="Center" />
-        </VerticalStackLayout>
-
         <RefreshView Grid.Row="1" IsRefreshing="{Binding IsRefreshing}" Command="{Binding RefreshCommand}">
         <CollectionView ItemsSource="{Binding Items}" SelectionMode="None">
             <CollectionView.Footer>
@@ -88,6 +80,11 @@
             </CollectionView.ItemTemplate>
         </CollectionView>
         </RefreshView>
+        <!-- Empty state outside the list: on Windows a CollectionView with a footer never shows its EmptyView. -->
+        <controls:StateView Grid.Row="1" HasContent="{Binding Items.Count, Converter={StaticResource HasValue}}"
+                            Glyph="download_for_offline" Title="No downloads yet"
+                            Message="Tap Download on a movie or an episode and it'll play here, even on a plane."
+                            ActionText="Find something to watch" ActionCommand="{Binding BrowseCommand}" />
         </Grid>
 
         <!-- On the server -->

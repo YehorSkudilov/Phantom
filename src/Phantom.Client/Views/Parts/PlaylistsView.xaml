@@ -41,7 +41,10 @@
                 </CollectionView.ItemTemplate>
             </CollectionView>
         </RefreshView>
-        <Label Grid.Row="1" Text="No playlists yet. Create one, or add movies from their page." Style="{StaticResource Muted}"
-               HorizontalTextAlignment="Center" Margin="32,48" VerticalOptions="Start" IsVisible="{Binding IsEmpty}" />
+        <controls:StateView Grid.Row="1" Skeleton="List" HasContent="{Binding Playlists.Count, Converter={StaticResource HasValue}}"
+                            IsLoading="{Binding IsBusy}" HasLoaded="{Binding HasLoaded}" IsOffline="{Binding IsOffline}"
+                            RetryCommand="{Binding LoadCommand}" Glyph="queue_music" Title="No playlists yet"
+                            Message="Line up a movie night: make a playlist, then add to it from any movie's page."
+                            ActionText="New playlist" ActionCommand="{Binding CreateCommand}" />
     </Grid>
 </ContentView>

@@ -9,6 +9,8 @@ namespace Phantom.ViewModels;
 
 public partial class MovieDetailViewModel(PhantomApi api, SettingsService settings, DownloadManager downloads) : BaseViewModel, IQueryAttributable
 {
+    protected override bool ShowsOfflineState => true;
+
     private int _id;
 
     public ObservableList<MovieSummaryDto> Related { get; } = [];

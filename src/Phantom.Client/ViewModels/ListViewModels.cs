@@ -20,16 +20,34 @@ public partial class MovieListViewModel(PhantomApi api) : BaseViewModel, IQueryA
 
     public string EmptyText => _kind switch
     {
-        "history" => "Nothing watched yet.",
-        "collection" => "This collection is empty.",
-        _ => "Nothing on your watchlist yet. Tap Watchlist on a movie to save it for later.",
+        "history" => "What you watch shows up here, newest first, so it's easy to find again.",
+        "collection" => "None of this collection's movies are in the library yet.",
+        _ => "Tap Watchlist on a movie or show to save it for later. It'll be waiting here.",
     };
+
+    public string EmptyTitle => _kind switch
+    {
+        "history" => "Nothing watched yet",
+        "collection" => "This collection is empty",
+        _ => "Your watchlist is empty",
+    };
+
+    public string EmptyGlyph => _kind switch
+    {
+        "history" => "history",
+        "collection" => "collections_bookmark",
+        _ => "bookmark_add",
+    };
+
+    protected override bool ShowsOfflineState => true;
 
     /// <summary>Picks what this list shows without loading it yet (the My Stuff tab loads it when its tab opens).</summary>
     public MovieListViewModel Use(string kind)
     {
         _kind = kind;
         OnPropertyChanged(nameof(EmptyText));
+        OnPropertyChanged(nameof(EmptyTitle));
+        OnPropertyChanged(nameof(EmptyGlyph));
         return this;
     }
 
@@ -38,6 +56,8 @@ public partial class MovieListViewModel(PhantomApi api) : BaseViewModel, IQueryA
         _kind = query.TryGetValue("kind", out var k) ? k.ToString()! : "watchlist";
         _id = query.TryGetValue("id", out var id) && int.TryParse(id.ToString(), out var i) ? i : 0;
         OnPropertyChanged(nameof(EmptyText));
+        OnPropertyChanged(nameof(EmptyTitle));
+        OnPropertyChanged(nameof(EmptyGlyph));
         LoadCommand.Execute(null);
     }
 
@@ -74,6 +94,8 @@ public partial class MovieListViewModel(PhantomApi api) : BaseViewModel, IQueryA
 
 public partial class CollectionsViewModel(PhantomApi api) : BaseViewModel
 {
+    protected override bool ShowsOfflineState => true;
+
     public ObservableList<CollectionDto> Collections { get; } = [];
 
     [ObservableProperty] private bool isEmpty;
@@ -91,6 +113,8 @@ public partial class CollectionsViewModel(PhantomApi api) : BaseViewModel
 
 public partial class PlaylistsViewModel(PhantomApi api) : BaseViewModel
 {
+    protected override bool ShowsOfflineState => true;
+
     public ObservableList<PlaylistDto> Playlists { get; } = [];
 
     [ObservableProperty] private bool isEmpty;
@@ -232,6 +256,10 @@ public partial class DownloadsViewModel(DownloadManager manager, SettingsService
         await manager.DeleteAsync(item);
         Refresh();
     }
+
+    /// <summary>From the empty state: off to find something to download.</summary>
+    [RelayCommand]
+    private Task Browse() => Views.MainPage.ShowTab(Views.AppTab.Discover);
 
     [RelayCommand]
     private Task Open(OfflineDownload item) => GoToAsync(item.ShowId is { } show

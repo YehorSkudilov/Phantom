@@ -7,6 +7,7 @@
              x:Class="Phantom.Views.MovieDetailPage"
              x:DataType="vm:MovieDetailViewModel">
 
+    <Grid>
     <RefreshView IsRefreshing="{Binding IsRefreshing}" Command="{Binding LoadCommand}">
         <ScrollView>
             <VerticalStackLayout Padding="0,0,0,32" Spacing="16">
@@ -30,7 +31,6 @@
                     </Grid>
                 </Grid>
 
-                <ActivityIndicator IsRunning="{Binding IsBusy}" IsVisible="{Binding IsBusy}" />
 
                 <!-- Primary actions -->
                 <VerticalStackLayout Padding="16,0" Spacing="10">
@@ -168,4 +168,9 @@
             </VerticalStackLayout>
         </ScrollView>
     </RefreshView>
+    <!-- Until the page's details are in: its shape, softly pulsing; or, offline, a way to try again -->
+    <controls:StateView Skeleton="Detail" HasContent="{Binding Movie, Converter={StaticResource HasValue}}"
+                        HasLoaded="{Binding HasLoaded}" IsOffline="{Binding IsOffline}" RetryCommand="{Binding LoadCommand}"
+                        Glyph="error_outline" Title="Couldn't open this" Message="It may have been removed from the library." />
+    </Grid>
 </ContentPage>

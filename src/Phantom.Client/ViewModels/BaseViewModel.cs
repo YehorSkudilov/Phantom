@@ -24,6 +24,20 @@ public abstract partial class BaseViewModel : ObservableObject
     [ObservableProperty]
     private string title = "";
 
+    /// <summary>The server couldn't be reached the last time this tried (cleared by the next thing that works).</summary>
+    [ObservableProperty]
+    private bool isOffline;
+
+    /// <summary>The first load has finished (well or not): before that a page is "loading", not "empty".</summary>
+    [ObservableProperty]
+    private bool hasLoaded;
+
+    /// <summary>
+    /// The page shows an offline state of its own (see StateView), so not reaching the server is said there, and with a
+    /// toast, instead of in an error pop-up.
+    /// </summary>
+    protected virtual bool ShowsOfflineState => false;
+
     public bool IsNotBusy => !IsBusy;
 
     /// <summary>A RefreshView's spinner (two-way bound): set by pulling, cleared when the load it started finishes.</summary>
@@ -63,6 +77,7 @@ public abstract partial class BaseViewModel : ObservableObject
             if (showBusy) IsBusy = true;
             ErrorMessage = null;
             await action();
+            IsOffline = false;
         }
         catch (ApiException ex)
         {
@@ -70,7 +85,11 @@ public abstract partial class BaseViewModel : ObservableObject
         }
         catch (HttpRequestException)
         {
-            ErrorMessage = "Can't reach the Phantom server. Check your connection.";
+            // Said once, not on every retry (some pages poll).
+            var wasOffline = IsOffline;
+            IsOffline = true;
+            if (ShowsOfflineState) { if (!wasOffline) await ToastAsync("Can't reach the Phantom server"); }
+            else ErrorMessage = "Can't reach the Phantom server. Check your connection.";
         }
         catch (TaskCanceledException)
         {
@@ -86,6 +105,7 @@ public abstract partial class BaseViewModel : ObservableObject
         finally
         {
             if (showBusy) IsBusy = false;
+            HasLoaded = true;
             await EndRefreshAsync();
         }
     }

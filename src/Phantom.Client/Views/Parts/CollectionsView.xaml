@@ -4,6 +4,7 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
              xmlns:vm="clr-namespace:Phantom.ViewModels"
              xmlns:views="clr-namespace:Phantom.Views"
+             xmlns:controls="clr-namespace:Phantom.Controls"
              xmlns:dto="clr-namespace:Phantom.Shared;assembly=Phantom.Shared"
              x:Class="Phantom.Views.Parts.CollectionsView"
              x:DataType="vm:CollectionsViewModel">
@@ -33,7 +34,9 @@
                 </CollectionView.ItemTemplate>
             </CollectionView>
         </RefreshView>
-        <Label Text="Collections appear automatically when TMDB metadata is enabled on the server." Style="{StaticResource Muted}"
-               HorizontalTextAlignment="Center" Margin="32,48" VerticalOptions="Start" IsVisible="{Binding IsEmpty}" />
+        <controls:StateView Skeleton="Grid" HasContent="{Binding Collections.Count, Converter={StaticResource HasValue}}"
+                            IsLoading="{Binding IsBusy}" HasLoaded="{Binding HasLoaded}" IsOffline="{Binding IsOffline}"
+                            RetryCommand="{Binding LoadCommand}" Glyph="collections_bookmark" Title="No collections yet"
+                            Message="Film series (every Bond, every Pixar...) gather here on their own once the server has fetched movie details." />
     </Grid>
 </ContentView>

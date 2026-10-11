@@ -16,6 +16,8 @@ public partial class ServerDownloadsViewModel(PhantomApi api, SettingsService se
     [ObservableProperty] private bool isEmpty;
     [ObservableProperty] private string totals = "";
 
+    protected override bool ShowsOfflineState => true;
+
     [RelayCommand]
     public Task Refresh() => RunAsync(async () =>
     {

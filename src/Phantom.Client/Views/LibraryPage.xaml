@@ -80,9 +80,6 @@
                             <BoxView HeightRequest="{x:Static views:TabView.NavBarInset}" Color="Transparent" />
                         </VerticalStackLayout>
                     </CollectionView.Footer>
-                    <CollectionView.EmptyView>
-                        <Label Text="Nothing matches these filters." Style="{StaticResource Muted}" HorizontalOptions="Center" Margin="0,40" />
-                    </CollectionView.EmptyView>
                 </CollectionView>
             </RefreshView>
             <RefreshView IsRefreshing="{Binding IsRefreshing}" Command="{Binding ReloadCommand}" IsVisible="{Binding IsGrid, Converter={StaticResource Not}}">
@@ -95,11 +92,14 @@
                             <BoxView HeightRequest="{x:Static views:TabView.NavBarInset}" Color="Transparent" />
                         </VerticalStackLayout>
                     </CollectionView.Footer>
-                    <CollectionView.EmptyView>
-                        <Label Text="Nothing matches these filters." Style="{StaticResource Muted}" HorizontalOptions="Center" Margin="0,40" />
-                    </CollectionView.EmptyView>
                 </CollectionView>
             </RefreshView>
+            <!-- Loading the first page, offline, or nothing matches (outside the lists: Windows never shows a list's
+                 EmptyView when it has a footer) -->
+            <controls:StateView Skeleton="Grid" HasContent="{Binding Movies.Count, Converter={StaticResource HasValue}}"
+                                HasLoaded="{Binding HasLoaded}" IsOffline="{Binding IsOffline}" RetryCommand="{Binding ReloadCommand}"
+                                Glyph="{Binding EmptyGlyph}" Title="{Binding EmptyTitle}" Message="{Binding EmptyMessage}"
+                                ActionText="{Binding EmptyActionText}" ActionCommand="{Binding ClearFiltersCommand}" />
         </Grid>
         </Grid>
 
@@ -107,7 +107,9 @@
         <ScrollView Grid.Row="2" x:DataType="vm:LibraryViewModel" IsVisible="{Binding Search.Query, Converter={StaticResource HasValue}}">
             <VerticalStackLayout BindingContext="{Binding Search}" x:DataType="vm:SearchViewModel">
             <VerticalStackLayout Spacing="10" Padding="0,8,0,108">
-                <Label Text="No results." Style="{StaticResource Muted}" HorizontalOptions="Center" Margin="0,40" IsVisible="{Binding NoResults}" />
+                <controls:StateView HasContent="{Binding NoResults, Converter={StaticResource Not}}" Margin="0,24,0,0"
+                                    Glyph="travel_explore" Title="No matches"
+                                    Message="Nothing in the library by that title, person or genre. Check the spelling, or try fewer words." />
 
                 <Label Text="People" Style="{StaticResource H2}" Margin="16,8,16,0" IsVisible="{Binding People.Count, Converter={StaticResource HasValue}}" />
                 <FlexLayout BindableLayout.ItemsSource="{Binding People}" Wrap="Wrap" Margin="12,0">

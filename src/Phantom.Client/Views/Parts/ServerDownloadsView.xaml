@@ -61,7 +61,9 @@
             </CollectionView.ItemTemplate>
         </CollectionView>
         </RefreshView>
-        <Label Grid.Row="2" Text="Nothing saved yet. Open a movie and tap Save on server to keep a copy there." Style="{StaticResource Muted}"
-               HorizontalTextAlignment="Center" Margin="32,48" VerticalOptions="Start" IsVisible="{Binding IsEmpty}" />
+        <controls:StateView Grid.Row="2" Skeleton="List" HasContent="{Binding Items.Count, Converter={StaticResource HasValue}}"
+                            HasLoaded="{Binding HasLoaded}" IsOffline="{Binding IsOffline}" RetryCommand="{Binding RefreshCommand}"
+                            Glyph="cloud_download" Title="Nothing on the server yet"
+                            Message="Tap Save on server on a movie or an episode: the server downloads it once and keeps it, for everyone here to watch." />
     </Grid>
 </ContentView>

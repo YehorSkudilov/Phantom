@@ -12,33 +12,25 @@ public partial class HomeViewModel(PhantomApi api, SettingsService settings, Dow
 
     [ObservableProperty] private MovieSummaryDto? featured;
     [ObservableProperty] private string greeting = "";
-    [ObservableProperty] private bool isOffline;
+
+    protected override bool ShowsOfflineState => true;
 
     [RelayCommand]
     public Task Refresh() => RunAsync(async () =>
     {
-        IsOffline = false;
-        try
+        var hubs = await api.HubsAsync();
+        // Only rows that changed are replaced: clearing and refilling redrew (and reloaded the posters of) them all.
+        for (var i = 0; i < hubs.Count; i++)
         {
-            var hubs = await api.HubsAsync();
-            // Only rows that changed are replaced: clearing and refilling redrew (and reloaded the posters of) them all.
-            for (var i = 0; i < hubs.Count; i++)
-            {
-                if (i >= Hubs.Count) Hubs.Add(hubs[i]);
-                else if (!SameRow(Hubs[i], hubs[i])) Hubs[i] = hubs[i];
-            }
-            while (Hubs.Count > hubs.Count) Hubs.RemoveAt(Hubs.Count - 1);
-            var featured = hubs.FirstOrDefault(h => h.Key == "continue")?.Items.FirstOrDefault()
-                           ?? hubs.FirstOrDefault(h => h.Key == "recent")?.Items.FirstOrDefault();
-            if (featured != Featured) Featured = featured;
-            Greeting = settings.User is { } u ? $"Welcome back, {u.Username}" : "Welcome";
-            await downloads.SyncOfflineProgressAsync();
+            if (i >= Hubs.Count) Hubs.Add(hubs[i]);
+            else if (!SameRow(Hubs[i], hubs[i])) Hubs[i] = hubs[i];
         }
-        catch (HttpRequestException)
-        {
-            IsOffline = true;
-            throw;
-        }
+        while (Hubs.Count > hubs.Count) Hubs.RemoveAt(Hubs.Count - 1);
+        var featured = hubs.FirstOrDefault(h => h.Key == "continue")?.Items.FirstOrDefault()
+                       ?? hubs.FirstOrDefault(h => h.Key == "recent")?.Items.FirstOrDefault();
+        if (featured != Featured) Featured = featured;
+        Greeting = settings.User is { } u ? $"Welcome back, {u.Username}" : "Welcome";
+        await downloads.SyncOfflineProgressAsync();
     });
 
     private static bool SameRow(HubDto a, HubDto b) => a.Key == b.Key && a.Title == b.Title && a.Items.SequenceEqual(b.Items);
@@ -113,6 +105,26 @@ public partial class LibraryViewModel(PhantomApi api, SettingsService settings, 
 {
     /// <summary>The search box at the top of the Search tab.</summary>
     public SearchViewModel Search => search;
+
+    protected override bool ShowsOfflineState => true;
+
+    // What the list says when it has nothing to show: filtered down to nothing, or nothing in the library at all.
+    public string EmptyTitle => HasActiveFilters ? "Nothing matches" : "Your library is empty";
+    public string EmptyMessage => HasActiveFilters
+        ? "Try fewer filters, or another letter or decade."
+        : "Movies and shows show up here as soon as your server finds them.";
+    public string? EmptyActionText => HasActiveFilters ? "Clear filters" : null;
+    public string EmptyGlyph => HasActiveFilters ? "search_off" : "movie_filter";
+
+    protected override void OnPropertyChanged(System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        base.OnPropertyChanged(e);
+        if (e.PropertyName != nameof(HasActiveFilters)) return;
+        OnPropertyChanged(nameof(EmptyTitle));
+        OnPropertyChanged(nameof(EmptyMessage));
+        OnPropertyChanged(nameof(EmptyActionText));
+        OnPropertyChanged(nameof(EmptyGlyph));
+    }
 
     private const int PageSize = 90;
 
@@ -359,6 +371,8 @@ public partial class LibraryViewModel(PhantomApi api, SettingsService settings, 
 
 public partial class SearchViewModel(PhantomApi api) : BaseViewModel
 {
+    protected override bool ShowsOfflineState => true;
+
     private CancellationTokenSource? _debounce;
 
     public ObservableList<MovieSummaryDto> Movies { get; } = [];

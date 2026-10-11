@@ -2,6 +2,7 @@
 <views:TabView xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
              xmlns:views="clr-namespace:Phantom.Views"
+             xmlns:controls="clr-namespace:Phantom.Controls"
              xmlns:vm="clr-namespace:Phantom.ViewModels"
              xmlns:dto="clr-namespace:Phantom.Shared;assembly=Phantom.Shared"
              x:Class="Phantom.Views.HomePage"
@@ -20,8 +21,15 @@
                     </VerticalStackLayout>
                 </Grid>
 
-                <!-- Offline banner: jump straight to downloaded movies -->
-                <Border Style="{StaticResource Card}" Margin="16,8" IsVisible="{Binding IsOffline}">
+                <!-- Offline with rows from before still showing: a banner over them (with nothing to show, the empty view
+                     below says it instead) -->
+                <Border Style="{StaticResource Card}" Margin="16,8">
+                    <Border.IsVisible>
+                        <MultiBinding Converter="{StaticResource AllTrue}">
+                            <Binding Path="IsOffline" />
+                            <Binding Path="Hubs.Count" Converter="{StaticResource HasValue}" />
+                        </MultiBinding>
+                    </Border.IsVisible>
                     <Grid ColumnDefinitions="*,Auto">
                         <Label Text="You're offline. Your downloads are still available." VerticalOptions="Center" />
                         <Button Grid.Column="1" Text="Downloads" Command="{Binding GoToDownloadsCommand}" />
@@ -66,6 +74,13 @@
                     </Grid>
                 </Border>
 
+                <!-- No rows yet: rows of posters loading, offline, or nothing in the library yet. In the header rather than
+                     the list's EmptyView, which Windows never shows for a list with a footer. -->
+                <controls:StateView Skeleton="Rows" HasContent="{Binding Hubs.Count, Converter={StaticResource HasValue}}"
+                                    IsLoading="{Binding IsBusy}" HasLoaded="{Binding HasLoaded}" IsOffline="{Binding IsOffline}"
+                                    RetryCommand="{Binding RefreshCommand}" Margin="0,24,0,0"
+                                    Glyph="movie_filter" Title="Your library is empty"
+                                    Message="Movies and shows show up here as soon as your server finds them. Check back in a little while." />
             </VerticalStackLayout>
             </CollectionView.Header>
 

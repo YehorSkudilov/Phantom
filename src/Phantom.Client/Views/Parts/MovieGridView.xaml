@@ -5,6 +5,7 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
              xmlns:vm="clr-namespace:Phantom.ViewModels"
              xmlns:views="clr-namespace:Phantom.Views"
+             xmlns:controls="clr-namespace:Phantom.Controls"
              x:Class="Phantom.Views.Parts.MovieGridView"
              x:DataType="vm:MovieListViewModel">
     <Grid RowDefinitions="Auto,*">
@@ -20,7 +21,9 @@
                 </CollectionView.Footer>
             </CollectionView>
         </RefreshView>
-        <Label Grid.Row="1" Text="{Binding EmptyText}" Style="{StaticResource Muted}" HorizontalTextAlignment="Center" Margin="32,48"
-               VerticalOptions="Start" IsVisible="{Binding IsEmpty}" />
+        <controls:StateView Grid.Row="1" Skeleton="Grid" HasContent="{Binding Movies.Count, Converter={StaticResource HasValue}}"
+                            IsLoading="{Binding IsBusy}" HasLoaded="{Binding HasLoaded}" IsOffline="{Binding IsOffline}"
+                            RetryCommand="{Binding LoadCommand}"
+                            Glyph="{Binding EmptyGlyph}" Title="{Binding EmptyTitle}" Message="{Binding EmptyText}" />
     </Grid>
 </ContentView>
