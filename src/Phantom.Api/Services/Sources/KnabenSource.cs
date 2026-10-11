@@ -33,34 +33,54 @@ public partial class KnabenSource(HttpClient http, IOptions<PhantomOptions> opti
     {
         var url = string.IsNullOrWhiteSpace(source.BaseUrl) ? DefaultBaseUrl : source.BaseUrl;
         var results = new List<SourceRelease>();
+        Exception? failure = null;
 
-        // The newest first, every time.
-        results.AddRange((await SearchAsync(url, DateTime.UtcNow.Year.ToString(), 0, "date", ct)).Releases);
-        // Episode names rarely carry a year, so the newest TV is found by its usual quality tags instead.
-        foreach (var tag in new[] { "1080p", "720p" })
-            results.AddRange((await SearchAsync(url, tag, 0, "date", ct, TvCategory)).Releases);
+        // The newest first, every time. Episode names rarely carry a year, so the newest TV is found by its usual
+        // quality tags instead. One search failing doesn't stop the others.
+        foreach (var (query, categories) in new[] { (DateTime.UtcNow.Year.ToString(), Array.Empty<int>()), ("1080p", [TvCategory]), ("720p", [TvCategory]) })
+        {
+            try
+            {
+                results.AddRange((await SearchAsync(url, query, 0, "date", ct, categories)).Releases);
+            }
+            catch (Exception ex) when (SourceRequests.IsTransient(ex, ct))
+            {
+                log.LogWarning("Knaben newest ({Query}): {Error}", query, ex.Message);
+                failure = ex;
+            }
+        }
 
-        // Then the next stretch of the catalogue.
+        // Then the next stretch of the catalogue. A search that won't load ends the stretch there, to be tried again
+        // next time; what came before it is kept.
         var crawl = Crawl(source);
         if (crawl.Next() is var (step, page))
         {
             var terms = CrawlTerms.All;
-            for (var request = 0; request < RequestsPerSync && step < terms.Count; request++)
+            try
             {
-                await Task.Delay(500, ct); // be polite
-                var batch = await SearchAsync(url, terms[step], page * PageSize, "seeders", ct);
-                results.AddRange(batch.Releases);
-                page++;
-                if (batch.Hits < PageSize || page >= MaxPagesPerTerm || page * PageSize >= batch.Total)
+                for (var request = 0; request < RequestsPerSync && step < terms.Count; request++)
                 {
-                    step++;
-                    page = 0;
+                    await Task.Delay(500, ct); // be polite
+                    var batch = await SearchAsync(url, terms[step], page * PageSize, "seeders", ct);
+                    results.AddRange(batch.Releases);
+                    page++;
+                    if (batch.Hits < PageSize || page >= MaxPagesPerTerm || page * PageSize >= batch.Total)
+                    {
+                        step++;
+                        page = 0;
+                    }
                 }
+            }
+            catch (Exception ex) when (SourceRequests.IsTransient(ex, ct))
+            {
+                log.LogWarning("Knaben crawl at \"{Term}\": {Error}", terms[step], ex.Message);
+                failure = ex;
             }
             if (step >= terms.Count) crawl.Finish();
             else crawl.Save(step, page);
             log.LogDebug("Knaben crawl at term {Step}/{Count}", step, terms.Count);
         }
+        if (results.Count == 0 && failure is not null) throw failure;
         return results.DistinctBy(r => r.InfoHash).ToList();
     }
 
@@ -73,9 +93,13 @@ public partial class KnabenSource(HttpClient http, IOptions<PhantomOptions> opti
             categories = categories.Length > 0 ? categories : new[] { MoviesCategory, TvCategory },
             from, size = PageSize, hide_unsafe = true, hide_xxx = true,
         };
-        using var res = await http.PostAsJsonAsync(url, body, ct);
-        res.EnsureSuccessStatusCode();
-        return Parse(await res.Content.ReadAsStringAsync(ct));
+        var json = await SourceRequests.RetryAsync(async token =>
+        {
+            using var res = await http.PostAsJsonAsync(url, body, token);
+            res.EnsureSuccessStatusCode();
+            return await res.Content.ReadAsStringAsync(token);
+        }, log, $"Knaben search \"{query}\"", ct);
+        return Parse(json);
     }
 
     public static (IReadOnlyList<SourceRelease> Releases, int Hits, int Total) Parse(string json)
