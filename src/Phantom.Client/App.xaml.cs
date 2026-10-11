@@ -23,7 +23,7 @@ public partial class App : Application
     {
         var shell = new AppShell(_settings);
         // If the app crashed last time, say so once it's up, with the details to copy into feedback.
-        shell.Loaded += async (_, _) => await CrashLog.OfferLastAsync(shell);
+        shell.Loaded += async (_, _) => await CrashLog.OfferLastAsync();
         return new Window(shell) { Title = "Phantom" };
     }
 }

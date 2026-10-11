@@ -33,15 +33,12 @@ public static class CrashLog
         }
     }
 
-    /// <summary>The last crash's report, once: it's removed as it's read.</summary>
-    public static string? TakeLast()
+    /// <summary>The last crash's report, if there is one (kept until it's been offered: see <see cref="Forget"/>).</summary>
+    public static string? Last()
     {
         try
         {
-            if (!File.Exists(FilePath)) return null;
-            var text = File.ReadAllText(FilePath);
-            File.Delete(FilePath);
-            return text;
+            return File.Exists(FilePath) ? File.ReadAllText(FilePath) : null;
         }
         catch (IOException)
         {
@@ -49,14 +46,52 @@ public static class CrashLog
         }
     }
 
-    /// <summary>Tells the user the app closed last time, with the details to copy into a bug report.</summary>
-    public static async Task OfferLastAsync(Page page)
+    private static void Forget()
     {
-        if (TakeLast() is not { } report) return;
-        var summary = report.Split('\n').Skip(2).FirstOrDefault()?.Trim() ?? "";
-        if (summary.Length > 300) summary = summary[..300] + "…";
-        if (await Dialog.ConfirmAsync("Phantom closed unexpectedly",
-                $"Sorry about that. If you're sending feedback, copy the details and paste them in.\n\n{summary}", "Copy details", "Close"))
-            await Clipboard.Default.SetTextAsync(report);
+        try
+        {
+            File.Delete(FilePath);
+        }
+        catch (IOException)
+        {
+        }
+    }
+
+    /// <summary>
+    /// Tells the user the app closed last time, with the whole report on show (it can be selected) and a button that
+    /// copies it. After copying it comes back, in case it's wanted again; the report is forgotten once it's closed.
+    /// </summary>
+    public static async Task OfferLastAsync()
+    {
+        if (Last() is not { } report) return;
+        // After start-up's own navigation (to sign-in, or the tabs), which would otherwise land on top of the pop-up.
+        await Task.Delay(TimeSpan.FromSeconds(1.5));
+        while (await Dialog.ConfirmAsync("Phantom closed unexpectedly",
+                   $"Sorry about that. If you're sending feedback, copy the details below and paste them in.\n\n{report}", "Copy details", "Close"))
+        {
+            try
+            {
+                // The clipboard is the UI's: written from the main thread.
+                await MainThread.InvokeOnMainThreadAsync(() => Clipboard.Default.SetTextAsync(report));
+                await Toast("Copied");
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"CrashLog: couldn't copy: {ex}");
+                await Dialog.AlertAsync("Couldn't copy", "Press and hold the text to select it, then copy it from there.");
+            }
+        }
+        Forget();
+    }
+
+    private static async Task Toast(string message)
+    {
+        try
+        {
+            await CommunityToolkit.Maui.Alerts.Toast.Make(message).Show();
+        }
+        catch (System.Runtime.InteropServices.COMException)
+        {
+        }
     }
 }

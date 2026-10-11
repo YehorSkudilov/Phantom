@@ -133,9 +133,13 @@ public static class Dialog
 
         var body = new VerticalStackLayout { Spacing = 12 };
         body.Add(new Label { Text = title, FontFamily = "OpenSansSemibold", FontSize = 19, TextColor = Res("TextPrimary") });
-        // A CLabel, so the text (an error, say) can be selected and copied.
+        // A CLabel, so the text (an error, say) can be selected and copied; a long one (a crash report) scrolls.
         if (!string.IsNullOrEmpty(message))
-            body.Add(new AppSkeleton.CLabel { Text = message, FontSize = 14, LineHeight = 1.3, TextColor = Res("TextSecondary") });
+            body.Add(new ScrollView
+            {
+                MaximumHeightRequest = 360,
+                Content = new AppSkeleton.CLabel { Text = message, FontSize = 14, LineHeight = 1.3, TextColor = Res("TextSecondary") },
+            });
 
         var page = new DialogPage(body, sheet, cancelResult, navigation);
         build(page.Close, body);
