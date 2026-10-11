@@ -246,8 +246,15 @@ jobs:
         id: keystore
         shell: pwsh
         run: |
-          if ([string]::IsNullOrWhiteSpace("${{ secrets.ANDROID_KEYSTORE_BASE64 }}")) {
-            throw "ANDROID_KEYSTORE_BASE64 secret is not set"
+          # A missing secret comes through as an empty string, so check them all here rather than fail at signing.
+          $missing = @{
+            ANDROID_KEYSTORE_BASE64 = "${{ secrets.ANDROID_KEYSTORE_BASE64 }}"
+            ANDROID_KEYSTORE_PASS   = "${{ secrets.ANDROID_KEYSTORE_PASS }}"
+            ANDROID_KEYALIAS_NAME   = "${{ secrets.ANDROID_KEYALIAS_NAME }}"
+            ANDROID_KEYALIAS_PASS   = "${{ secrets.ANDROID_KEYALIAS_PASS }}"
+          }.GetEnumerator() | Where-Object { [string]::IsNullOrWhiteSpace($_.Value) } | ForEach-Object Key
+          if ($missing) {
+            throw "Repository secret(s) not set: $($missing -join ', ')"
           }
 
           $keystore = Join-Path $env:RUNNER_TEMP "phantom.keystore"
