@@ -97,6 +97,43 @@
         <Setter Property="Padding" Value="8,4" />
     </Style>
 
+    <!-- Icon-only button: Source="{controls:Icon name}". Give it a SemanticProperties.Description. -->
+    <Style x:Key="IconButton" TargetType="ImageButton">
+        <Setter Property="BackgroundColor" Value="Transparent" />
+        <Setter Property="WidthRequest" Value="44" />
+        <Setter Property="HeightRequest" Value="44" />
+        <Setter Property="Padding" Value="10" />
+        <Setter Property="CornerRadius" Value="22" />
+        <Setter Property="VisualStateManager.VisualStateGroups">
+            <VisualStateGroupList>
+                <VisualStateGroup x:Name="CommonStates">
+                    <VisualState x:Name="Normal" />
+                    <VisualState x:Name="PointerOver">
+                        <VisualState.Setters>
+                            <Setter Property="BackgroundColor" Value="{StaticResource SurfaceRaised}" />
+                        </VisualState.Setters>
+                    </VisualState>
+                </VisualStateGroup>
+            </VisualStateGroupList>
+        </Setter>
+    </Style>
+
+    <!-- Hairline between MenuRows in a card (indented past the icon). -->
+    <Style x:Key="Divider" TargetType="BoxView">
+        <Setter Property="HeightRequest" Value="1" />
+        <Setter Property="Color" Value="{StaticResource Outline}" />
+        <Setter Property="Margin" Value="52,0,0,0" />
+    </Style>
+
+    <!-- Small uppercase heading above a group of rows. -->
+    <Style x:Key="SectionLabel" TargetType="Label">
+        <Setter Property="TextColor" Value="{StaticResource TextSecondary}" />
+        <Setter Property="FontFamily" Value="OpenSansSemibold" />
+        <Setter Property="FontSize" Value="12" />
+        <Setter Property="CharacterSpacing" Value="1" />
+        <Setter Property="Margin" Value="4,10,0,2" />
+    </Style>
+
     <Style TargetType="Entry">
         <Setter Property="TextColor" Value="{StaticResource TextPrimary}" />
         <Setter Property="PlaceholderColor" Value="{StaticResource TextSecondary}" />

@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:skeleton="clr-namespace:AppSkeleton;assembly=AppSkeleton"
+             x:Class="Phantom.Views.MainPage"
+             Shell.NavBarIsVisible="False">
+
+    <!-- The last two rows are the nav bar's (less its margins): 34 + 34 makes it 54 tall. The tabs run underneath it
+         and leave TabView.NavBarInset at the bottom of their content. -->
+    <Grid RowDefinitions="*,34,34">
+        <skeleton:CView x:Name="TabContent" Grid.RowSpan="3"
+                        SwipeNavigationCommand="{Binding Source={x:Reference NavBar}, Path=SelectPageCommand}" />
+
+        <skeleton:CNavBar x:Name="NavBar" Grid.Row="1" Grid.RowSpan="2" Margin="10,4,10,10"
+                          BorderColor="Transparent"
+                          FontFamily="OutlinedIcons"
+                          SelectedFontFamily="RegularIcons"
+                          IsNavigating="{Binding Source={x:Reference TabContent}, Path=IsNavigating}"
+                          LabelColor="{StaticResource TextSecondary}"
+                          TintColor="{StaticResource GlassTint}"
+                          TintOpacity="{StaticResource GlassTintOpacity}" />
+    </Grid>
+</ContentPage>

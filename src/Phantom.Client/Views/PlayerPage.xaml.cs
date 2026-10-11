@@ -1,3 +1,4 @@
+using Phantom.Controls;
 using CommunityToolkit.Maui.Core;
 using CommunityToolkit.Maui.Views;
 using Phantom.Services;
@@ -25,8 +26,13 @@ public partial class PlayerPage : ContentPage
         Media.MediaEnded += (_, _) => Dispatcher.Dispatch(OnEnded);
         Media.MediaFailed += (_, e) => Dispatcher.Dispatch(() => _vm.ErrorMessage = $"Playback failed: {e.ErrorMessage}");
 
-        BackButton.Text = $"↺ {_vm.SkipBack}";
-        ForwardButton.Text = $"{_vm.SkipForward} ↻";
+        // Material only has numbered skip icons for 5, 10 and 30 seconds; other lengths get the plain arrow.
+        BackButton.Source = IconExtension.Create(_vm.SkipBack is 5 or 10 or 30 ? $"replay_{_vm.SkipBack}" : "fast_rewind", Colors.White);
+        ForwardButton.Source = IconExtension.Create(_vm.SkipForward is 5 or 10 or 30 ? $"forward_{_vm.SkipForward}" : "fast_forward", Colors.White);
+        SemanticProperties.SetDescription(BackButton, $"Back {_vm.SkipBack} seconds");
+        SemanticProperties.SetDescription(ForwardButton, $"Forward {_vm.SkipForward} seconds");
+        ToolTipProperties.SetText(BackButton, $"Back {_vm.SkipBack}s");
+        ToolTipProperties.SetText(ForwardButton, $"Forward {_vm.SkipForward}s");
     }
 
     private void LoadSource()
@@ -62,7 +68,7 @@ public partial class PlayerPage : ContentPage
     private void OnStateChanged(MediaElementState state)
     {
         Buffering.IsVisible = state is MediaElementState.Buffering or MediaElementState.Opening;
-        PlayPause.Text = state == MediaElementState.Playing ? "❚❚" : "▶";
+        PlayPause.Source = IconExtension.Create(state == MediaElementState.Playing ? "pause" : "play_arrow", Colors.White);
         if (state == MediaElementState.Paused) _ = Report(PlayerState.Paused);
     }
 

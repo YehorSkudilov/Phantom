@@ -3,7 +3,7 @@ using Phantom.Shared;
 
 namespace Phantom.Views;
 
-public partial class LibraryPage : ContentPage
+public partial class LibraryPage : TabView
 {
     private readonly LibraryViewModel _vm;
 
@@ -14,9 +14,8 @@ public partial class LibraryPage : ContentPage
         SizeChanged += (_, _) => GridLayout.Span = Math.Max(3, (int)(Width / 140));
     }
 
-    protected override void OnAppearing()
+    public override void Load()
     {
-        base.OnAppearing();
         if (_vm.Movies.Count == 0) _vm.ReloadCommand.Execute(null);
     }
 

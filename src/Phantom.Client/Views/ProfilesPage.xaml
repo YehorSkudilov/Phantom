@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8" ?>
 <ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:controls="clr-namespace:Phantom.Controls"
              xmlns:vm="clr-namespace:Phantom.ViewModels"
              xmlns:dto="clr-namespace:Phantom.Shared;assembly=Phantom.Shared"
              x:Class="Phantom.Views.ProfilesPage"
@@ -34,7 +35,7 @@
                                    HorizontalOptions="Center" VerticalOptions="Center" />
                         </Border>
                         <Label Text="{Binding Username}" HorizontalOptions="Center" LineBreakMode="TailTruncation" />
-                        <Label Text="🔒" IsVisible="{Binding HasPin}" HorizontalOptions="Center" FontSize="11" Style="{StaticResource Muted}" />
+                        <Image Source="{controls:Icon lock, Color={StaticResource TextSecondary}}" IsVisible="{Binding HasPin}" HorizontalOptions="Center" WidthRequest="14" HeightRequest="14" />
                     </VerticalStackLayout>
                 </DataTemplate>
             </CollectionView.ItemTemplate>

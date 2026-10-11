@@ -3,7 +3,7 @@ using Phantom.Shared;
 
 namespace Phantom.Views;
 
-public partial class SearchPage : ContentPage
+public partial class SearchPage : TabView
 {
     private readonly SearchViewModel _vm;
 
@@ -22,9 +22,8 @@ public partial class SearchPage : ContentPage
         };
     }
 
-    protected override void OnAppearing()
+    public override void Load()
     {
-        base.OnAppearing();
         Box.Focus();
     }
 }

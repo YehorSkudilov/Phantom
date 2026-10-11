@@ -50,11 +50,11 @@ public partial class HomeViewModel(PhantomApi api, SettingsService settings, Dow
         };
         return query is null
             ? GoToAsync($"{nameof(Views.MovieListPage)}?kind=watchlist")
-            : GoToAsync($"//main/library?{query}");
+            : Views.MainPage.ShowLibrary(query);
     }
 
     [RelayCommand]
-    private Task GoToDownloads() => GoToAsync("//main/downloads");
+    private Task GoToDownloads() => Views.MainPage.ShowTab(Views.AppTab.Downloads);
 }
 
 public record SortOption(string Name, MovieSort Sort, bool Descending)
@@ -270,8 +270,8 @@ public partial class SearchViewModel(PhantomApi api) : BaseViewModel
     }, showBusy: false);
 
     [RelayCommand]
-    private Task OpenPerson(string name) => GoToAsync($"//main/library?actor={Uri.EscapeDataString(name)}");
+    private Task OpenPerson(string name) => Views.MainPage.ShowLibrary($"actor={Uri.EscapeDataString(name)}");
 
     [RelayCommand]
-    private Task OpenGenre(string genre) => GoToAsync($"//main/library?genre={Uri.EscapeDataString(genre)}");
+    private Task OpenGenre(string genre) => Views.MainPage.ShowLibrary($"genre={Uri.EscapeDataString(genre)}");
 }

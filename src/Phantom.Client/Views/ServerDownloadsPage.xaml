@@ -1,18 +1,19 @@
 <?xml version="1.0" encoding="utf-8" ?>
 <ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:controls="clr-namespace:Phantom.Controls"
              xmlns:vm="clr-namespace:Phantom.ViewModels"
              xmlns:dto="clr-namespace:Phantom.Shared;assembly=Phantom.Shared"
              x:Class="Phantom.Views.ServerDownloadsPage"
              x:DataType="vm:ServerDownloadsViewModel"
-             Title="Server downloads">
+             Title="Saved on the server">
     <Grid RowDefinitions="Auto,Auto,*">
         <Label Text="Movies the server is saving to its own disk. They keep playing instantly and survive cache cleanup."
                Style="{StaticResource Muted}" Margin="16,8,16,0" />
         <Label Grid.Row="1" Text="{Binding Totals}" Margin="16,8" FontSize="13" TextColor="{StaticResource Accent}" />
         <CollectionView Grid.Row="2" ItemsSource="{Binding Items}" SelectionMode="None">
             <CollectionView.EmptyView>
-                <Label Text="Nothing queued. Use ⬇ Server on a movie to keep it on the server." Style="{StaticResource Muted}"
+                <Label Text="Nothing saved yet. Open a movie and tap Save on server to keep a copy there." Style="{StaticResource Muted}"
                        HorizontalTextAlignment="Center" Margin="32,48" />
             </CollectionView.EmptyView>
             <CollectionView.ItemTemplate>
@@ -43,10 +44,10 @@
                                 </Label.FormattedText>
                             </Label>
                             <HorizontalStackLayout Grid.Column="1" Grid.RowSpan="2" IsVisible="{Binding Source={RelativeSource AncestorType={x:Type vm:ServerDownloadsViewModel}}, Path=IsAdmin, x:DataType=vm:ServerDownloadsViewModel}">
-                                <Button Text="⏯" Style="{StaticResource GhostButton}" SemanticProperties.Description="Pause or resume"
+                                <ImageButton Style="{StaticResource IconButton}" Source="{controls:Icon pause_circle, Outlined=True}" SemanticProperties.Description="Pause or resume" ToolTipProperties.Text="Pause or resume"
                                         Command="{Binding Source={RelativeSource AncestorType={x:Type vm:ServerDownloadsViewModel}}, Path=ToggleCommand, x:DataType=vm:ServerDownloadsViewModel}"
                                         CommandParameter="{Binding .}" />
-                                <Button Text="✕" Style="{StaticResource GhostButton}" SemanticProperties.Description="Remove"
+                                <ImageButton Style="{StaticResource IconButton}" Source="{controls:Icon delete, Outlined=True}" SemanticProperties.Description="Remove" ToolTipProperties.Text="Remove"
                                         Command="{Binding Source={RelativeSource AncestorType={x:Type vm:ServerDownloadsViewModel}}, Path=RemoveCommand, x:DataType=vm:ServerDownloadsViewModel}"
                                         CommandParameter="{Binding .}" />
                             </HorizontalStackLayout>

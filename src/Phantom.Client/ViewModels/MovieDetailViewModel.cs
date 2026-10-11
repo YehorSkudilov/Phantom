@@ -14,7 +14,7 @@ public partial class MovieDetailViewModel(PhantomApi api, SettingsService settin
     public ObservableCollection<ReleaseDto> Releases { get; } = [];
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(Meta), nameof(CanResume), nameof(PlayLabel), nameof(Directors), nameof(Writers), nameof(GenreText), nameof(WatchedLabel), nameof(WatchlistIcon))]
+    [NotifyPropertyChangedFor(nameof(Meta), nameof(CanResume), nameof(PlayLabel), nameof(Directors), nameof(Writers), nameof(GenreText), nameof(IsWatched), nameof(IsOnWatchlist), nameof(WatchedLabel), nameof(WatchlistLabel), nameof(WatchlistGlyph))]
     private MovieDetailDto? movie;
 
     [ObservableProperty] private ReleaseDto? selectedRelease;
@@ -22,9 +22,12 @@ public partial class MovieDetailViewModel(PhantomApi api, SettingsService settin
     [ObservableProperty] private bool isAdmin;
 
     public bool CanResume => Movie?.Playback is { PositionMs: > 0, Watched: false };
-    public string PlayLabel => CanResume ? $"▶  Resume from {TimeSpanConverter.Format(TimeSpan.FromMilliseconds(Movie!.Playback.PositionMs))}" : "▶  Play";
-    public string WatchedLabel => Movie?.Playback.Watched == true ? "Mark unwatched" : "Mark watched";
-    public string WatchlistIcon => Movie?.OnWatchlist == true ? "✓ Watchlist" : "+ Watchlist";
+    public string PlayLabel => CanResume ? $"Resume from {TimeSpanConverter.Format(TimeSpan.FromMilliseconds(Movie!.Playback.PositionMs))}" : "Play";
+    public bool IsWatched => Movie?.Playback.Watched == true;
+    public bool IsOnWatchlist => Movie?.OnWatchlist == true;
+    public string WatchedLabel => IsWatched ? "Watched" : "Mark watched";
+    public string WatchlistLabel => IsOnWatchlist ? "On watchlist" : "Watchlist";
+    public string WatchlistGlyph => IsOnWatchlist ? "bookmark_added" : "bookmark_add";
     public string GenreText => Movie is null ? "" : string.Join(" · ", Movie.Genres);
     public string Directors => Movie is null ? "" : string.Join(", ", Movie.Crew.Where(c => c.Job == "Director").Select(c => c.Name));
     public string Writers => Movie is null ? "" : string.Join(", ", Movie.Crew.Where(c => c.Job == "Writer").Select(c => c.Name));
@@ -87,7 +90,7 @@ public partial class MovieDetailViewModel(PhantomApi api, SettingsService settin
         var resume = CanResume;
         if (resume && !settings.ResumeAutomatically)
         {
-            var choice = await Shell.Current.DisplayActionSheetAsync(Movie.Title, "Cancel", null, PlayLabel.TrimStart('▶', ' '), "Play from beginning");
+            var choice = await Shell.Current.DisplayActionSheetAsync(Movie.Title, "Cancel", null, PlayLabel, "Play from beginning");
             if (choice is null or "Cancel") return;
             resume = choice != "Play from beginning";
         }
@@ -160,7 +163,7 @@ public partial class MovieDetailViewModel(PhantomApi api, SettingsService settin
                 existing.Status is OfflineStatus.Paused or OfflineStatus.Failed ? "Resume download" : "Go to Downloads");
             if (action == "Delete download") await downloads.DeleteAsync(existing);
             else if (action == "Resume download") downloads.Resume(existing);
-            else if (action == "Go to Downloads") await GoToAsync("//main/downloads");
+            else if (action == "Go to Downloads") await Views.MainPage.ShowTab(Views.AppTab.Downloads);
             OfflineItem = downloads.Find(_id);
             return;
         }
@@ -182,14 +185,14 @@ public partial class MovieDetailViewModel(PhantomApi api, SettingsService settin
         Movie?.TrailerUrl is { } url ? Launcher.Default.OpenAsync(new Uri(url)) : Task.CompletedTask;
 
     [RelayCommand]
-    private Task OpenPerson(string name) => GoToAsync($"//main/library?actor={Uri.EscapeDataString(name)}");
+    private Task OpenPerson(string name) => Views.MainPage.ShowLibrary($"actor={Uri.EscapeDataString(name)}");
 
     [RelayCommand]
     private Task OpenDirector() =>
-        Directors.Split(", ").FirstOrDefault() is { Length: > 0 } d ? GoToAsync($"//main/library?director={Uri.EscapeDataString(d)}") : Task.CompletedTask;
+        Directors.Split(", ").FirstOrDefault() is { Length: > 0 } d ? Views.MainPage.ShowLibrary($"director={Uri.EscapeDataString(d)}") : Task.CompletedTask;
 
     [RelayCommand]
-    private Task OpenGenre(string genre) => GoToAsync($"//main/library?genre={Uri.EscapeDataString(genre)}");
+    private Task OpenGenre(string genre) => Views.MainPage.ShowLibrary($"genre={Uri.EscapeDataString(genre)}");
 
     [RelayCommand]
     private Task More() => RunAsync(async () =>

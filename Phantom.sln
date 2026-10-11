@@ -1,7 +1,7 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 18
-VisualStudioVersion = 18.10.12224.181 stable
+VisualStudioVersion = 18.10.12224.181
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Phantom.Shared", "src\Phantom.Shared\Phantom.Shared.csproj", "{084CAAA4-3E54-4697-9B5E-498C5A56ABCA}"
 EndProject
@@ -10,6 +10,8 @@ EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Phantom", "src\Phantom.Client\Phantom.csproj", "{E82E2BB6-8035-4772-8087-003F8B8D119C}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Phantom.Api.Tests", "tests\Phantom.Api.Tests\Phantom.Api.Tests.csproj", "{4E652356-8EE5-4296-9756-24CFAD400DB4}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AppSkeleton", "..\AppSkeleton\AppSkeleton\AppSkeleton.csproj", "{1A81E7AC-8D61-46E5-A1DB-8E89F323C97F}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -69,6 +71,18 @@ Global
 		{4E652356-8EE5-4296-9756-24CFAD400DB4}.Release|x64.Build.0 = Release|Any CPU
 		{4E652356-8EE5-4296-9756-24CFAD400DB4}.Release|x86.ActiveCfg = Release|Any CPU
 		{4E652356-8EE5-4296-9756-24CFAD400DB4}.Release|x86.Build.0 = Release|Any CPU
+		{1A81E7AC-8D61-46E5-A1DB-8E89F323C97F}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{1A81E7AC-8D61-46E5-A1DB-8E89F323C97F}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{1A81E7AC-8D61-46E5-A1DB-8E89F323C97F}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{1A81E7AC-8D61-46E5-A1DB-8E89F323C97F}.Debug|x64.Build.0 = Debug|Any CPU
+		{1A81E7AC-8D61-46E5-A1DB-8E89F323C97F}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{1A81E7AC-8D61-46E5-A1DB-8E89F323C97F}.Debug|x86.Build.0 = Debug|Any CPU
+		{1A81E7AC-8D61-46E5-A1DB-8E89F323C97F}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{1A81E7AC-8D61-46E5-A1DB-8E89F323C97F}.Release|Any CPU.Build.0 = Release|Any CPU
+		{1A81E7AC-8D61-46E5-A1DB-8E89F323C97F}.Release|x64.ActiveCfg = Release|Any CPU
+		{1A81E7AC-8D61-46E5-A1DB-8E89F323C97F}.Release|x64.Build.0 = Release|Any CPU
+		{1A81E7AC-8D61-46E5-A1DB-8E89F323C97F}.Release|x86.ActiveCfg = Release|Any CPU
+		{1A81E7AC-8D61-46E5-A1DB-8E89F323C97F}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

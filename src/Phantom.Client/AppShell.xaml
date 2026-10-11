@@ -10,11 +10,6 @@
     <ShellContent x:Name="ConnectItem" Route="connect" ContentTemplate="{DataTemplate views:ConnectPage}" Shell.NavBarIsVisible="False" Shell.TabBarIsVisible="False" />
     <ShellContent Route="profiles" ContentTemplate="{DataTemplate views:ProfilesPage}" Shell.NavBarIsVisible="False" Shell.TabBarIsVisible="False" />
 
-    <TabBar x:Name="MainTabs" Route="main">
-        <ShellContent Title="Home" Icon="tab_home.png" Route="home" ContentTemplate="{DataTemplate views:HomePage}" />
-        <ShellContent Title="Library" Icon="tab_library.png" Route="library" ContentTemplate="{DataTemplate views:LibraryPage}" />
-        <ShellContent Title="Search" Icon="tab_search.png" Route="search" ContentTemplate="{DataTemplate views:SearchPage}" />
-        <ShellContent Title="Downloads" Icon="tab_downloads.png" Route="downloads" ContentTemplate="{DataTemplate views:DownloadsPage}" />
-        <ShellContent Title="More" Icon="tab_more.png" Route="more" ContentTemplate="{DataTemplate views:MorePage}" />
-    </TabBar>
+    <!-- The tabs are a CNavBar + CView inside MainPage; Shell only handles sign-in and pushing detail pages on top. -->
+    <ShellContent x:Name="MainItem" Route="main" ContentTemplate="{DataTemplate views:MainPage}" Shell.NavBarIsVisible="False" />
 </Shell>

@@ -2,7 +2,7 @@ using Phantom.ViewModels;
 
 namespace Phantom.Views;
 
-public partial class HomePage : ContentPage
+public partial class HomePage : TabView
 {
     private readonly HomeViewModel _vm;
     private DateTime _lastLoad = DateTime.MinValue;
@@ -13,9 +13,8 @@ public partial class HomePage : ContentPage
         BindingContext = _vm = vm;
     }
 
-    protected override void OnAppearing()
+    public override void Load()
     {
-        base.OnAppearing();
         // Refresh when coming back (e.g. after playback) so Continue Watching is current.
         if (DateTime.UtcNow - _lastLoad > TimeSpan.FromSeconds(5))
         {

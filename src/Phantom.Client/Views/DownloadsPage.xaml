@@ -1,13 +1,15 @@
 <?xml version="1.0" encoding="utf-8" ?>
-<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+<views:TabView xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:controls="clr-namespace:Phantom.Controls"
+             xmlns:views="clr-namespace:Phantom.Views"
              xmlns:vm="clr-namespace:Phantom.ViewModels"
              xmlns:svc="clr-namespace:Phantom.Services"
              x:Class="Phantom.Views.DownloadsPage"
-             x:DataType="vm:DownloadsViewModel"
-             Title="Downloads">
-    <Grid RowDefinitions="Auto,*">
-        <Border Style="{StaticResource Card}" Margin="16,8">
+             x:DataType="vm:DownloadsViewModel">
+    <Grid RowDefinitions="Auto,Auto,*">
+        <Label Text="Downloads" Style="{StaticResource H1}" Margin="16,18,16,4" />
+        <Border Grid.Row="1" Style="{StaticResource Card}" Margin="16,8">
             <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto">
                 <Label Text="On this device" Style="{StaticResource H2}" />
                 <Label Grid.Row="1" Text="{Binding StorageText}" Style="{StaticResource Muted}" />
@@ -18,12 +20,15 @@
             </Grid>
         </Border>
 
-        <CollectionView Grid.Row="1" ItemsSource="{Binding Items}" SelectionMode="None">
+        <CollectionView Grid.Row="2" ItemsSource="{Binding Items}" SelectionMode="None">
+            <CollectionView.Footer>
+                <BoxView HeightRequest="{x:Static views:TabView.NavBarInset}" Color="Transparent" />
+            </CollectionView.Footer>
             <CollectionView.EmptyView>
                 <VerticalStackLayout Spacing="8" Margin="32,48" HorizontalOptions="Center">
                     <Image Source="logo_mark.png" HeightRequest="56" Opacity="0.6" />
                     <Label Text="No downloads yet" Style="{StaticResource H2}" HorizontalOptions="Center" />
-                    <Label Text="Tap ⬇ Device on any movie to watch it offline." Style="{StaticResource Muted}" HorizontalTextAlignment="Center" />
+                    <Label Text="Open a movie and tap Download to watch it without a connection." Style="{StaticResource Muted}" HorizontalTextAlignment="Center" />
                 </VerticalStackLayout>
             </CollectionView.EmptyView>
             <CollectionView.ItemTemplate>
@@ -63,10 +68,11 @@
                                 <Label Text="{Binding Error}" TextColor="{StaticResource Danger}" FontSize="11" IsVisible="{Binding Error, Converter={StaticResource HasValue}}" />
                             </VerticalStackLayout>
                             <HorizontalStackLayout Grid.Column="2" Spacing="0">
-                                <Button Text="⏯" Style="{StaticResource GhostButton}" IsVisible="{Binding IsComplete, Converter={StaticResource Not}}"
+                                <ImageButton Style="{StaticResource IconButton}" Source="{controls:Icon pause_circle, Outlined=True}" IsVisible="{Binding IsComplete, Converter={StaticResource Not}}"
+                                        ToolTipProperties.Text="Pause or resume"
                                         Command="{Binding Source={RelativeSource AncestorType={x:Type vm:DownloadsViewModel}}, Path=ToggleCommand, x:DataType=vm:DownloadsViewModel}"
                                         CommandParameter="{Binding .}" SemanticProperties.Description="Pause or resume" />
-                                <Button Text="ⓘ" Style="{StaticResource GhostButton}"
+                                <ImageButton Style="{StaticResource IconButton}" Source="{controls:Icon info, Outlined=True}" ToolTipProperties.Text="Details"
                                         Command="{Binding Source={RelativeSource AncestorType={x:Type vm:DownloadsViewModel}}, Path=OpenCommand, x:DataType=vm:DownloadsViewModel}"
                                         CommandParameter="{Binding .}" SemanticProperties.Description="Details" />
                             </HorizontalStackLayout>
@@ -76,4 +82,4 @@
             </CollectionView.ItemTemplate>
         </CollectionView>
     </Grid>
-</ContentPage>
+</views:TabView>

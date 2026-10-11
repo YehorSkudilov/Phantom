@@ -1,12 +1,13 @@
 <?xml version="1.0" encoding="utf-8" ?>
 <ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:controls="clr-namespace:Phantom.Controls"
              xmlns:vm="clr-namespace:Phantom.ViewModels"
              x:Class="Phantom.Views.MovieListPage"
              x:DataType="vm:MovieListViewModel"
              Title="{Binding Title}">
     <ContentPage.ToolbarItems>
-        <ToolbarItem Text="▶ Play all" Command="{Binding PlayAllCommand}" />
+        <ToolbarItem Text="Play all" IconImageSource="{controls:Icon playlist_play}" Command="{Binding PlayAllCommand}" />
     </ContentPage.ToolbarItems>
     <Grid RowDefinitions="Auto,*">
         <Label Text="{Binding Subtitle}" Style="{StaticResource Muted}" Margin="16,8" IsVisible="{Binding Subtitle, Converter={StaticResource HasValue}}" />

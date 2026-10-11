@@ -33,17 +33,17 @@ The **client** (.NET MAUI) gives you a Plex-like experience on Android, iOS, mac
 
 ## Content sources (read this)
 
-Phantom pulls movies automatically, but **you decide where from**:
+Phantom pulls movies automatically. Every built-in source is added and enabled out of the box, on new servers and on existing ones the first time they
+start this version. Remove any you don't want under *Admin → Sources*; a removed source stays removed.
 
-- **Internet Archive – Feature Films** is enabled out of the box. These are public-domain films,
-  and every archive.org torrent carries HTTP web seeds, so playback starts even with no peers.
-- **YTS** and **The Pirate Bay** are built in. Add them from *Admin → + Add source* in one tap;
-  no Jackett or Prowlarr needed. YTS brings posters, genres and IMDb ids with every movie; the
-  Pirate Bay source pulls the top 100 of Movies, HD Movies and UHD Movies (or a search query).
-- **Torznab** (Jackett, Prowlarr, …) is still there for any other indexer you run.
+- **Internet Archive – Feature Films**: public-domain films. Every archive.org torrent carries HTTP web seeds, so
+  playback starts even with no peers.
+- **YTS**: small, well-seeded encodes, with posters, genres and IMDb ids on every movie.
+- **The Pirate Bay**: the top 100 of Movies, HD Movies and UHD Movies (or a search query).
+- **Torznab** (Jackett, Prowlarr, …) can be added for any other indexer you run.
 
-Only add sources for content you have the right to download and stream; you are responsible
-for complying with copyright law where you live.
+Downloading copyrighted movies without permission is illegal in many countries. You are responsible for complying
+with copyright law where you live.
 
 ## Features
 

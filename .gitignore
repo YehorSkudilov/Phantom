@@ -58,10 +58,15 @@ CodeCoverage/
 TestResult.xml
 nunit-*.xml
 
-# Phantom runtime data (database, torrent cache, downloads, signing key). DataDirectory is relative to
-# wherever the API was started, so also catch it at the repo root.
-src/Phantom.Api/data/
-/data/
+# Phantom runtime data. DataDirectory defaults to "data" relative to wherever the API was started; on Windows that
+# is the same folder as the src/Phantom.Api/Data source folder, so list what the server writes instead of ignoring
+# the whole folder (that would silently skip new entity files).
+**/[Dd]ata/phantom.db*
+**/[Dd]ata/jwt.key
+**/[Dd]ata/seeded-sources.txt
+**/[Dd]ata/cache/
+**/[Dd]ata/media/
+**/[Dd]ata/engine/
 
 # Visual Studio / Rider / VS Code local state
 .vs/

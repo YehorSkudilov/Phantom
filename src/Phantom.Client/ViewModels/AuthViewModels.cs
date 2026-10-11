@@ -38,7 +38,7 @@ public partial class ConnectViewModel(PhantomApi api, SettingsService settings) 
         Password = "";
 
         var profiles = await api.ProfilesAsync();
-        await GoToAsync(profiles.Count > 1 ? "//profiles" : "//main/home");
+        await GoToAsync(profiles.Count > 1 ? "//profiles" : "//main");
     });
 }
 
@@ -65,7 +65,7 @@ public partial class ProfilesViewModel(PhantomApi api, SettingsService settings)
         var current = settings.User;
         if (current?.Id == profile.Id)
         {
-            await GoToAsync("//main/home");
+            await GoToAsync("//main");
             return;
         }
         var needsSecret = profile.HasPin || (!profile.IsManaged && current?.IsManaged == true);
@@ -81,7 +81,7 @@ public partial class ProfilesViewModel(PhantomApi api, SettingsService settings)
         var auth = await api.SwitchProfileAsync(profile.Id, pin);
         settings.Token = auth.Token;
         settings.User = auth.User;
-        await GoToAsync("//main/home");
+        await GoToAsync("//main");
     });
 
     [RelayCommand]

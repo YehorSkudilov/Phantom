@@ -1,15 +1,16 @@
 <?xml version="1.0" encoding="utf-8" ?>
-<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+<views:TabView xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:views="clr-namespace:Phantom.Views"
              xmlns:vm="clr-namespace:Phantom.ViewModels"
              x:Class="Phantom.Views.SearchPage"
-             x:DataType="vm:SearchViewModel"
-             Title="Search">
-    <Grid RowDefinitions="Auto,*">
-        <SearchBar x:Name="Box" Text="{Binding Query}" Placeholder="Movies, actors, directors, genres" Margin="8"
+             x:DataType="vm:SearchViewModel">
+    <Grid RowDefinitions="Auto,Auto,*">
+        <Label Text="Search" Style="{StaticResource H1}" Margin="16,18,16,4" />
+        <SearchBar Grid.Row="1" x:Name="Box" Text="{Binding Query}" Placeholder="Movies, actors, directors, genres" Margin="8"
                    SearchCommand="{Binding SearchCommand}" />
-        <ScrollView Grid.Row="1">
-            <VerticalStackLayout Spacing="10" Padding="0,0,0,24">
+        <ScrollView Grid.Row="2">
+            <VerticalStackLayout Spacing="10" Padding="0,0,0,108">
                 <Label Text="Search across titles, cast and genres." Style="{StaticResource Muted}" HorizontalOptions="Center" Margin="0,40"
                        IsVisible="{Binding Query, Converter={StaticResource HasValue}, ConverterParameter=invert}" />
                 <Label Text="No results." Style="{StaticResource Muted}" HorizontalOptions="Center" Margin="0,40" IsVisible="{Binding NoResults}" />
@@ -41,4 +42,4 @@
             </VerticalStackLayout>
         </ScrollView>
     </Grid>
-</ContentPage>
+</views:TabView>

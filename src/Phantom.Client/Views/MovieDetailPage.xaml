@@ -2,12 +2,13 @@
 <ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
              xmlns:vm="clr-namespace:Phantom.ViewModels"
+             xmlns:controls="clr-namespace:Phantom.Controls"
              xmlns:dto="clr-namespace:Phantom.Shared;assembly=Phantom.Shared"
              x:Class="Phantom.Views.MovieDetailPage"
              x:DataType="vm:MovieDetailViewModel"
              Title="{Binding Title}">
     <ContentPage.ToolbarItems>
-        <ToolbarItem Text="•••" Command="{Binding MoreCommand}" />
+        <ToolbarItem Text="More" IconImageSource="{controls:Icon more_vert}" Command="{Binding MoreCommand}" />
     </ContentPage.ToolbarItems>
 
     <Grid>
@@ -39,16 +40,19 @@
 
                 <!-- Primary actions -->
                 <VerticalStackLayout Padding="16,0" Spacing="10">
-                    <Button Text="{Binding PlayLabel}" Command="{Binding PlayCommand}" FontSize="16" />
+                    <Button Text="{Binding PlayLabel}" Command="{Binding PlayCommand}" FontSize="16" HeightRequest="52"
+                            ImageSource="{controls:Icon play_arrow, Color=White}" ContentLayout="Left,8" />
                     <ProgressBar Progress="{Binding Movie.Playback.ProgressPercent, Converter={StaticResource Percent}}" IsVisible="{Binding CanResume}" />
-                    <Button Text="Play from beginning" Style="{StaticResource SecondaryButton}" Command="{Binding PlayFromStartCommand}" IsVisible="{Binding CanResume}" />
+                    <Button Text="Start over" Style="{StaticResource SecondaryButton}" Command="{Binding PlayFromStartCommand}" IsVisible="{Binding CanResume}"
+                            ImageSource="{controls:Icon replay}" ContentLayout="Left,8" />
                     <Grid ColumnDefinitions="*,*,*,*" ColumnSpacing="8">
-                        <Button Text="{Binding WatchlistIcon}" Style="{StaticResource SecondaryButton}" Command="{Binding ToggleWatchlistCommand}" FontSize="12" Padding="4" />
-                        <Button Grid.Column="1" Text="{Binding WatchedLabel}" Style="{StaticResource SecondaryButton}" Command="{Binding ToggleWatchedCommand}" FontSize="12" Padding="4" />
-                        <Button Grid.Column="2" Text="⬇ Device" Style="{StaticResource SecondaryButton}" Command="{Binding DownloadToDeviceCommand}" FontSize="12" Padding="4"
-                                SemanticProperties.Description="Download to this device" />
-                        <Button Grid.Column="3" Text="⬇ Server" Style="{StaticResource SecondaryButton}" Command="{Binding DownloadOnServerCommand}" FontSize="12" Padding="4"
-                                SemanticProperties.Description="Download on the server" />
+                        <controls:ActionTile Glyph="{Binding WatchlistGlyph}"
+                                             Text="{Binding WatchlistLabel}" IsActive="{Binding IsOnWatchlist}" Command="{Binding ToggleWatchlistCommand}" />
+                        <controls:ActionTile Grid.Column="1" Glyph="check_circle" Text="{Binding WatchedLabel}" IsActive="{Binding IsWatched}"
+                                             Command="{Binding ToggleWatchedCommand}" />
+                        <controls:ActionTile Grid.Column="2" Glyph="download" Text="Download" Command="{Binding DownloadToDeviceCommand}"
+                                             IsActive="{Binding OfflineItem, Converter={StaticResource HasValue}}" />
+                        <controls:ActionTile Grid.Column="3" Glyph="cloud_download" Text="Save on server" Command="{Binding DownloadOnServerCommand}" />
                     </Grid>
 
                     <!-- Device download status -->
@@ -60,7 +64,8 @@
                         </Grid>
                     </Border>
 
-                    <Button Text="▶ Watch trailer" Style="{StaticResource GhostButton}" HorizontalOptions="Start"
+                    <Button Text="Watch trailer" Style="{StaticResource GhostButton}" HorizontalOptions="Start"
+                            ImageSource="{controls:Icon smart_display, Color={StaticResource PrimaryLight}}" ContentLayout="Left,6"
                             Command="{Binding PlayTrailerCommand}" IsVisible="{Binding Movie.TrailerUrl, Converter={StaticResource HasValue}}" />
                 </VerticalStackLayout>
 

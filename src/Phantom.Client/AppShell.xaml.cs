@@ -8,7 +8,7 @@ public partial class AppShell : Shell
     public AppShell(SettingsService settings)
     {
         InitializeComponent();
-        CurrentItem = settings.IsSignedIn ? MainTabs : ConnectItem;
+        CurrentItem = settings.IsSignedIn ? MainItem : ConnectItem;
 
         // Pushed (non-tab) pages.
         Routing.RegisterRoute(nameof(MovieDetailPage), typeof(MovieDetailPage));

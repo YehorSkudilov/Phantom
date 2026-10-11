@@ -2,7 +2,7 @@ using Phantom.ViewModels;
 
 namespace Phantom.Views;
 
-public partial class DownloadsPage : ContentPage
+public partial class DownloadsPage : TabView
 {
     private readonly DownloadsViewModel _vm;
 
@@ -12,9 +12,8 @@ public partial class DownloadsPage : ContentPage
         BindingContext = _vm = vm;
     }
 
-    protected override void OnAppearing()
+    public override void Load()
     {
-        base.OnAppearing();
         _vm.RefreshCommand.Execute(null);
     }
 }

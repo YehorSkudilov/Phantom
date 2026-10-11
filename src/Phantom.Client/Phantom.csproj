@@ -72,6 +72,9 @@
 
 	<ItemGroup>
 		<ProjectReference Include="..\Phantom.Shared\Phantom.Shared.csproj" />
+		<!-- Nav bar + swipeable tab host, shared with GymBook. Checked out next to this repo (D:\GitHub\AppSkeleton
+		     locally; CI checks both out side by side, see PublishApp.yml). -->
+		<ProjectReference Include="..\..\..\AppSkeleton\AppSkeleton\AppSkeleton.csproj" />
 	</ItemGroup>
 
 	<!-- The Phantom server the app talks to (see Services/ApiConfig.cs). Pass it with -p:ApiBaseUrl=https://...,

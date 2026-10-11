@@ -1,3 +1,4 @@
+using AppSkeleton;
 using CommunityToolkit.Maui;
 using Microsoft.Extensions.Logging;
 using Phantom.Services;
@@ -13,6 +14,7 @@ public static class MauiProgram
         var builder = MauiApp.CreateBuilder();
         builder
             .UseMauiApp<App>()
+            .UseAppSkeleton()
             .UseMauiCommunityToolkit()
             // Foreground service keeps audio going with the screen off and shows media controls in the notification shade.
             .UseMauiCommunityToolkitMediaElement(isAndroidForegroundServiceEnabled: true)
@@ -20,6 +22,8 @@ public static class MauiProgram
             {
                 fonts.AddFont("OpenSans-Regular.ttf", "OpenSansRegular");
                 fonts.AddFont("OpenSans-Semibold.ttf", "OpenSansSemibold");
+                // Material icons ("OutlinedIcons" / "RegularIcons") for the nav bar.
+                fonts.AddCIcons();
             });
 
         // Shared HttpClient: long timeout because torrent-backed requests can wait on peers.
@@ -46,6 +50,8 @@ public static class MauiProgram
         builder.Services.AddTransient<SettingsViewModel>();
         builder.Services.AddTransient<AdminViewModel>();
 
+        // MainPage hosts the tab views for the app's lifetime, so they're singletons together.
+        builder.Services.AddSingleton<MainPage>();
         builder.Services.AddSingleton<HomePage>();
         builder.Services.AddSingleton<LibraryPage>();
         builder.Services.AddSingleton<SearchPage>();
@@ -62,6 +68,15 @@ public static class MauiProgram
         builder.Services.AddTransient<ServerDownloadsPage>();
         builder.Services.AddTransient<SettingsPage>();
         builder.Services.AddTransient<AdminPage>();
+
+#if WINDOWS
+        // Every sideways list: the mouse wheel scrolls the page, Shift+wheel scrolls the row (see ShiftWheelScrolling).
+        Microsoft.Maui.Controls.Handlers.Items.CollectionViewHandler.Mapper.AppendToMapping("ShiftWheelScrolling", (handler, view) =>
+        {
+            if (view is CollectionView { ItemsLayout: LinearItemsLayout { Orientation: ItemsLayoutOrientation.Horizontal } })
+                Phantom.WinUI.ShiftWheelScrolling.Attach(handler.PlatformView);
+        });
+#endif
 
 #if DEBUG
         builder.Logging.AddDebug();

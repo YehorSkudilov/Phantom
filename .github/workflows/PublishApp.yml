@@ -4,8 +4,9 @@ permissions:
   contents: write
 
 env:
-  PROJECT_PATH: src/Phantom.Client/Phantom.Client.csproj
-  VERSION_BUMP_PROJECT_PATH: src/Phantom.Client/Phantom.Client.csproj
+  # The build jobs check Phantom out into its own folder next to AppSkeleton (referenced as ..\..\..\AppSkeleton).
+  PROJECT_PATH: Phantom/src/Phantom.Client/Phantom.csproj
+  VERSION_BUMP_PROJECT_PATH: src/Phantom.Client/Phantom.csproj
   PACKAGE_NAME: com.yehorskudilov.phantom
 
 on:
@@ -201,6 +202,14 @@ jobs:
         uses: actions/checkout@v6
         with:
           ref: ${{ github.ref }}
+          path: Phantom
+
+      - name: Checkout AppSkeleton
+        uses: actions/checkout@v6
+        with:
+          repository: YehorSkudilov/AppSkeleton
+          token: ${{ secrets.REPO_TOKEN }}
+          path: AppSkeleton
 
       # =========================
       # .NET + MAUI
@@ -365,6 +374,14 @@ jobs:
         uses: actions/checkout@v6
         with:
           ref: ${{ github.ref }}
+          path: Phantom
+
+      - name: Checkout AppSkeleton
+        uses: actions/checkout@v6
+        with:
+          repository: YehorSkudilov/AppSkeleton
+          token: ${{ secrets.REPO_TOKEN }}
+          path: AppSkeleton
 
       # =========================
       # .NET + MAUI
@@ -407,7 +424,7 @@ jobs:
             }
           }
 
-          $file = Resolve-Path "src/Phantom.Client/Platforms/Windows/Package.appxmanifest"
+          $file = Resolve-Path "Phantom/src/Phantom.Client/Platforms/Windows/Package.appxmanifest"
           [xml]$xml = Get-Content $file -Raw
 
           $xml.Package.Identity.Name = $env:MSSTORE_PACKAGE_NAME
@@ -510,6 +527,14 @@ jobs:
         uses: actions/checkout@v6
         with:
           ref: ${{ github.ref }}
+          path: Phantom
+
+      - name: Checkout AppSkeleton
+        uses: actions/checkout@v6
+        with:
+          repository: YehorSkudilov/AppSkeleton
+          token: ${{ secrets.REPO_TOKEN }}
+          path: AppSkeleton
 
       # =========================
       # XCODE + .NET + MAUI
@@ -692,6 +717,14 @@ jobs:
         uses: actions/checkout@v6
         with:
           ref: ${{ github.ref }}
+          path: Phantom
+
+      - name: Checkout AppSkeleton
+        uses: actions/checkout@v6
+        with:
+          repository: YehorSkudilov/AppSkeleton
+          token: ${{ secrets.REPO_TOKEN }}
+          path: AppSkeleton
 
       # =========================
       # XCODE + .NET + MAUI

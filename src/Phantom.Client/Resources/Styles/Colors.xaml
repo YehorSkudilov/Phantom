@@ -20,6 +20,9 @@
     <Color x:Key="White">White</Color>
     <Color x:Key="Black">Black</Color>
     <Color x:Key="Scrim">#CC0B0B12</Color>
+    <!-- The nav bar's frosted glass. -->
+    <Color x:Key="GlassTint">#20202F</Color>
+    <x:Double x:Key="GlassTintOpacity">0.6</x:Double>
 
     <SolidColorBrush x:Key="PrimaryBrush" Color="{StaticResource Primary}" />
     <SolidColorBrush x:Key="SurfaceBrush" Color="{StaticResource Surface}" />

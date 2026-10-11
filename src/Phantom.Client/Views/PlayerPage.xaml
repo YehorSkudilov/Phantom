@@ -2,6 +2,7 @@
 <ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
              xmlns:vm="clr-namespace:Phantom.ViewModels"
+             xmlns:controls="clr-namespace:Phantom.Controls"
              xmlns:toolkit="http://schemas.microsoft.com/dotnet/2022/maui/toolkit"
              x:Class="Phantom.Views.PlayerPage"
              x:DataType="vm:PlayerViewModel"
@@ -29,21 +30,27 @@
         <!-- Controls overlay -->
         <Grid x:Name="Controls" RowDefinitions="Auto,*,Auto" BackgroundColor="#66000000" Padding="12">
             <Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto" ColumnSpacing="6">
-                <Button Text="✕" Style="{StaticResource GhostButton}" TextColor="White" FontSize="20" Clicked="OnClose" SemanticProperties.Description="Close player" />
+                <ImageButton Style="{StaticResource IconButton}" Source="{controls:Icon close, Color=White}" Clicked="OnClose"
+                             SemanticProperties.Description="Close player" ToolTipProperties.Text="Close" />
                 <VerticalStackLayout Grid.Column="1" VerticalOptions="Center">
                     <Label Text="{Binding Title}" FontFamily="OpenSansSemibold" FontSize="16" LineBreakMode="TailTruncation" />
                     <Label Text="Transcoding" Style="{StaticResource Muted}" FontSize="11" IsVisible="{Binding IsTranscoding}" />
                 </VerticalStackLayout>
-                <Button Grid.Column="2" Text="CC" Style="{StaticResource GhostButton}" TextColor="White" Clicked="OnSubtitles" SemanticProperties.Description="Subtitles" />
-                <Button Grid.Column="3" Text="HD" Style="{StaticResource GhostButton}" TextColor="White" Clicked="OnQuality" SemanticProperties.Description="Quality" />
+                <ImageButton Grid.Column="2" Style="{StaticResource IconButton}" Source="{controls:Icon closed_caption, Color=White, Outlined=True}" Clicked="OnSubtitles"
+                             SemanticProperties.Description="Subtitles" ToolTipProperties.Text="Subtitles" />
+                <ImageButton Grid.Column="3" Style="{StaticResource IconButton}" Source="{controls:Icon high_quality, Color=White, Outlined=True}" Clicked="OnQuality"
+                             SemanticProperties.Description="Quality" ToolTipProperties.Text="Quality" />
                 <Button Grid.Column="4" x:Name="SpeedButton" Text="1x" Style="{StaticResource GhostButton}" TextColor="White" Clicked="OnSpeed" SemanticProperties.Description="Playback speed" />
             </Grid>
 
             <HorizontalStackLayout Grid.Row="1" HorizontalOptions="Center" VerticalOptions="Center" Spacing="36">
-                <Button x:Name="BackButton" Text="↺ 10" Style="{StaticResource GhostButton}" TextColor="White" FontSize="18" Clicked="OnSkipBack" />
-                <Button x:Name="PlayPause" Text="❚❚" FontSize="26" WidthRequest="72" HeightRequest="72" CornerRadius="36" Clicked="OnPlayPause"
-                        SemanticProperties.Description="Play or pause" />
-                <Button x:Name="ForwardButton" Text="30 ↻" Style="{StaticResource GhostButton}" TextColor="White" FontSize="18" Clicked="OnSkipForward" />
+                <ImageButton x:Name="BackButton" Style="{StaticResource IconButton}" WidthRequest="60" HeightRequest="60" CornerRadius="30" Padding="12"
+                             VerticalOptions="Center" Clicked="OnSkipBack" />
+                <ImageButton x:Name="PlayPause" Source="{controls:Icon pause, Color=White}" BackgroundColor="{StaticResource Primary}"
+                             WidthRequest="72" HeightRequest="72" CornerRadius="36" Padding="16" Clicked="OnPlayPause"
+                             SemanticProperties.Description="Play or pause" />
+                <ImageButton x:Name="ForwardButton" Style="{StaticResource IconButton}" WidthRequest="60" HeightRequest="60" CornerRadius="30" Padding="12"
+                             VerticalOptions="Center" Clicked="OnSkipForward" />
             </HorizontalStackLayout>
 
             <VerticalStackLayout Grid.Row="2" Spacing="2">
