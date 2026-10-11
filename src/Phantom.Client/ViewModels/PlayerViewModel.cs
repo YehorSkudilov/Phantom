@@ -40,6 +40,57 @@ public partial class PlayerViewModel(PhantomApi api, SettingsService settings, D
     [ObservableProperty] private string? upNextTitle;
     [ObservableProperty] private bool isTranscoding;
 
+    // The loading screen: what the server is doing, and how far along (0-1, or -1 while there's no figure yet).
+    [ObservableProperty] private string loadingText = "Opening…";
+    [ObservableProperty] private string? loadingDetail;
+    [ObservableProperty] private double loadingProgress = -1;
+    public bool HasLoadingProgress => LoadingProgress >= 0;
+    partial void OnLoadingProgressChanged(double value) => OnPropertyChanged(nameof(HasLoadingProgress));
+
+    private CancellationTokenSource? _statusPoll;
+
+    /// <summary>Keeps the loading screen up to date from the server while the movie opens or buffers.</summary>
+    public void StartLoadingStatus()
+    {
+        if (_offline || _statusPoll is not null) return;
+        _statusPoll = new CancellationTokenSource();
+        _ = PollStatusAsync(_statusPoll.Token);
+    }
+
+    public void StopLoadingStatus()
+    {
+        _statusPoll?.Cancel();
+        _statusPoll = null;
+    }
+
+    private async Task PollStatusAsync(CancellationToken ct)
+    {
+        while (!ct.IsCancellationRequested)
+        {
+            try
+            {
+                var status = await api.StreamStatusAsync(MovieId, _releaseId, ct);
+                if (ct.IsCancellationRequested) return;
+                LoadingText = status.Ready ? "Buffering…" : status.Message;
+                LoadingProgress = status.Ready || status.Progress <= 0 ? -1 : status.Progress / 100;
+                LoadingDetail = status.Ready ? null : status.Progress > 0 ? $"{status.Progress:0.#}% of the movie on the server" : null;
+            }
+            catch (Exception ex) when (ex is HttpRequestException or ApiException)
+            {
+                // The loading screen keeps its last message; playback errors are reported separately.
+            }
+            catch (OperationCanceledException)
+            {
+                return;
+            }
+            try { await Task.Delay(TimeSpan.FromSeconds(1.5), ct); } catch (OperationCanceledException) { return; }
+        }
+    }
+
+    /// <summary>The seek bar's preview frame at <paramref name="at"/>, or null when the server can't make one.</summary>
+    public string? ThumbnailUrl(TimeSpan at) =>
+        Stream?.ThumbnailUrl is { } url && !_offline ? $"{url}&t={(int)at.TotalSeconds / 10 * 10}" : null;
+
     /// <summary>When transcoding, the stream restarts at this offset on every seek.</summary>
     public TimeSpan TranscodeOffset { get; private set; }
 
@@ -66,6 +117,9 @@ public partial class PlayerViewModel(PhantomApi api, SettingsService settings, D
     [RelayCommand]
     private Task Load() => RunAsync(async () =>
     {
+        LoadingText = "Opening…";
+        LoadingDetail = null;
+        LoadingProgress = -1;
         TranscodeOffset = TimeSpan.Zero;
         SubtitleText = null;
         _cues = [];
@@ -85,6 +139,7 @@ public partial class PlayerViewModel(PhantomApi api, SettingsService settings, D
             return;
         }
 
+        StartLoadingStatus(); // the stream info below waits until the torrent is found, which can take a while
         var movie = await api.MovieAsync(MovieId);
         Title = movie.Title;
         _runtime = TimeSpan.FromMinutes(movie.RuntimeMinutes ?? 0);

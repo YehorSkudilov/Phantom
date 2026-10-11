@@ -147,7 +147,14 @@ public record StreamInfoDto(
     string DirectUrl,
     string? TranscodeUrl,
     IReadOnlyList<SubtitleTrackDto> Subtitles,
-    long ResumePositionMs);
+    long ResumePositionMs,
+    string? ThumbnailUrl = null);
+
+/// <summary>
+/// What the server is doing to get a movie playing, for the player's loading screen: <see cref="Message"/> in words,
+/// the numbers behind it, and <see cref="Ready"/> once the file is complete.
+/// </summary>
+public record StreamStatusDto(string Message, int Peers, double Progress, long DownloadRate, bool Ready);
 
 public record SubtitleTrackDto(string Id, string Language, string Label, string Url);
 

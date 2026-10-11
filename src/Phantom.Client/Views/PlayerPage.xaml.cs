@@ -40,6 +40,7 @@ public partial class PlayerPage : ContentPage
         if (_vm.SourceUrl is not { } url) return;
         _pendingResume = _vm.ResumePosition > TimeSpan.Zero;
         Buffering.IsVisible = true;
+        _vm.StartLoadingStatus();
         Media.Source = url.StartsWith("http", StringComparison.OrdinalIgnoreCase) ? MediaSource.FromUri(url) : MediaSource.FromFile(url);
         ShowControls();
     }
@@ -47,6 +48,7 @@ public partial class PlayerPage : ContentPage
     private async void OnOpened()
     {
         Buffering.IsVisible = false;
+        _vm.StopLoadingStatus();
         if (_pendingResume)
         {
             _pendingResume = false;
@@ -68,6 +70,8 @@ public partial class PlayerPage : ContentPage
     private void OnStateChanged(MediaElementState state)
     {
         Buffering.IsVisible = state is MediaElementState.Buffering or MediaElementState.Opening;
+        if (Buffering.IsVisible) _vm.StartLoadingStatus();
+        else _vm.StopLoadingStatus();
         PlayPause.Source = IconExtension.Create(state == MediaElementState.Playing ? "pause" : "play_arrow", Colors.White, size: 40);
         if (state == MediaElementState.Paused) _ = Report(PlayerState.Paused);
     }
@@ -142,9 +146,46 @@ public partial class PlayerPage : ContentPage
         ShowControls();
     }
 
+    private CancellationTokenSource? _previewDelay;
+
+    // While dragging: show where the drag would land, and (after a short pause, so a fast drag doesn't ask the server
+    // for every frame on the way) a preview frame from there.
+    private async void OnSeekValueChanged(object? sender, ValueChangedEventArgs e)
+    {
+        if (!_seeking) return;
+        var total = _vm.TotalDuration(Media.Duration);
+        if (total <= TimeSpan.Zero) return;
+        var at = total * e.NewValue;
+
+        SeekPreview.IsVisible = true;
+        SeekPreviewTime.Text = TimeSpanConverter.Format(at);
+        var half = SeekPreview.WidthRequest / 2;
+        SeekPreview.TranslationX = Math.Clamp(Seek.Width * e.NewValue - half, 0, Math.Max(0, Seek.Width - SeekPreview.WidthRequest));
+
+        if (_vm.ThumbnailUrl(at) is not { } url)
+        {
+            SeekPreviewImage.IsVisible = false;
+            return;
+        }
+        _previewDelay?.Cancel();
+        _previewDelay = new CancellationTokenSource();
+        try
+        {
+            await Task.Delay(200, _previewDelay.Token);
+            SeekPreviewImage.IsVisible = true;
+            SeekPreviewImage.Source = new UriImageSource { Uri = new Uri(url), CachingEnabled = true, CacheValidity = TimeSpan.FromDays(1) };
+        }
+        catch (TaskCanceledException)
+        {
+            // A newer position replaced this one.
+        }
+    }
+
     private async void OnSeekCompleted(object? sender, EventArgs e)
     {
         _seeking = false;
+        _previewDelay?.Cancel();
+        SeekPreview.IsVisible = false;
         await SeekToAsync(_vm.TotalDuration(Media.Duration) * Seek.Value);
     }
 
@@ -192,6 +233,7 @@ public partial class PlayerPage : ContentPage
     {
         base.OnDisappearing();
         _hideTimer?.Stop();
+        _vm.StopLoadingStatus();
         await Report(PlayerState.Stopped);
         Media.Stop();
         Media.Handler?.DisconnectHandler();

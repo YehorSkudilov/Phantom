@@ -23,7 +23,17 @@
                Padding="10,4" HorizontalOptions="Center" VerticalOptions="End" Margin="24,0,24,96"
                HorizontalTextAlignment="Center" IsVisible="{Binding SubtitleText, Converter={StaticResource HasValue}}" />
 
-        <ActivityIndicator x:Name="Buffering" IsRunning="True" HorizontalOptions="Center" VerticalOptions="Center" WidthRequest="56" HeightRequest="56" />
+        <!-- Loading: what the server is doing to get the movie playing (see PlayerViewModel.PollStatusAsync). -->
+        <Border x:Name="Buffering" HorizontalOptions="Center" VerticalOptions="Center" Padding="24,20" MaximumWidthRequest="420"
+                BackgroundColor="#CC0B0B12" StrokeShape="RoundRectangle 16" InputTransparent="True">
+            <VerticalStackLayout Spacing="10">
+                <ActivityIndicator IsRunning="True" WidthRequest="44" HeightRequest="44" />
+                <Label Text="{Binding LoadingText}" TextColor="White" FontFamily="OpenSansSemibold" FontSize="15" HorizontalTextAlignment="Center" />
+                <ProgressBar Progress="{Binding LoadingProgress}" IsVisible="{Binding HasLoadingProgress}" WidthRequest="220" />
+                <Label Text="{Binding LoadingDetail}" Style="{StaticResource Muted}" FontSize="12" HorizontalTextAlignment="Center"
+                       IsVisible="{Binding LoadingDetail, Converter={StaticResource HasValue}}" />
+            </VerticalStackLayout>
+        </Border>
         <Label Text="{Binding ErrorMessage}" TextColor="{StaticResource Danger}" HorizontalOptions="Center" VerticalOptions="Center" Margin="0,120,0,0"
                IsVisible="{Binding ErrorMessage, Converter={StaticResource HasValue}}" />
 
@@ -56,7 +66,15 @@
             <VerticalStackLayout Grid.Row="2" Spacing="2">
                 <Label Text="{Binding UpNextTitle, StringFormat='Up next: {0}'}" Style="{StaticResource Muted}" HorizontalOptions="End"
                        IsVisible="{Binding UpNextTitle, Converter={StaticResource HasValue}}" />
-                <Slider x:Name="Seek" Minimum="0" Maximum="1" DragStarted="OnSeekStarted" DragCompleted="OnSeekCompleted" />
+                <!-- While dragging: the frame and time the drag would jump to, above the thumb. -->
+                <Border x:Name="SeekPreview" IsVisible="False" HorizontalOptions="Start" WidthRequest="176" Padding="0"
+                        BackgroundColor="#E60B0B12" StrokeShape="RoundRectangle 8" InputTransparent="True">
+                    <VerticalStackLayout>
+                        <Image x:Name="SeekPreviewImage" HeightRequest="99" Aspect="AspectFill" />
+                        <Label x:Name="SeekPreviewTime" TextColor="White" FontFamily="OpenSansSemibold" FontSize="13" HorizontalOptions="Center" Margin="0,4" />
+                    </VerticalStackLayout>
+                </Border>
+                <Slider x:Name="Seek" Minimum="0" Maximum="1" DragStarted="OnSeekStarted" DragCompleted="OnSeekCompleted" ValueChanged="OnSeekValueChanged" />
                 <Grid ColumnDefinitions="*,*">
                     <Label x:Name="PositionLabel" Text="0:00" FontSize="12" />
                     <Label Grid.Column="1" x:Name="DurationLabel" Text="0:00" FontSize="12" HorizontalOptions="End" />

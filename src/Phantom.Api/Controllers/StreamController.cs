@@ -22,8 +22,14 @@ public class StreamController(
     LibraryService library,
     TorrentEngine engine,
     Transcoder transcoder,
+    Microsoft.Extensions.Options.IOptions<PhantomOptions> options,
     ILogger<StreamController> log) : ControllerBase
 {
+    /// <summary>Seek previews are cached per this many seconds of the movie.</summary>
+    private const int ThumbnailStepSeconds = 10;
+
+    // A few ffmpeg processes at a time: scrubbing asks for many previews in a row.
+    private static readonly SemaphoreSlim ThumbnailSlots = new(3, 3);
     private async Task<Release?> ResolveReleaseAsync(int movieId, int? releaseId, CancellationToken ct)
     {
         if (!await library.Visible(User).AnyAsync(m => m.Id == movieId, ct)) return null;
@@ -84,7 +90,8 @@ public class StreamController(
             $"{baseUrl}/direct?{auth}",
             transcoder.IsAvailable ? $"{baseUrl}/transcode?{auth}" : null,
             subtitles,
-            state is { Watched: false } ? state.PositionMs : 0);
+            state is { Watched: false } ? state.PositionMs : 0,
+            transcoder.IsAvailable ? $"{baseUrl}/thumbnail?{auth}" : null);
 
         SubtitleTrackDto Subtitle(int index, string path)
         {
@@ -145,6 +152,77 @@ public class StreamController(
         catch (OperationCanceledException)
         {
             log.LogDebug("Transcode for movie {Id} cancelled by client", movieId);
+        }
+    }
+
+    /// <summary>
+    /// What's happening to get this movie playing, for the player's loading screen. Answers straight away, even while
+    /// <see cref="Info"/> is still waiting for the torrent's metadata.
+    /// </summary>
+    [HttpGet("status")]
+    public async Task<ActionResult<StreamStatusDto>> Status(int movieId, [FromQuery] int? releaseId, CancellationToken ct)
+    {
+        var release = await ResolveReleaseAsync(movieId, releaseId, ct);
+        if (release is null) return NotFound();
+        if (release.LocalFilePath is { } local && System.IO.File.Exists(local))
+            return new StreamStatusDto("Ready", 0, 100, 0, true);
+
+        var manager = engine.Find(release.InfoHash);
+        if (manager is null) return new StreamStatusDto("Starting the download on the server…", 0, 0, 0, false);
+
+        var peers = manager.Peers.Available + manager.OpenConnections;
+        if (!manager.HasMetadata)
+            return new StreamStatusDto(peers > 0 ? $"Getting the movie's details from {peers} peers…" : "Looking for people sharing this movie…", peers, 0, 0, false);
+
+        var stats = engine.Stats(release.InfoHash)!;
+        if (stats.Complete) return new StreamStatusDto("Ready", stats.Peers, 100, 0, true);
+        var message = stats.Peers == 0
+            ? "Connecting to peers…"
+            : $"Downloading from {stats.Peers} peers · {FormatRate(stats.DownloadRate)}";
+        return new StreamStatusDto(message, stats.Peers, Math.Round(stats.Progress, 1), stats.DownloadRate, false);
+
+        static string FormatRate(long bytesPerSecond) => bytesPerSecond >= 1 << 20
+            ? $"{bytesPerSecond / (double)(1 << 20):0.#} MB/s"
+            : $"{bytesPerSecond / 1024} KB/s";
+    }
+
+    /// <summary>
+    /// A small frame from <paramref name="t"/> seconds in, for the seek bar's preview. Taken by ffmpeg from the file (or
+    /// the torrent, which fetches the pieces around that point) and cached in steps of <see cref="ThumbnailStepSeconds"/>.
+    /// </summary>
+    [HttpGet("thumbnail")]
+    public async Task<IActionResult> Thumbnail(int movieId, [FromQuery] int? releaseId, [FromQuery] double t, CancellationToken ct)
+    {
+        if (!transcoder.IsAvailable) return StatusCode(StatusCodes.Status501NotImplemented);
+        var release = await ResolveReleaseAsync(movieId, releaseId, ct);
+        if (release is null) return NotFound();
+
+        var step = (int)Math.Max(0, t) / ThumbnailStepSeconds * ThumbnailStepSeconds;
+        var cache = Path.Combine(options.Value.CacheDirectory, "thumbnails", release.Id.ToString(), $"{step}.jpg");
+        if (System.IO.File.Exists(cache)) return PhysicalFile(Path.GetFullPath(cache), "image/jpeg");
+
+        var input = release.LocalFilePath is { } local && System.IO.File.Exists(local)
+            ? Path.GetFullPath(local)
+            : $"http://127.0.0.1:{HttpContext.Connection.LocalPort}/api/stream/{movieId}/direct?releaseId={release.Id}&access_token={Uri.EscapeDataString(Token())}";
+
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        timeout.CancelAfter(TimeSpan.FromSeconds(30));
+        await ThumbnailSlots.WaitAsync(timeout.Token);
+        try
+        {
+            var jpeg = await transcoder.ThumbnailAsync(input, step, 320, timeout.Token);
+            if (jpeg is null) return NotFound();
+            Directory.CreateDirectory(Path.GetDirectoryName(cache)!);
+            await System.IO.File.WriteAllBytesAsync(cache, jpeg, CancellationToken.None);
+            return File(jpeg, "image/jpeg");
+        }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+        {
+            return StatusCode(StatusCodes.Status504GatewayTimeout);
+        }
+        finally
+        {
+            ThumbnailSlots.Release();
         }
     }
 

@@ -51,6 +51,38 @@ public class Transcoder(IOptions<PhantomOptions> options, ILogger<Transcoder> lo
         return args;
     }
 
+    /// <summary>A small JPEG of the frame at <paramref name="seconds"/>, or null if ffmpeg couldn't get one.</summary>
+    public async Task<byte[]?> ThumbnailAsync(string input, double seconds, int width, CancellationToken ct)
+    {
+        var psi = new ProcessStartInfo(options.Value.FfmpegPath)
+        {
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+        };
+        // -ss before -i seeks by keyframes without decoding everything up to that point.
+        foreach (var a in new[]
+                 {
+                     "-hide_banner", "-loglevel", "error", "-ss", seconds.ToString("0.###", CultureInfo.InvariantCulture), "-i", input,
+                     "-frames:v", "1", "-vf", $"scale={width}:-2", "-q:v", "6", "-f", "image2", "-c:v", "mjpeg", "pipe:1",
+                 })
+            psi.ArgumentList.Add(a);
+
+        using var process = Process.Start(psi) ?? throw new InvalidOperationException("Could not start ffmpeg.");
+        _ = process.StandardError.ReadToEndAsync(CancellationToken.None);
+        try
+        {
+            using var buffer = new MemoryStream();
+            await process.StandardOutput.BaseStream.CopyToAsync(buffer, ct);
+            await process.WaitForExitAsync(ct);
+            return process.ExitCode == 0 && buffer.Length > 0 ? buffer.ToArray() : null;
+        }
+        finally
+        {
+            if (!process.HasExited) process.Kill(entireProcessTree: true);
+        }
+    }
+
     /// <summary>Runs ffmpeg and copies its output to <paramref name="output"/> until done or cancelled.</summary>
     public async Task TranscodeAsync(string input, double startSeconds, int? maxVideoKbps, int? maxHeight, Stream output, CancellationToken ct)
     {
