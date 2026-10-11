@@ -26,6 +26,7 @@ public partial class PlayerViewModel(PhantomApi api, SettingsService settings, D
     private List<int> _queue = [];
     private TimeSpan _runtime;
     private EpisodeDto? _nextEpisode;
+    private OfflineDownload? _nextOffline; // the show's next downloaded episode, when playing one offline
 
     // Direct play failed on this device, so the server converts it whatever the quality setting says.
     private bool _forceConvert;
@@ -260,10 +261,13 @@ public partial class PlayerViewModel(PhantomApi api, SettingsService settings, D
         SubtitleChoices.Clear();
         SubtitleChoices.Add(new SubtitleChoice("Off", null));
 
-        var offline = EpisodeId is null ? downloads.Find(MovieId) : null;
+        var offline = EpisodeId is { } downloaded ? downloads.FindEpisode(downloaded) : downloads.Find(MovieId);
+        _nextOffline = null;
         if (_offline && offline is { IsComplete: true })
         {
-            Title = offline.Title;
+            Title = offline.IsEpisode ? $"{offline.Title} · {offline.Subtitle}" : offline.Title;
+            _nextEpisode = null;
+            if (offline.IsEpisode) _nextOffline = downloads.NextDownloadedEpisode(offline);
             PosterUrl = offline.PosterSource;
             ResumePosition = _resume ? TimeSpan.FromMilliseconds(offline.OfflinePositionMs) : TimeSpan.Zero;
             Stream = null;
@@ -430,7 +434,7 @@ public partial class PlayerViewModel(PhantomApi api, SettingsService settings, D
 
         if (_offline)
         {
-            await downloads.RecordOfflineProgressAsync(MovieId, pos, dur);
+            await downloads.RecordOfflineProgressAsync(MovieId, pos, dur, EpisodeId);
             return;
         }
         try
@@ -440,7 +444,7 @@ public partial class PlayerViewModel(PhantomApi api, SettingsService settings, D
         catch (Exception ex) when (ex is HttpRequestException or ApiException or TaskCanceledException)
         {
             // Lost connection mid-play; remember locally if downloaded.
-            if (EpisodeId is null) await downloads.RecordOfflineProgressAsync(MovieId, pos, dur);
+            await downloads.RecordOfflineProgressAsync(MovieId, pos, dur, EpisodeId);
         }
     }
 
@@ -449,6 +453,11 @@ public partial class PlayerViewModel(PhantomApi api, SettingsService settings, D
         UpNextTitle = null;
         if (EpisodeId is not null)
         {
+            if (_nextOffline is { } downloaded)
+            {
+                UpNextTitle = downloaded.Subtitle;
+                return;
+            }
             UpNextTitle = _nextEpisode is { } next ? $"S{next.SeasonNumber}:E{next.EpisodeNumber} {next.Title}".Trim() : null;
             return;
         }
@@ -470,6 +479,13 @@ public partial class PlayerViewModel(PhantomApi api, SettingsService settings, D
         if (!settings.AutoPlayNext) return false;
         if (EpisodeId is not null)
         {
+            if (_offline && _nextOffline is { EpisodeId: { } downloaded } nextOffline)
+            {
+                EpisodeId = downloaded;
+                _resume = nextOffline.OfflinePositionMs > 0;
+                LoadCommand.Execute(null);
+                return true;
+            }
             if (_nextEpisode is not { } next) return false;
             EpisodeId = next.Id;
             _resume = next.Playback is { Watched: false, PositionMs: > 0 };
