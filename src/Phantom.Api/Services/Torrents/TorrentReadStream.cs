@@ -6,7 +6,7 @@ namespace Phantom.Api.Services.Torrents;
 /// gets one of these lightweight views with its own position; reads are serialised onto the
 /// shared torrent stream, and each seek re-points the streaming piece picker.
 /// </summary>
-public sealed class SharedTorrentStream(Stream inner, string filePath) : IDisposable
+public sealed class SharedTorrentStream(Stream inner, string filePath, Action? onRead = null) : IDisposable
 {
     private readonly SemaphoreSlim _lock = new(1, 1);
 
@@ -17,6 +17,8 @@ public sealed class SharedTorrentStream(Stream inner, string filePath) : IDispos
 
     public async ValueTask<int> ReadAtAsync(long position, Memory<byte> buffer, CancellationToken ct)
     {
+        // Every read counts as being watched: one long request can feed a player for the whole film.
+        onRead?.Invoke();
         await _lock.WaitAsync(ct);
         try
         {

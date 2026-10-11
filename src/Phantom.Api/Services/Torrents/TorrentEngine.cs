@@ -274,7 +274,7 @@ public sealed class TorrentEngine : IHostedService, IAsyncDisposable
                 {
                     DropStream(key);
                     var inner = await manager.StreamProvider!.CreateStreamAsync(file, prebuffer: true, ct);
-                    shared = _streams[key] = new SharedTorrentStream(inner, file.Path);
+                    shared = _streams[key] = new SharedTorrentStream(inner, file.Path, () => Touch(key));
                 }
             }
             finally
@@ -299,6 +299,33 @@ public sealed class TorrentEngine : IHostedService, IAsyncDisposable
     public bool StreamedWithin(TimeSpan window) => DateTime.UtcNow.Ticks - Interlocked.Read(ref _lastStreamTicks) < window.Ticks;
 
     public void Unpin(string infoHash) => _pinned.TryRemove(infoHash, out _);
+
+    /// <summary>
+    /// Stops streamed torrents nobody has read from for <paramref name="idle"/>: without this a torrent opened to watch
+    /// went on to download the whole file and then seed it, until its cache expired a day later. What's downloaded stays,
+    /// and playing it again starts it back up (see EnsureStartedAsync). Torrents the server keeps carry on.
+    /// </summary>
+    public async Task StopIdleStreamsAsync(TimeSpan idle)
+    {
+        if (_engine is null) return;
+        var cutoff = DateTime.UtcNow - idle;
+        foreach (var m in _engine.Torrents.ToList())
+        {
+            var hash = m.InfoHashes.V1OrV2.ToHex().ToLowerInvariant();
+            if (_pinned.ContainsKey(hash) || m.State is TorrentState.Stopped or TorrentState.Stopping or TorrentState.Paused) continue;
+            if (_lastAccess.TryGetValue(hash, out var last) && last > cutoff) continue;
+            _log.LogInformation("Nobody's watching {Name}: stopping its download", m.Name);
+            DropStream(hash);
+            try
+            {
+                await m.StopAsync(TimeSpan.FromSeconds(5));
+            }
+            catch (Exception ex) when (ex is InvalidOperationException or TorrentException)
+            {
+                _log.LogDebug(ex, "Couldn't stop {Name}", m.Name);
+            }
+        }
+    }
 
     public async Task PauseAsync(string infoHash)
     {
@@ -471,7 +498,13 @@ public sealed class TorrentEngine : IHostedService, IAsyncDisposable
                 var hash = Path.GetFileName(dir).ToLowerInvariant();
                 if (hash.Length != 40) continue; // "thumbnails" and the like
                 DateTime? last = _lastAccess.TryGetValue(hash, out var touched) ? touched : null;
-                list.Add(new StoredTorrent(hash, Find(hash)?.Name, saved, DirectorySize(dir), last ?? Directory.GetLastWriteTimeUtc(dir),
+                // A streamed file is made at its full length when the end is read (MP4s keep their index there), so its size
+                // on disk says little; for a loaded torrent what's actually downloaded is counted instead.
+                var manager = Find(hash);
+                var size = manager is { HasMetadata: true }
+                    ? manager.Files.Sum(f => (long)(f.Length * f.BitField.PercentComplete / 100))
+                    : DirectorySize(dir);
+                list.Add(new StoredTorrent(hash, manager?.Name, saved, size, last ?? Directory.GetLastWriteTimeUtc(dir),
                     last is { } t && DateTime.UtcNow - t < InUseWindow));
             }
         }

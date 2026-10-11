@@ -31,11 +31,28 @@ public static class ShiftWheelScrolling
     private static void Hook(FrameworkElement list)
     {
         // Hooked on the scroller's content, below the ScrollViewer: the wheel bubbles up from the item under the
-        // pointer, so handling it here means the row's ScrollViewer never sees it.
+        // pointer, so handling it here means the row's ScrollViewer never sees it. The scrollbars aren't part of the
+        // content (they're the ScrollViewer's own), so they're hooked too, or the wheel over a row's bar scrolled it
+        // sideways.
         if (FindDescendant<ScrollViewer>(list) is not { Content: UIElement content } row) return;
         content.PointerWheelChanged -= OnWheel;
         content.PointerWheelChanged += OnWheel;
+        HookScrollBars();
+        // The bars are only made once the scroller's template is applied, which can be after it's loaded.
+        row.Loaded -= OnRowLoaded;
+        row.Loaded += OnRowLoaded;
         CtrlRefresh.RegisterRow(row);
+
+        void OnRowLoaded(object sender, RoutedEventArgs e) => HookScrollBars();
+
+        void HookScrollBars()
+        {
+            foreach (var bar in FindDescendants<Microsoft.UI.Xaml.Controls.Primitives.ScrollBar>(row).Where(b => !IsInside(b, content)))
+            {
+                bar.PointerWheelChanged -= OnWheel;
+                bar.PointerWheelChanged += OnWheel;
+            }
+        }
 
         void OnWheel(object sender, PointerRoutedEventArgs e)
         {
@@ -88,6 +105,23 @@ public static class ShiftWheelScrolling
             if (element is ScrollViewer { VerticalScrollMode: not Microsoft.UI.Xaml.Controls.ScrollMode.Disabled, ScrollableHeight: > 0 } scroller)
                 return scroller;
         return null;
+    }
+
+    private static IEnumerable<T> FindDescendants<T>(DependencyObject root) where T : DependencyObject
+    {
+        for (var i = 0; i < VisualTreeHelper.GetChildrenCount(root); i++)
+        {
+            var child = VisualTreeHelper.GetChild(root, i);
+            if (child is T match) yield return match;
+            foreach (var found in FindDescendants<T>(child)) yield return found;
+        }
+    }
+
+    private static bool IsInside(DependencyObject element, DependencyObject ancestor)
+    {
+        for (var e = VisualTreeHelper.GetParent(element); e != null; e = VisualTreeHelper.GetParent(e))
+            if (e == ancestor) return true;
+        return false;
     }
 
     private static T? FindDescendant<T>(DependencyObject root) where T : DependencyObject

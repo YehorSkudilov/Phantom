@@ -267,6 +267,8 @@ public abstract class StreamControllerBase(
         if (Local(target) is not null) return new StreamStatusDto("Ready", 0, 100, 0, true);
 
         var manager = engine.Find(release.InfoHash);
+        // The loading screen polls this: still wanted, even before the player reads anything.
+        if (manager is not null) engine.Touch(release.InfoHash);
         if (manager is null) return new StreamStatusDto("Starting the download on the server…", 0, 0, 0, false);
 
         var peers = manager.Peers.Available + manager.OpenConnections;

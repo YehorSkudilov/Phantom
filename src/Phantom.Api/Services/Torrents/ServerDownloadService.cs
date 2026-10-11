@@ -11,6 +11,10 @@ namespace Phantom.Api.Services.Torrents;
 public class ServerDownloadService(IServiceScopeFactory scopes, TorrentEngine engine, ILogger<ServerDownloadService> log) : BackgroundService
 {
     private DateTime _lastEviction = DateTime.MinValue;
+    private DateTime _lastIdleStop = DateTime.MinValue;
+
+    /// <summary>A stream nobody has read from for this long stops downloading (a paused film included).</summary>
+    public static readonly TimeSpan StopIdleStreamsAfter = TimeSpan.FromMinutes(10);
     private DateTime _lastExpiry = DateTime.MinValue;
     private (int Down, int Up) _appliedLimits = (-1, -1);
 
@@ -81,6 +85,12 @@ public class ServerDownloadService(IServiceScopeFactory scopes, TorrentEngine en
             }
         }
         await db.SaveChangesAsync(ct);
+
+        if (DateTime.UtcNow - _lastIdleStop > TimeSpan.FromSeconds(30))
+        {
+            _lastIdleStop = DateTime.UtcNow;
+            await engine.StopIdleStreamsAsync(StopIdleStreamsAfter);
+        }
 
         if (DateTime.UtcNow - _lastEviction > TimeSpan.FromMinutes(10))
         {

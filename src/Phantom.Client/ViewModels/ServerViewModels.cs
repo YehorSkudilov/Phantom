@@ -178,7 +178,7 @@ public partial class AdminViewModel(PhantomApi api) : BaseViewModel
 
     public string CacheLimitText => Storage is not { } s ? ""
         : (s.MaxStreamCacheGb > 0 ? $"The stream cache is kept under {s.MaxStreamCacheGb} GB" : "The stream cache has no size limit")
-          + $", and cleared when fewer than {s.MinFreeDiskGb} GB are free. Change the limit in Server settings.";
+          + $", and cleared when fewer than {s.MinFreeDiskGb} GB are free. A stream stops downloading 10 minutes after it was last watched. Change the limit in Server settings.";
 
     private async Task LoadStorageAsync()
     {
