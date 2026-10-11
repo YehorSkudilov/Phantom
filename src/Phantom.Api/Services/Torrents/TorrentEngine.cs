@@ -450,4 +450,84 @@ public sealed class TorrentEngine : IHostedService, IAsyncDisposable
             await RemoveAsync(hash, deleteData: true);
         }
     }
+
+    // ---------- Storage ----------
+
+    /// <summary>A torrent's folder on disk: a stream cache, or a copy kept in the media folder.</summary>
+    public record StoredTorrent(string InfoHash, string? Name, bool Saved, long SizeBytes, DateTime? LastUsed, bool InUse);
+
+    /// <summary>A stream that was read from within this long counts as in use: it isn't offered for clearing.</summary>
+    private static readonly TimeSpan InUseWindow = TimeSpan.FromMinutes(5);
+
+    /// <summary>Every torrent folder in the stream cache and the media folder, with its size on disk.</summary>
+    public IReadOnlyList<StoredTorrent> StoredTorrents()
+    {
+        var list = new List<StoredTorrent>();
+        foreach (var (root, saved) in new[] { (_options.CacheDirectory, false), (_options.MediaDirectory, true) })
+        {
+            if (!Directory.Exists(root)) continue;
+            foreach (var dir in Directory.EnumerateDirectories(root))
+            {
+                var hash = Path.GetFileName(dir).ToLowerInvariant();
+                if (hash.Length != 40) continue; // "thumbnails" and the like
+                DateTime? last = _lastAccess.TryGetValue(hash, out var touched) ? touched : null;
+                list.Add(new StoredTorrent(hash, Find(hash)?.Name, saved, DirectorySize(dir), last ?? Directory.GetLastWriteTimeUtc(dir),
+                    last is { } t && DateTime.UtcNow - t < InUseWindow));
+            }
+        }
+        return list;
+    }
+
+    /// <summary>Bytes in a folder and everything under it (0 when it's gone or can't be read).</summary>
+    public static long DirectorySize(string path)
+    {
+        try
+        {
+            return Directory.Exists(path)
+                ? new DirectoryInfo(path).EnumerateFiles("*", SearchOption.AllDirectories).Sum(f => f.Length)
+                : File.Exists(path) ? new FileInfo(path).Length : 0;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return 0;
+        }
+    }
+
+    /// <summary>
+    /// Clears one torrent's stream cache. False when it's being watched or kept on the server (saved copies are removed
+    /// with their download).
+    /// </summary>
+    public async Task<bool> ClearStreamCacheAsync(string infoHash)
+    {
+        var hash = infoHash.ToLowerInvariant();
+        if (_pinned.ContainsKey(hash) || _lastAccess.TryGetValue(hash, out var last) && DateTime.UtcNow - last < InUseWindow) return false;
+        await RemoveAsync(hash, deleteData: true);
+        // After a restart the folder can be there without the torrent being loaded.
+        var dir = Path.Combine(_options.CacheDirectory, hash);
+        if (Directory.Exists(dir)) Directory.Delete(dir, recursive: true);
+        return true;
+    }
+
+    /// <summary>Clears every stream cache nobody is watching from. Returns how many were cleared.</summary>
+    public async Task<int> ClearIdleStreamCachesAsync()
+    {
+        var cleared = 0;
+        foreach (var item in StoredTorrents().Where(t => !t.Saved && !t.InUse))
+            if (await ClearStreamCacheAsync(item.InfoHash)) cleared++;
+        return cleared;
+    }
+
+    /// <summary>Keeps the stream cache under <paramref name="maxBytes"/>, clearing the least recently watched first.</summary>
+    public async Task EnforceCacheLimitAsync(long maxBytes)
+    {
+        if (maxBytes <= 0) return;
+        var caches = StoredTorrents().Where(t => !t.Saved).ToList();
+        var total = caches.Sum(c => c.SizeBytes);
+        foreach (var cache in caches.Where(c => !c.InUse).OrderBy(c => c.LastUsed))
+        {
+            if (total <= maxBytes) break;
+            _log.LogInformation("Stream cache over its {Limit} GB limit: clearing {Name}", maxBytes >> 30, cache.Name ?? cache.InfoHash);
+            if (await ClearStreamCacheAsync(cache.InfoHash)) total -= cache.SizeBytes;
+        }
+    }
 }
