@@ -117,8 +117,11 @@ public class PhantomApi(HttpClient http, SettingsService settings)
     public Task<AuthResponse> RegisterAsync(string user, string password) => SendAsync<AuthResponse>(HttpMethod.Post, "/api/auth/register", new RegisterRequest(user, password));
     public Task<UserDto> MeAsync() => GetAsync<UserDto>("/api/auth/me");
 
-    public Task<StreamStatusDto> StreamStatusAsync(int movieId, int? releaseId, TimeSpan position, CancellationToken ct = default) =>
-        GetAsync<StreamStatusDto>($"/api/stream/{movieId}/status?position={position.TotalSeconds:0}{(releaseId is { } r ? $"&releaseId={r}" : "")}", ct);
+    public Task<StreamStatusDto> StreamStatusAsync(int movieId, int? releaseId, TimeSpan position, CancellationToken ct = default, int? episodeId = null) =>
+        GetAsync<StreamStatusDto>($"{StreamBase(movieId, episodeId)}/status?position={position.TotalSeconds:0}{(releaseId is { } r ? $"&releaseId={r}" : "")}", ct);
+
+    /// <summary>Where a movie's (or, with <paramref name="episodeId"/>, an episode's) stream endpoints are.</summary>
+    private static string StreamBase(int movieId, int? episodeId) => episodeId is { } e ? $"/api/stream/episode/{e}" : $"/api/stream/{movieId}";
     public Task<UserDto> UpdateAccountAsync(UpdateAccountRequest req) => SendAsync<UserDto>(HttpMethod.Put, "/api/auth/account", req);
 
     // Pairing: a TV shows a code, a signed-in device approves it (see PairingController on the server).
@@ -149,7 +152,7 @@ public class PhantomApi(HttpClient http, SettingsService settings)
     // ---------- Library ----------
 
     public Task<List<HubDto>> HubsAsync(CancellationToken ct = default) => GetAsync<List<HubDto>>("/api/library/hubs", ct);
-    public Task<LibraryFiltersDto> FiltersAsync() => GetAsync<LibraryFiltersDto>("/api/library/filters");
+    public Task<LibraryFiltersDto> FiltersAsync(MediaKind kind = MediaKind.Movie) => GetAsync<LibraryFiltersDto>($"/api/library/filters?kind={kind}");
     public Task<SearchResultDto> SearchAsync(string q, CancellationToken ct = default) => GetAsync<SearchResultDto>($"/api/library/search?q={Uri.EscapeDataString(q)}", ct);
 
     public Task<PagedResult<MovieSummaryDto>> MoviesAsync(MovieQuery q, CancellationToken ct = default)
@@ -173,6 +176,7 @@ public class PhantomApi(HttpClient http, SettingsService settings)
         Add("startsWith", q.StartsWith);
         Add("actor", q.Actor);
         Add("director", q.Director);
+        if (q.Kind != MediaKind.Movie) Add("kind", q.Kind);
         return GetAsync<PagedResult<MovieSummaryDto>>("/api/library/movies?" + string.Join('&', parts), ct);
     }
 
@@ -183,8 +187,17 @@ public class PhantomApi(HttpClient http, SettingsService settings)
 
     // ---------- Playback ----------
 
-    public Task<StreamInfoDto> StreamInfoAsync(int movieId, int? releaseId, CancellationToken ct = default) =>
-        GetAsync<StreamInfoDto>($"/api/stream/{movieId}/info" + (releaseId is { } r ? $"?releaseId={r}" : ""), ct);
+    public Task<StreamInfoDto> StreamInfoAsync(int movieId, int? releaseId, CancellationToken ct = default, int? episodeId = null) =>
+        GetAsync<StreamInfoDto>($"{StreamBase(movieId, episodeId)}/info" + (releaseId is { } r ? $"?releaseId={r}" : ""), ct);
+
+    // ---------- Shows ----------
+
+    public Task<ShowDetailDto> ShowAsync(int id) => GetAsync<ShowDetailDto>($"/api/shows/{id}");
+    public Task<List<EpisodeDto>> SeasonAsync(int showId, int season) => GetAsync<List<EpisodeDto>>($"/api/shows/{showId}/seasons/{season}");
+    public Task<EpisodeDetailDto> EpisodeAsync(int id) => GetAsync<EpisodeDetailDto>($"/api/episodes/{id}");
+    public Task MarkShowWatchedAsync(int id, bool watched) => SendNoContentAsync(HttpMethod.Post, $"/api/shows/{id}/{(watched ? "watched" : "unwatched")}");
+    public Task MarkEpisodeWatchedAsync(int id, bool watched) => SendNoContentAsync(HttpMethod.Post, $"/api/episodes/{id}/{(watched ? "watched" : "unwatched")}");
+    public Task SetShowWatchlistAsync(int id, bool on) => SendNoContentAsync(on ? HttpMethod.Put : HttpMethod.Delete, $"/api/shows/{id}/watchlist");
 
     public Task ReportTimelineAsync(TimelineUpdate update) => SendNoContentAsync(HttpMethod.Post, "/api/playback/timeline", update);
     public Task<List<NowPlayingDto>> SessionsAsync() => GetAsync<List<NowPlayingDto>>("/api/playback/sessions");
@@ -224,8 +237,8 @@ public class PhantomApi(HttpClient http, SettingsService settings)
     // ---------- Server downloads ----------
 
     public Task<List<ServerDownloadDto>> ServerDownloadsAsync() => GetAsync<List<ServerDownloadDto>>("/api/downloads");
-    public Task<ServerDownloadDto> QueueServerDownloadAsync(int movieId, int? releaseId) =>
-        SendAsync<ServerDownloadDto>(HttpMethod.Post, "/api/downloads", new CreateServerDownloadRequest(movieId, releaseId));
+    public Task<ServerDownloadDto> QueueServerDownloadAsync(int movieId, int? releaseId, int? episodeId = null) =>
+        SendAsync<ServerDownloadDto>(HttpMethod.Post, "/api/downloads", new CreateServerDownloadRequest(movieId, releaseId, episodeId));
     public Task PauseServerDownloadAsync(int id) => SendNoContentAsync(HttpMethod.Post, $"/api/downloads/{id}/pause");
     public Task ResumeServerDownloadAsync(int id) => SendNoContentAsync(HttpMethod.Post, $"/api/downloads/{id}/resume");
     public Task DeleteServerDownloadAsync(int id, bool deleteFiles) => SendNoContentAsync(HttpMethod.Delete, $"/api/downloads/{id}?deleteFiles={deleteFiles}");
