@@ -76,3 +76,12 @@ nunit-*.xml
 *.sln.docstates
 .idea/
 .vscode/
+
+# Signing keys and store credentials: never committed (CI gets them from secrets)
+*.keystore
+*.jks
+*.p12
+*.p8
+*.mobileprovision
+*.pfx
+/Publish/
