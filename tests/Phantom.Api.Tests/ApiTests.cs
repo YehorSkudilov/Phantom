@@ -13,7 +13,7 @@ namespace Phantom.Api.Tests;
 
 public sealed class PhantomFactory : WebApplicationFactory<Program>
 {
-    public string DataDir { get; } = Path.Combine(Path.GetTempPath(), "phantom-tests-" + Guid.NewGuid().ToString("N"));
+    public string DataDir { get; init; } = Path.Combine(Path.GetTempPath(), "phantom-tests-" + Guid.NewGuid().ToString("N"));
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
