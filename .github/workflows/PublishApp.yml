@@ -42,7 +42,7 @@ on:
       publish_windows:
         description: "Windows (Microsoft Store)"
         type: boolean
-        default: true
+        default: false
 
       publish_ios:
         description: "iOS (TestFlight)"
@@ -82,7 +82,7 @@ on:
       publish_windows:
         description: "Windows (Microsoft Store)"
         type: boolean
-        default: true
+        default: false
 
       publish_ios:
         description: "iOS (TestFlight)"
