@@ -211,13 +211,31 @@ public class Playlist
     public List<PlaylistItem> Items { get; set; } = [];
 }
 
+/// <summary>A movie, a show or one episode in a playlist (one of MovieId, ShowId and EpisodeId is set).</summary>
 public class PlaylistItem
 {
     public int Id { get; set; }
     public int PlaylistId { get; set; }
-    public int MovieId { get; set; }
+    public int? MovieId { get; set; }
     public Movie? Movie { get; set; }
+    public int? ShowId { get; set; }
+    public Show? Show { get; set; }
+    public int? EpisodeId { get; set; }
+    public Episode? Episode { get; set; }
     public int Order { get; set; }
+
+    /// <summary>"m12" (movie 12), "s4" (show 4) or "e99" (episode 99): how the app names the entry.</summary>
+    public string Key => MovieId is { } m ? $"m{m}" : ShowId is { } s ? $"s{s}" : $"e{EpisodeId}";
+}
+
+/// <summary>A profile's rating of a show, out of 10 (a movie's is on its WatchState).</summary>
+public class ShowRating
+{
+    public int UserId { get; set; }
+    public int ShowId { get; set; }
+    public Show? Show { get; set; }
+    public double Rating { get; set; }
+    public DateTime RatedAt { get; set; } = DateTime.UtcNow;
 }
 
 /// <summary>A release the server keeps a copy of: a movie's, or one with the episode it was saved for.</summary>

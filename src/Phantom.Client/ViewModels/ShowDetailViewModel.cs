@@ -8,7 +8,8 @@ using Phantom.Shared;
 namespace Phantom.ViewModels;
 
 /// <summary>A show's page: its details, Play (the next episode), and a season's episodes to pick from.</summary>
-public partial class ShowDetailViewModel(PhantomApi api, SettingsService settings, DownloadManager downloads) : BaseViewModel, IQueryAttributable
+public partial class ShowDetailViewModel(PhantomApi api, SettingsService settings, DownloadManager downloads, PlaylistMembership playlists)
+    : BaseViewModel, IQueryAttributable
 {
     protected override bool ShowsOfflineState => true;
 
@@ -17,10 +18,33 @@ public partial class ShowDetailViewModel(PhantomApi api, SettingsService setting
     public ObservableList<SeasonDto> Seasons { get; } = [];
     public ObservableList<EpisodeDto> Episodes { get; } = [];
 
+    /// <summary>"More Like This": shows (and movies) most like this one.</summary>
+    public ObservableList<MovieSummaryDto> Related { get; } = [];
+
+    /// <summary>Where the season's episodes play from: Automatic (the best for each), or one release the profile picked.</summary>
+    public ObservableList<SourceOption> Sources { get; } = [];
+
+    [ObservableProperty] private SourceOption? selectedSource;
+
+    /// <summary>Which playlists the show, the season's episodes and each episode are in (each episode row's button follows it).</summary>
+    public PlaylistMembership Playlists => playlists;
+
+    public bool IsRated => Show?.UserRating is not null;
+    public string RateLabel => Show?.UserRating is { } r ? $"Rated {r:0.#}" : "Rate";
+
+    public bool IsInPlaylist => playlists.PlaylistsOf($"s{_id}").Count > 0;
+    public string PlaylistLabel => PlaylistMembership.Label(playlists.PlaylistsOf($"s{_id}"));
+
+    /// <summary>Every episode of the season on screen (that can be played) is in some playlist.</summary>
+    public bool IsSeasonInPlaylist => SeasonEpisodes() is { Count: > 0 } eps && eps.All(e => playlists.PlaylistsOf($"e{e.Id}").Count > 0);
+    public string SeasonPlaylistLabel => IsSeasonInPlaylist ? "In playlist" : "Playlist";
+
+    private bool _watchingPlaylists;
+
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(Meta), nameof(GenreText), nameof(Creators), nameof(PlayLabel), nameof(CanPlay), nameof(NextProgress),
         nameof(IsOnWatchlist), nameof(WatchlistLabel), nameof(WatchlistGlyph), nameof(IsWatched), nameof(WatchedLabel),
-        nameof(IsSeasonWatched), nameof(SeasonWatchedLabel))]
+        nameof(IsSeasonWatched), nameof(SeasonWatchedLabel), nameof(IsRated), nameof(RateLabel))]
     private ShowDetailDto? show;
 
     [ObservableProperty]
@@ -30,7 +54,7 @@ public partial class ShowDetailViewModel(PhantomApi api, SettingsService setting
     /// <summary>Every episode of the season on screen that can be played has been watched.</summary>
     public bool IsSeasonWatched => Show?.Seasons.FirstOrDefault(s => s.Number == SelectedSeason?.Number) is { AvailableCount: > 0 } season
                                    && season.WatchedCount >= season.AvailableCount;
-    public string SeasonWatchedLabel => IsSeasonWatched ? "Season watched" : "Mark season watched";
+    public string SeasonWatchedLabel => IsSeasonWatched ? "Watched" : "Mark watched";
 
     public bool CanPlay => Show?.NextEpisode is not null;
 
@@ -85,9 +109,21 @@ public partial class ShowDetailViewModel(PhantomApi api, SettingsService setting
         // alongside the show. The first time, the season to open on comes from the show (that of the episode Play starts).
         var known = SelectedSeason?.Number;
         var episodes = known is { } n ? api.SeasonAsync(_id, n) : null;
+        var related = Related.Count == 0 ? api.RelatedShowsAsync(_id) : null;
         Show = await api.ShowAsync(_id);
         Title = Show.Title;
         OnPropertyChanged(nameof(HasDownloads));
+        if (!_watchingPlaylists)
+        {
+            _watchingPlaylists = true;
+            playlists.Changed += (_, _) =>
+            {
+                OnPropertyChanged(nameof(IsInPlaylist));
+                OnPropertyChanged(nameof(PlaylistLabel));
+                OnPropertyChanged(nameof(IsSeasonInPlaylist));
+                OnPropertyChanged(nameof(SeasonPlaylistLabel));
+            };
+        }
 
         var season = known ?? Show.NextEpisode?.SeasonNumber ?? Show.Seasons.FirstOrDefault()?.Number;
         // The picker's list is only rebuilt when the seasons themselves change (that resets it, and redraws the page).
@@ -100,6 +136,7 @@ public partial class ShowDetailViewModel(PhantomApi api, SettingsService setting
         }
         if (episodes is not null && known is { } same && SelectedSeason?.Number == same) ShowEpisodes(same, await episodes);
         else await LoadEpisodesAsync();
+        if (related is not null) Related.Sync(await related);
     });
 
     private bool _loadingSeasons;
@@ -112,7 +149,19 @@ public partial class ShowDetailViewModel(PhantomApi api, SettingsService setting
     private async Task LoadEpisodesAsync()
     {
         if (SelectedSeason is not { } season) return;
+        var sources = api.SeasonReleasesAsync(_id, season.Number);
         ShowEpisodes(season.Number, await api.SeasonAsync(_id, season.Number));
+        await playlists.LoadAsync([$"s{_id}", .. Episodes.Select(e => $"e{e.Id}")]);
+        ShowSources(season.Number, await sources);
+    }
+
+    /// <summary>The season's sources, Automatic first; a source picked for the season stays picked on a reload.</summary>
+    private void ShowSources(int season, IReadOnlyList<ReleaseDto> releases)
+    {
+        if (SelectedSeason?.Number != season) return;
+        var picked = SelectedSource?.ReleaseId;
+        Sources.ReplaceAll([new SourceOption("Automatic (best for each episode)", null), .. releases.Select(SourceOption.From)]);
+        SelectedSource = Sources.FirstOrDefault(o => o.ReleaseId == picked) ?? Sources[0];
     }
 
     /// <summary>
@@ -139,8 +188,49 @@ public partial class ShowDetailViewModel(PhantomApi api, SettingsService setting
             await ToastAsync("No copy of this episode has been found yet.");
             return;
         }
-        await GoToAsync($"{nameof(Views.PlayerPage)}?episode={episode.Id}&resume={InProgress(episode)}");
+        // The season's picked source, when it's this episode's season (the server falls back if it hasn't got it).
+        var release = SelectedSource?.ReleaseId is { } rid && episode.SeasonNumber == SelectedSeason?.Number ? $"&releaseId={rid}" : "";
+        await GoToAsync($"{nameof(Views.PlayerPage)}?episode={episode.Id}&resume={InProgress(episode)}{release}");
     }
+
+    [RelayCommand]
+    private Task Rate() => RunAsync(async () =>
+    {
+        if (Show is not { } show) return;
+        string[] options = ["★★★★★  10", "★★★★½  9", "★★★★  8", "★★★½  7", "★★★  6", "★★½  5", "★★  4", "★½  3", "★  2", "½  1", "Clear rating"];
+        var choice = await Dialog.ChooseAsync("Rate this show", null, options);
+        if (choice is null) return;
+        double? rating = choice == "Clear rating" ? null : double.Parse(choice.Split(' ', StringSplitOptions.RemoveEmptyEntries)[^1]);
+        await api.RateShowAsync(_id, rating);
+        Show = show with { UserRating = rating };
+    }, showBusy: false);
+
+    /// <summary>The whole show into (or out of) a playlist.</summary>
+    [RelayCommand]
+    private Task AddToPlaylist() => RunAsync(() => Show is { } show
+        ? playlists.ChooseAsync($"{show.Title} · Playlist", [$"s{_id}"], id => api.AddShowToPlaylistAsync(id, _id))
+        : Task.CompletedTask, showBusy: false);
+
+    /// <summary>The season's episodes into (or out of) a playlist, in order.</summary>
+    [RelayCommand]
+    private Task AddSeasonToPlaylist() => RunAsync(async () =>
+    {
+        var episodes = SeasonEpisodes();
+        if (episodes.Count == 0)
+        {
+            await ToastAsync("No episodes of this season have been found yet.");
+            return;
+        }
+        var name = SeasonName;
+        await playlists.ChooseAsync($"{char.ToUpper(name[0])}{name[1..]} · Playlist", [.. episodes.Select(e => $"e{e.Id}")],
+            id => api.AddEpisodesToPlaylistAsync(id, [.. episodes.Select(e => e.Id)]));
+    }, showBusy: false);
+
+    /// <summary>One episode into (or out of) a playlist.</summary>
+    [RelayCommand]
+    private Task AddEpisodeToPlaylist(EpisodeDto? episode) => episode is null ? Task.CompletedTask : RunAsync(() =>
+        playlists.ChooseAsync($"{EpisodeName(episode)} · Playlist", [$"e{episode.Id}"], id => api.AddEpisodesToPlaylistAsync(id, [episode.Id])),
+        showBusy: false);
 
     /// <summary>The device's downloads, for each episode row's download button to show its own.</summary>
     public DownloadManager Downloads => downloads;
@@ -252,7 +342,7 @@ public partial class ShowDetailViewModel(PhantomApi api, SettingsService setting
                 downloads.Resume(offline);
                 break;
             case goToDownloads:
-                await Views.MainPage.ShowTab(Views.AppTab.Downloads);
+                await Views.MainPage.ShowDeviceDownloads();
                 break;
             case delete:
                 await downloads.DeleteAsync(offline);
@@ -272,7 +362,7 @@ public partial class ShowDetailViewModel(PhantomApi api, SettingsService setting
         if (picked is null) return;
         if (picked.Value.Episodes is not { } episodes)
         {
-            await Views.MainPage.ShowTab(Views.AppTab.Downloads);
+            await Views.MainPage.ShowDeviceDownloads();
             return;
         }
         if (!await ConfirmManyAsync($"Download {picked.Value.Name.ToLowerInvariant()}?", episodes.Count, "to this device", "Download")) return;
@@ -492,4 +582,17 @@ public partial class ShowDetailViewModel(PhantomApi api, SettingsService setting
 
     [RelayCommand]
     private Task OpenGenre(string genre) => Views.MainPage.ShowLibrary($"kind=Show&genre={Uri.EscapeDataString(genre)}");
+}
+
+/// <summary>A choice in the Source picker: a release, or Automatic (no release: the best for each episode).</summary>
+public record SourceOption(string Label, int? ReleaseId)
+{
+    public override string ToString() => Label;
+
+    /// <summary>"1080p · 42 seeders · The.Show.S02.1080p.WEB" (and "on the server" when it's saved there).</summary>
+    public static SourceOption From(ReleaseDto r) => new(
+        string.Join("  ·  ", new[]
+        {
+            r.Quality, r.AvailableOffline ? "on the server" : $"{r.Seeders} seeders", r.Name,
+        }.Where(p => !string.IsNullOrEmpty(p))), r.Id);
 }

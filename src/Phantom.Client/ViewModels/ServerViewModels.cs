@@ -60,7 +60,7 @@ public partial class MoreViewModel(PhantomApi api, SettingsService settings) : B
     [ObservableProperty] private string avatarColor = "#8B5CF6";
     [ObservableProperty] private string initial = "?";
 
-    public string AppVersion => $"Phantom {AppInfo.Current.VersionString} · {settings.ServerUrl}";
+    public string AppVersion => $"Phantom {AppInfo.Current.VersionString}";
 
     [RelayCommand]
     public Task Load() => RunAsync(async () =>

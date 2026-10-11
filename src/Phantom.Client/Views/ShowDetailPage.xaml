@@ -19,6 +19,7 @@
             <Setter Property="Padding" Value="12,0" />
             <Setter Property="CornerRadius" Value="17" />
             <Setter Property="ContentLayout" Value="Left,6" />
+            <Setter Property="HorizontalOptions" Value="Fill" />
         </Style>
     </ContentPage.Resources>
 
@@ -56,15 +57,19 @@
                             ImageSource="{controls:Icon smart_display, Size=20}" ContentLayout="Left,8"
                             Command="{Binding PlayTrailerCommand}" IsVisible="{Binding Show.TrailerUrl, Converter={StaticResource HasValue}}" />
                     <ProgressBar Progress="{Binding NextProgress}" IsVisible="{Binding NextProgress, Converter={StaticResource HasValue}}" />
-                    <!-- As on a movie's page. Download and Save on server ask which season (or all of them). -->
-                    <Grid ColumnDefinitions="*,*" RowDefinitions="Auto,Auto" ColumnSpacing="8" RowSpacing="8">
+                    <!-- The same six as on a movie's page. Download and Save on server ask which season (or all of them). -->
+                    <Grid ColumnDefinitions="*,*,*" RowDefinitions="Auto,Auto" ColumnSpacing="8" RowSpacing="8">
                         <controls:ActionTile Glyph="{Binding WatchlistGlyph}" Text="{Binding WatchlistLabel}" IsActive="{Binding IsOnWatchlist}"
                                              Command="{Binding ToggleWatchlistCommand}" />
                         <controls:ActionTile Grid.Column="1" Glyph="check_circle" Text="{Binding WatchedLabel}" IsActive="{Binding IsWatched}"
                                              Command="{Binding ToggleWatchedCommand}" />
-                        <controls:ActionTile Grid.Row="1" Glyph="download" Text="Download" IsActive="{Binding HasDownloads}"
+                        <controls:ActionTile Grid.Column="2" Glyph="star" Text="{Binding RateLabel}" IsActive="{Binding IsRated}"
+                                             Command="{Binding RateCommand}" />
+                        <controls:ActionTile Grid.Row="1" Glyph="playlist_add" Text="{Binding PlaylistLabel}" IsActive="{Binding IsInPlaylist}"
+                                             Command="{Binding AddToPlaylistCommand}" />
+                        <controls:ActionTile Grid.Row="1" Grid.Column="1" Glyph="download" Text="Download" IsActive="{Binding HasDownloads}"
                                              Command="{Binding DownloadShowCommand}" />
-                        <controls:ActionTile Grid.Row="1" Grid.Column="1" Glyph="cloud_download" Text="Save on server"
+                        <controls:ActionTile Grid.Row="1" Grid.Column="2" Glyph="cloud_download" Text="Save on server"
                                              Command="{Binding SaveShowOnServerCommand}" />
                     </Grid>
                 </VerticalStackLayout>
@@ -82,8 +87,8 @@
                     </Label>
                 </VerticalStackLayout>
 
-                <!-- Seasons and their episodes: the season (picked like a title), then "Episodes" and the season's
-                     download buttons, then each episode with its own -->
+                <!-- Seasons and their episodes: the season (picked like a title) and its buttons, then "Episodes", each
+                     with its own buttons -->
                 <VerticalStackLayout Padding="16,0" Spacing="10" IsVisible="{Binding Seasons.Count, Converter={StaticResource HasValue}}">
                     <!-- The season picker, shown as a heading with a drop-down arrow so it reads as something to tap -->
                     <Grid ColumnDefinitions="Auto,Auto" ColumnSpacing="2" HorizontalOptions="Start">
@@ -93,26 +98,23 @@
                         <Image Grid.Column="1" Source="{controls:Icon expand_more, Size=28}" WidthRequest="28" HeightRequest="28"
                                VerticalOptions="Center" InputTransparent="True" />
                     </Grid>
-                    <Label Text="Episodes" Style="{StaticResource H2}" />
-                    <!-- The season: to this device, kept on the server, marked watched. Wraps onto two lines on a narrow phone
-                         rather than cutting the labels short. -->
-                    <FlexLayout Wrap="Wrap" Margin="-4,0">
-                        <Button Text="Download season" Style="{StaticResource SecondaryButton}" FontSize="13" HeightRequest="42" Margin="4"
-                                ImageSource="{controls:Icon download, Size=18}" ContentLayout="Left,6"
-                                Command="{Binding DownloadSeasonCommand}" SemanticProperties.Description="Download this season to this device" />
-                        <Button Text="Save season on server" Style="{StaticResource SecondaryButton}" FontSize="13" HeightRequest="42" Margin="4"
-                                ImageSource="{controls:Icon cloud_download, Size=18}" ContentLayout="Left,6"
-                                Command="{Binding SaveSeasonOnServerCommand}" SemanticProperties.Description="Save this season on the server" />
-                        <Button Text="{Binding SeasonWatchedLabel}" Style="{StaticResource SecondaryButton}" FontSize="13" HeightRequest="42" Margin="4"
-                                ImageSource="{controls:Icon check_circle, Size=18}" ContentLayout="Left,6"
-                                Command="{Binding ToggleSeasonWatchedCommand}">
-                            <Button.Triggers>
-                                <DataTrigger TargetType="Button" Binding="{Binding IsSeasonWatched}" Value="True">
-                                    <Setter Property="TextColor" Value="{StaticResource PrimaryLight}" />
-                                </DataTrigger>
-                            </Button.Triggers>
-                        </Button>
-                    </FlexLayout>
+                    <!-- The season: to this device, kept on the server, into a playlist, marked watched. Equal tiles, like the
+                         show's own above, right under the season they act on. -->
+                    <Grid ColumnDefinitions="*,*,*,*" ColumnSpacing="8">
+                        <controls:ActionTile Glyph="download" Text="Download" Command="{Binding DownloadSeasonCommand}" />
+                        <controls:ActionTile Grid.Column="1" Glyph="cloud_download" Text="Save on server" Command="{Binding SaveSeasonOnServerCommand}" />
+                        <controls:ActionTile Grid.Column="2" Glyph="playlist_add" Text="{Binding SeasonPlaylistLabel}" IsActive="{Binding IsSeasonInPlaylist}"
+                                             Command="{Binding AddSeasonToPlaylistCommand}" />
+                        <controls:ActionTile Grid.Column="3" Glyph="check_circle" Text="{Binding SeasonWatchedLabel}" IsActive="{Binding IsSeasonWatched}"
+                                             Command="{Binding ToggleSeasonWatchedCommand}" />
+                    </Grid>
+                    <!-- Where the season plays from: Automatic, or one release (a pack, or a single episode's) -->
+                    <Grid ColumnDefinitions="Auto,*" ColumnSpacing="10" IsVisible="{Binding Sources.Count, Converter={StaticResource HasValue}}">
+                        <Label Text="Source" Style="{StaticResource Muted}" VerticalOptions="Center" />
+                        <Picker Grid.Column="1" ItemsSource="{Binding Sources}" SelectedItem="{Binding SelectedSource}"
+                                ItemDisplayBinding="{Binding Label, x:DataType=vm:SourceOption}" SemanticProperties.Description="Source" />
+                    </Grid>
+                    <Label Text="Episodes" Style="{StaticResource H2}" Margin="0,8,0,0" />
                     <VerticalStackLayout BindableLayout.ItemsSource="{Binding Episodes}" Spacing="18" Margin="0,6,0,0">
                         <BindableLayout.ItemTemplate>
                             <DataTemplate x:DataType="dto:EpisodeDto">
@@ -164,21 +166,39 @@
                                         </ImageButton.Triggers>
                                     </ImageButton>
                                     <!-- Under the episode: just it, to this device (the label follows the download) or kept on the server -->
-                                    <HorizontalStackLayout Grid.Row="1" Grid.ColumnSpan="3" Spacing="8" IsVisible="{Binding Available}">
+                                    <Grid Grid.Row="1" Grid.ColumnSpan="3" ColumnDefinitions="*,*,*" ColumnSpacing="8" IsVisible="{Binding Available}">
                                         <controls:EpisodeDownloadButton Style="{StaticResource EpisodeActionButton}"
                                                  EpisodeId="{Binding Id}"
                                                  Downloads="{Binding Source={RelativeSource AncestorType={x:Type vm:ShowDetailViewModel}}, Path=Downloads, x:DataType=vm:ShowDetailViewModel}"
                                                  Command="{Binding Source={RelativeSource AncestorType={x:Type vm:ShowDetailViewModel}}, Path=DownloadEpisodeCommand, x:DataType=vm:ShowDetailViewModel}"
                                                  CommandParameter="{Binding .}" />
-                                        <Button Text="Save on server" Style="{StaticResource EpisodeActionButton}"
+                                        <Button Grid.Column="1" Text="Save on server" Style="{StaticResource EpisodeActionButton}"
                                                 ImageSource="{StaticResource EpisodeServerIcon}"
                                                 Command="{Binding Source={RelativeSource AncestorType={x:Type vm:ShowDetailViewModel}}, Path=SaveEpisodeOnServerCommand, x:DataType=vm:ShowDetailViewModel}"
                                                 CommandParameter="{Binding .}" SemanticProperties.Description="Save this episode on the server" />
-                                    </HorizontalStackLayout>
+                                        <controls:EpisodePlaylistButton Grid.Column="2" Style="{StaticResource EpisodeActionButton}" EpisodeId="{Binding Id}"
+                                                 Membership="{Binding Source={RelativeSource AncestorType={x:Type vm:ShowDetailViewModel}}, Path=Playlists, x:DataType=vm:ShowDetailViewModel}"
+                                                 Command="{Binding Source={RelativeSource AncestorType={x:Type vm:ShowDetailViewModel}}, Path=AddEpisodeToPlaylistCommand, x:DataType=vm:ShowDetailViewModel}"
+                                                 CommandParameter="{Binding .}" />
+                                    </Grid>
                                 </Grid>
                             </DataTemplate>
                         </BindableLayout.ItemTemplate>
                     </VerticalStackLayout>
+                </VerticalStackLayout>
+
+                <!-- More like this -->
+                <VerticalStackLayout Spacing="8" IsVisible="{Binding Related.Count, Converter={StaticResource HasValue}}">
+                    <Label Text="More Like This" Style="{StaticResource H2}" Margin="16,0" />
+                    <CollectionView ItemsSource="{Binding Related}" HeightRequest="236" SelectionMode="Single"
+                                    ItemTemplate="{StaticResource PosterCard}" SelectionChanged="OnRelatedSelected">
+                        <CollectionView.ItemsLayout>
+                            <LinearItemsLayout Orientation="Horizontal" ItemSpacing="12" />
+                        </CollectionView.ItemsLayout>
+                        <CollectionView.Header>
+                            <BoxView WidthRequest="4" Color="Transparent" />
+                        </CollectionView.Header>
+                    </CollectionView>
                 </VerticalStackLayout>
 
                 <!-- Cast -->

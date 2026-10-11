@@ -166,6 +166,7 @@ public class ShowLibraryService(PhantomDbContext db)
             .ToList();
         var next = Next(episodes, coverage, states);
         var onWatchlist = await db.ShowWatchlist.AnyAsync(w => w.UserId == userId && w.ShowId == id, ct);
+        var rating = await db.ShowRatings.Where(r => r.UserId == userId && r.ShowId == id).Select(r => (double?)r.Rating).FirstOrDefaultAsync(ct);
 
         return new ShowDetailDto(
             s.Id, s.Title, s.OriginalTitle, s.Year, s.Overview, s.PosterUrl, s.BackdropUrl, s.Rating, s.ContentRating,
@@ -176,7 +177,8 @@ public class ShowLibraryService(PhantomDbContext db)
             seasons,
             next is null ? null : ToDto(next.Value.Episode, coverage, next.Value.State),
             onWatchlist,
-            s.AddedAt);
+            s.AddedAt,
+            rating);
     }
 
     /// <summary>A season's episodes, or null when the show isn't visible to this profile.</summary>

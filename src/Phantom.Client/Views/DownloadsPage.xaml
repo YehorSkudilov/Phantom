@@ -13,7 +13,7 @@
         <controls:TabStrip Grid.Row="1" Tabs="{Binding Tabs}" SelectedIndex="{Binding SelectedTab}" Margin="0,4,0,0" />
 
         <!-- On this device -->
-        <Grid Grid.Row="2" RowDefinitions="Auto,*" IsVisible="{Binding SelectedTab, Converter={StaticResource Equals}, ConverterParameter=0}">
+        <Grid Grid.Row="2" RowDefinitions="Auto,*" IsVisible="{Binding SelectedTab, Converter={StaticResource Equals}, ConverterParameter=1}">
         <Border Style="{StaticResource Card}" Margin="16,8">
             <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto">
                 <Label Text="On this device" Style="{StaticResource H2}" />
@@ -89,6 +89,6 @@
 
         <!-- On the server -->
         <parts:ServerDownloadsView Grid.Row="2" BindingContext="{Binding Server}"
-                                   IsVisible="{Binding Source={RelativeSource AncestorType={x:Type vm:DownloadsViewModel}}, Path=SelectedTab, Converter={StaticResource Equals}, ConverterParameter=1, x:DataType=vm:DownloadsViewModel}" />
+                                   IsVisible="{Binding Source={RelativeSource AncestorType={x:Type vm:DownloadsViewModel}}, Path=SelectedTab, Converter={StaticResource Equals}, ConverterParameter=0, x:DataType=vm:DownloadsViewModel}" />
     </Grid>
 </views:TabView>

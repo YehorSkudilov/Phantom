@@ -40,7 +40,7 @@ public class DownloadsController(PhantomDbContext db, TorrentEngine engine) : Co
             episode = await db.Episodes.Include(e => e.Show).FirstOrDefaultAsync(e => e.Id == episodeId, ct);
             if (episode is null) return NotFound();
             var candidates = ShowLibraryService.OrderForPlayback(await db.Releases.Where(r => r.ShowId == episode.ShowId).ToListAsync(ct), episode, settings.PreferredQuality).ToList();
-            release = req.ReleaseId is { } rid ? candidates.FirstOrDefault(r => r.Id == rid) : candidates.FirstOrDefault();
+            release = (req.ReleaseId is { } rid ? candidates.FirstOrDefault(r => r.Id == rid) : null) ?? candidates.FirstOrDefault();
         }
         else
         {

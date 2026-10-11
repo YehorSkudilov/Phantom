@@ -154,6 +154,9 @@ public partial class PlaylistViewModel(PhantomApi api) : BaseViewModel, IQueryAt
 
     public ObservableList<MovieSummaryDto> Items { get; } = [];
 
+    // Each entry's key ("m12" movie, "s4" show, "e99" episode), in the same order as Items.
+    private List<string> _keys = [];
+
     [ObservableProperty] private string summary = "";
 
     public void ApplyQueryAttributes(IDictionary<string, object> query)
@@ -167,28 +170,53 @@ public partial class PlaylistViewModel(PhantomApi api) : BaseViewModel, IQueryAt
     {
         var p = await api.PlaylistAsync(_id);
         Title = p.Name;
-        Items.Sync(p.Items);
+        _keys = p.Keys?.ToList() ?? p.Items.Select(i => $"m{i.Id}").ToList();
+        Items.ReplaceAll(p.Items);
         UpdateSummary();
     });
 
     private void UpdateSummary() =>
-        Summary = $"{Items.Count} movies · {MinutesConverter.Format(Items.Sum(i => i.RuntimeMinutes ?? 0))}";
+        Summary = $"{Items.Count} {(Items.Count == 1 ? "title" : "titles")} · {MinutesConverter.Format(Items.Sum(i => i.RuntimeMinutes ?? 0))}";
+
+    private string KeyOf(MovieSummaryDto item) => Items.IndexOf(item) is var i and >= 0 && i < _keys.Count ? _keys[i] : $"m{item.Id}";
+
+    /// <summary>Plays the playlist's movies in order (shows and episodes open from their own rows).</summary>
+    [RelayCommand]
+    private Task PlayAll() => PlayFrom(MovieIds().ToList());
 
     [RelayCommand]
-    private Task PlayAll() => PlayFrom(Items.Select(i => i.Id).ToList());
+    private Task Shuffle() => PlayFrom(MovieIds().OrderBy(_ => Random.Shared.Next()).ToList());
 
+    private IEnumerable<int> MovieIds() => _keys.Where(k => k.StartsWith('m')).Select(k => int.Parse(k[1..]));
+
+    private async Task PlayFrom(List<int> ids)
+    {
+        if (ids.Count > 0)
+        {
+            await GoToAsync($"{nameof(Views.PlayerPage)}?id={ids[0]}&queue={string.Join(',', ids)}");
+            return;
+        }
+        // Only episodes and shows: the first episode plays, or the first show opens.
+        if (_keys.FirstOrDefault(k => k.StartsWith('e')) is { } episode)
+            await GoToAsync($"{nameof(Views.PlayerPage)}?episode={episode[1..]}");
+        else if (Items.FirstOrDefault() is { } first)
+            await OpenMovieCommand.ExecuteAsync(first);
+    }
+
+    /// <summary>An entry tapped: an episode plays; a movie or show opens its page.</summary>
     [RelayCommand]
-    private Task Shuffle() => PlayFrom(Items.Select(i => i.Id).OrderBy(_ => Random.Shared.Next()).ToList());
-
-    private Task PlayFrom(List<int> ids) => ids.Count == 0
-        ? Task.CompletedTask
-        : GoToAsync($"{nameof(Views.PlayerPage)}?id={ids[0]}&queue={string.Join(',', ids)}");
+    private Task OpenEntry(MovieSummaryDto? item) => item is null ? Task.CompletedTask
+        : KeyOf(item) is ['e', ..] key ? GoToAsync($"{nameof(Views.PlayerPage)}?episode={key[1..]}")
+        : OpenMovieCommand.ExecuteAsync(item);
 
     [RelayCommand]
     private Task Remove(MovieSummaryDto m) => RunAsync(async () =>
     {
-        await api.RemoveFromPlaylistAsync(_id, m.Id);
-        Items.Remove(m);
+        var i = Items.IndexOf(m);
+        if (i < 0) return;
+        await api.RemovePlaylistEntriesAsync(_id, [KeyOf(m)]);
+        Items.RemoveAt(i);
+        if (i < _keys.Count) _keys.RemoveAt(i);
         UpdateSummary();
     }, showBusy: false);
 
@@ -204,16 +232,17 @@ public partial class PlaylistViewModel(PhantomApi api) : BaseViewModel, IQueryAt
         var j = i + delta;
         if (i < 0 || j < 0 || j >= Items.Count) return;
         Items.Move(i, j);
-        await api.ReorderPlaylistAsync(_id, Items.Select(x => x.Id).ToList());
+        if (i < _keys.Count && j < _keys.Count) (_keys[i], _keys[j]) = (_keys[j], _keys[i]);
+        await api.ReorderPlaylistEntriesAsync(_id, _keys);
     }, showBusy: false);
 }
 
 /// <summary>Movies saved on this device.</summary>
 public partial class DownloadsViewModel(DownloadManager manager, SettingsService settings, ServerDownloadsViewModel server) : BaseViewModel
 {
-    public IReadOnlyList<string> Tabs { get; } = ["On this device", "On the server"];
+    public IReadOnlyList<string> Tabs { get; } = ["On the server", "On this device"];
 
-    /// <summary>0: downloads on this device; 1: movies the server is downloading or keeps.</summary>
+    /// <summary>0 (the default): what the server is downloading or keeps; 1: downloads on this device.</summary>
     [ObservableProperty] private int selectedTab;
 
     public ServerDownloadsViewModel Server => server;

@@ -55,9 +55,9 @@
                                 Command="{Binding PlayFromStartCommand}" IsVisible="{Binding CanResume}" />
                     </FlexLayout>
                     <ProgressBar Progress="{Binding Movie.Playback.ProgressPercent, Converter={StaticResource Percent}}" IsVisible="{Binding CanResume}" />
-                    <!-- Version (torrent release), next to Play -->
+                    <!-- Source (torrent release), next to Play -->
                     <Grid ColumnDefinitions="Auto,*" ColumnSpacing="10" IsVisible="{Binding Releases.Count, Converter={StaticResource HasValue}}">
-                        <Label Text="Version" Style="{StaticResource Muted}" VerticalOptions="Center" />
+                        <Label Text="Source" Style="{StaticResource Muted}" VerticalOptions="Center" />
                         <Picker Grid.Column="1" ItemsSource="{Binding Releases}" SelectedItem="{Binding SelectedRelease}" ItemDisplayBinding="{Binding Name, x:DataType=dto:ReleaseDto}" />
                     </Grid>
                     <Label Text="{Binding ReleaseDetails}" Style="{StaticResource Muted}" FontSize="12" Margin="0,-4,0,0" />
@@ -68,7 +68,8 @@
                                              Command="{Binding ToggleWatchedCommand}" />
                         <controls:ActionTile Grid.Column="2" Glyph="star" Text="{Binding RateLabel}" IsActive="{Binding IsRated}"
                                              Command="{Binding RateCommand}" />
-                        <controls:ActionTile Grid.Row="1" Glyph="playlist_add" Text="Add to playlist" Command="{Binding AddToPlaylistCommand}" />
+                        <controls:ActionTile Grid.Row="1" Glyph="playlist_add" Text="{Binding PlaylistLabel}" IsActive="{Binding IsInPlaylist}"
+                                             Command="{Binding AddToPlaylistCommand}" />
                         <controls:ActionTile Grid.Row="1" Grid.Column="1" Glyph="download" Text="Download" Command="{Binding DownloadToDeviceCommand}"
                                              IsActive="{Binding OfflineItem, Converter={StaticResource HasValue}}" />
                         <controls:ActionTile Grid.Row="1" Grid.Column="2" Glyph="cloud_download" Text="Save on server" Command="{Binding DownloadOnServerCommand}" />

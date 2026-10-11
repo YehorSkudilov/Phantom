@@ -120,6 +120,49 @@ public class ShowRowTests : IClassFixture<PhantomFactory>
     }
 
     [Fact]
+    public async Task Shows_can_be_rated_and_have_sources_per_season()
+    {
+        var client = await ClientAsync();
+        var old = await RowAsync(client, "Old Show");
+        Assert.Equal(HttpStatusCode.NoContent, (await client.PutAsJsonAsync($"/api/shows/{old.Id}/rating", new SetRatingRequest(8), Json)).StatusCode);
+        Assert.Equal(8, (await client.GetFromJsonAsync<ShowDetailDto>($"/api/shows/{old.Id}", Json))!.UserRating);
+        await client.PutAsJsonAsync($"/api/shows/{old.Id}/rating", new SetRatingRequest(null), Json);
+        Assert.Null((await client.GetFromJsonAsync<ShowDetailDto>($"/api/shows/{old.Id}", Json))!.UserRating);
+
+        // Season 1 has its pack; season 2 its one episode.
+        var season1 = await client.GetFromJsonAsync<List<ReleaseDto>>($"/api/shows/{old.Id}/seasons/1/releases", Json);
+        var season2 = await client.GetFromJsonAsync<List<ReleaseDto>>($"/api/shows/{old.Id}/seasons/2/releases", Json);
+        Assert.Equal(["Old.Show.S01"], season1!.Select(r => r.Name));
+        Assert.Equal(["Old.Show.S02E01"], season2!.Select(r => r.Name));
+
+        Assert.Equal(HttpStatusCode.OK, (await client.GetAsync($"/api/shows/{old.Id}/related")).StatusCode);
+    }
+
+    [Fact]
+    public async Task Playlists_hold_shows_and_episodes_and_say_where_things_are()
+    {
+        var client = await ClientAsync();
+        var old = await RowAsync(client, "Old Show");
+        var season1 = (await client.GetFromJsonAsync<List<EpisodeDto>>($"/api/shows/{old.Id}/seasons/1", Json))!;
+        var playlist = (await (await client.PostAsJsonAsync("/api/playlists", new CreatePlaylistRequest("Binge"), Json)).Content.ReadFromJsonAsync<PlaylistDto>(Json))!;
+
+        await client.PostAsJsonAsync($"/api/playlists/{playlist.Id}/items", new AddItemRequest(0, ShowId: old.Id), Json);
+        await client.PostAsJsonAsync($"/api/playlists/{playlist.Id}/items", new AddItemRequest(0, EpisodeIds: season1.Select(e => e.Id).ToList()), Json);
+        var detail = (await client.GetFromJsonAsync<PlaylistDetailDto>($"/api/playlists/{playlist.Id}", Json))!;
+        Assert.Equal([$"s{old.Id}", $"e{season1[0].Id}", $"e{season1[1].Id}"], detail.Keys!);
+        Assert.Equal("S1:E1", detail.Items[1].Caption![..5]);
+
+        var containing = (await client.GetFromJsonAsync<List<PlaylistMembershipDto>>($"/api/playlists/containing?keys=e{season1[1].Id},m999", Json))!;
+        Assert.Equal([("Binge", 1)], containing.Select(p => (p.Name, p.Keys.Count)));
+
+        await client.PutAsJsonAsync($"/api/playlists/{playlist.Id}/order", new ReorderRequest([], [$"e{season1[1].Id}", $"s{old.Id}", $"e{season1[0].Id}"]), Json);
+        await client.DeleteAsync($"/api/playlists/{playlist.Id}/entries/s{old.Id}");
+        detail = (await client.GetFromJsonAsync<PlaylistDetailDto>($"/api/playlists/{playlist.Id}", Json))!;
+        Assert.Equal([$"e{season1[1].Id}", $"e{season1[0].Id}"], detail.Keys!);
+        await client.DeleteAsync($"/api/playlists/{playlist.Id}");
+    }
+
+    [Fact]
     public async Task A_season_can_be_marked_watched_on_its_own()
     {
         var client = await ClientAsync();

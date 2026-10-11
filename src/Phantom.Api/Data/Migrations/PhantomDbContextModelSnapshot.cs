@@ -315,7 +315,10 @@ namespace Phantom.Api.Data.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("INTEGER");
 
-                    b.Property<int>("MovieId")
+                    b.Property<int?>("EpisodeId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int?>("MovieId")
                         .HasColumnType("INTEGER");
 
                     b.Property<int>("Order")
@@ -324,11 +327,18 @@ namespace Phantom.Api.Data.Migrations
                     b.Property<int>("PlaylistId")
                         .HasColumnType("INTEGER");
 
+                    b.Property<int?>("ShowId")
+                        .HasColumnType("INTEGER");
+
                     b.HasKey("Id");
+
+                    b.HasIndex("EpisodeId");
 
                     b.HasIndex("MovieId");
 
                     b.HasIndex("PlaylistId");
+
+                    b.HasIndex("ShowId");
 
                     b.ToTable("PlaylistItems");
                 });
@@ -570,6 +580,27 @@ namespace Phantom.Api.Data.Migrations
                     b.ToTable("Shows");
                 });
 
+            modelBuilder.Entity("Phantom.Api.Data.ShowRating", b =>
+                {
+                    b.Property<int>("UserId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("ShowId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("RatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<double>("Rating")
+                        .HasColumnType("REAL");
+
+                    b.HasKey("UserId", "ShowId");
+
+                    b.HasIndex("ShowId");
+
+                    b.ToTable("ShowRatings");
+                });
+
             modelBuilder.Entity("Phantom.Api.Data.ShowWatchlistItem", b =>
                 {
                     b.Property<int>("UserId")
@@ -806,11 +837,15 @@ namespace Phantom.Api.Data.Migrations
 
             modelBuilder.Entity("Phantom.Api.Data.PlaylistItem", b =>
                 {
+                    b.HasOne("Phantom.Api.Data.Episode", "Episode")
+                        .WithMany()
+                        .HasForeignKey("EpisodeId")
+                        .OnDelete(DeleteBehavior.Cascade);
+
                     b.HasOne("Phantom.Api.Data.Movie", "Movie")
                         .WithMany()
                         .HasForeignKey("MovieId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
+                        .OnDelete(DeleteBehavior.Cascade);
 
                     b.HasOne("Phantom.Api.Data.Playlist", null)
                         .WithMany("Items")
@@ -818,7 +853,16 @@ namespace Phantom.Api.Data.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
+                    b.HasOne("Phantom.Api.Data.Show", "Show")
+                        .WithMany()
+                        .HasForeignKey("ShowId")
+                        .OnDelete(DeleteBehavior.Cascade);
+
+                    b.Navigation("Episode");
+
                     b.Navigation("Movie");
+
+                    b.Navigation("Show");
                 });
 
             modelBuilder.Entity("Phantom.Api.Data.Release", b =>
@@ -857,6 +901,17 @@ namespace Phantom.Api.Data.Migrations
                     b.Navigation("Movie");
 
                     b.Navigation("Release");
+                });
+
+            modelBuilder.Entity("Phantom.Api.Data.ShowRating", b =>
+                {
+                    b.HasOne("Phantom.Api.Data.Show", "Show")
+                        .WithMany()
+                        .HasForeignKey("ShowId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Show");
                 });
 
             modelBuilder.Entity("Phantom.Api.Data.ShowWatchlistItem", b =>

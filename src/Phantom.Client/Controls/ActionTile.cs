@@ -19,7 +19,8 @@ public class ActionTile : ContentView
         BindableProperty.Create(nameof(Command), typeof(ICommand), typeof(ActionTile));
 
     private readonly Image _icon = new() { WidthRequest = 24, HeightRequest = 24, HorizontalOptions = LayoutOptions.Center };
-    private readonly Label _label = new() { FontSize = 12, HorizontalTextAlignment = TextAlignment.Center, LineBreakMode = LineBreakMode.TailTruncation };
+    // Up to two lines, so a narrow tile (four in a row) wraps its label rather than cutting it short.
+    private readonly Label _label = new() { FontSize = 12, HorizontalTextAlignment = TextAlignment.Center, LineBreakMode = LineBreakMode.WordWrap, MaxLines = 2 };
 
     public ActionTile()
     {

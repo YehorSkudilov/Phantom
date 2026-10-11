@@ -139,7 +139,9 @@ public record ShowDetailDto(
     // What Play / Resume plays: the episode in progress, else the one after the last watched, else the first.
     EpisodeDto? NextEpisode,
     bool OnWatchlist,
-    DateTime AddedAt);
+    DateTime AddedAt,
+    // This profile's rating, out of 10.
+    double? UserRating = null);
 
 /// <summary>A season, with how many of its episodes can be played (have a release) and have been watched.</summary>
 public record SeasonDto(int Number, string Title, int EpisodeCount, int AvailableCount, int WatchedCount);
@@ -281,13 +283,27 @@ public record CreateCollectionRequest(string Name, string? Description);
 
 public record PlaylistDto(int Id, string Name, int Count, long TotalDurationMinutes);
 
-public record PlaylistDetailDto(int Id, string Name, IReadOnlyList<MovieSummaryDto> Items);
+/// <summary>
+/// A playlist's entries in order. An episode's is its show's card with the episode in its caption; <paramref name="Keys"/>
+/// names each ("m12" movie 12, "s4" show 4, "e99" episode 99), in the same order.
+/// </summary>
+public record PlaylistDetailDto(int Id, string Name, IReadOnlyList<MovieSummaryDto> Items, IReadOnlyList<string>? Keys = null);
+
+/// <summary>A playlist with any of the asked-about entries in it, and which of them.</summary>
+public record PlaylistMembershipDto(int Id, string Name, IReadOnlyList<string> Keys);
 
 public record CreatePlaylistRequest(string Name);
 
-public record AddItemRequest(int MovieId);
+/// <summary>
+/// What to add to a playlist: a movie, or with <paramref name="ShowId"/> a whole show, or with
+/// <paramref name="EpisodeIds"/> episodes (one, or a season's), in that order.
+/// </summary>
+public record AddItemRequest(int MovieId, int? ShowId = null, IReadOnlyList<int>? EpisodeIds = null);
 
-public record ReorderRequest(IReadOnlyList<int> MovieIds);
+/// <summary>
+/// The playlist's new order: by movie id, or with <paramref name="Keys"/> all its entries ("m12", "s4", "e99").
+/// </summary>
+public record ReorderRequest(IReadOnlyList<int> MovieIds, IReadOnlyList<string>? Keys = null);
 
 // ---------- Server downloads ----------
 

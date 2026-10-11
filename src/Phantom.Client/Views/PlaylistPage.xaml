@@ -30,7 +30,7 @@
                         <Grid ColumnDefinitions="*,Auto" BackgroundColor="{StaticResource Background}">
                             <controls:MovieRowView>
                                 <controls:MovieRowView.GestureRecognizers>
-                                    <TapGestureRecognizer Command="{Binding Source={RelativeSource AncestorType={x:Type vm:PlaylistViewModel}}, Path=OpenMovieCommand, x:DataType=vm:PlaylistViewModel}"
+                                    <TapGestureRecognizer Command="{Binding Source={RelativeSource AncestorType={x:Type vm:PlaylistViewModel}}, Path=OpenEntryCommand, x:DataType=vm:PlaylistViewModel}"
                                                           CommandParameter="{Binding .}" />
                                 </controls:MovieRowView.GestureRecognizers>
                             </controls:MovieRowView>

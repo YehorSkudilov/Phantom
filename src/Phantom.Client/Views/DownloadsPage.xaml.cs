@@ -28,7 +28,7 @@ public partial class DownloadsPage : TabView
     // The server list shows live progress while it's on screen.
     private void UpdatePolling()
     {
-        if (_visible && _vm.SelectedTab == 1)
+        if (_visible && _vm.SelectedTab == 0)
         {
             _vm.Server.RefreshCommand.Execute(null);
             if (_poll is null)

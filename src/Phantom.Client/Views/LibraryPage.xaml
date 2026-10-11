@@ -111,8 +111,29 @@
                                     Glyph="travel_explore" Title="No matches"
                                     Message="Nothing in the library by that title, person or genre. Check the spelling, or try fewer words." />
 
-                <Label Text="People" Style="{StaticResource H2}" Margin="16,8,16,0" IsVisible="{Binding People.Count, Converter={StaticResource HasValue}}" />
-                <FlexLayout BindableLayout.ItemsSource="{Binding People}" Wrap="Wrap" Margin="12,0">
+                <!-- People: a heading to tap open (folded by default, so titles come first) -->
+                <Grid ColumnDefinitions="*,Auto" Margin="16,8,8,0" IsVisible="{Binding People.Count, Converter={StaticResource HasValue}}">
+                    <Grid.GestureRecognizers>
+                        <TapGestureRecognizer Command="{Binding TogglePeopleCommand}" />
+                    </Grid.GestureRecognizers>
+                    <Label Style="{StaticResource H2}" VerticalOptions="Center">
+                        <Label.FormattedText>
+                            <FormattedString>
+                                <Span Text="People" />
+                                <Span Text="{Binding People.Count, StringFormat='  {0}'}" TextColor="{StaticResource TextSecondary}" FontSize="15" />
+                            </FormattedString>
+                        </Label.FormattedText>
+                    </Label>
+                    <ImageButton Grid.Column="1" Style="{StaticResource IconButton}" Source="{controls:Icon expand_more}" Command="{Binding TogglePeopleCommand}"
+                                 SemanticProperties.Description="Show or hide people">
+                        <ImageButton.Triggers>
+                            <DataTrigger TargetType="ImageButton" Binding="{Binding ShowPeople}" Value="True">
+                                <Setter Property="Source" Value="{controls:Icon expand_less}" />
+                            </DataTrigger>
+                        </ImageButton.Triggers>
+                    </ImageButton>
+                </Grid>
+                <FlexLayout BindableLayout.ItemsSource="{Binding People}" Wrap="Wrap" Margin="12,0" IsVisible="{Binding ShowPeople}">
                     <BindableLayout.ItemTemplate>
                         <DataTemplate x:DataType="x:String">
                             <Button Text="{Binding .}" Style="{StaticResource SecondaryButton}" Margin="4"

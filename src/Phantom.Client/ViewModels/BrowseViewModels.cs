@@ -56,7 +56,7 @@ public partial class HomeViewModel(PhantomApi api, SettingsService settings, Dow
     }
 
     [RelayCommand]
-    private Task GoToDownloads() => Views.MainPage.ShowTab(Views.AppTab.Downloads);
+    private Task GoToDownloads() => Views.MainPage.ShowDeviceDownloads();
 }
 
 /// <summary>What the Search tab lists.</summary>
@@ -382,6 +382,12 @@ public partial class SearchViewModel(PhantomApi api) : BaseViewModel
     [ObservableProperty] private string query = "";
     [ObservableProperty] private bool hasResults;
     [ObservableProperty] private bool noResults;
+
+    /// <summary>The People section is folded away until opened: names can push the titles off screen.</summary>
+    [ObservableProperty] private bool showPeople;
+
+    [RelayCommand]
+    private void TogglePeople() => ShowPeople = !ShowPeople;
 
     partial void OnQueryChanged(string value)
     {

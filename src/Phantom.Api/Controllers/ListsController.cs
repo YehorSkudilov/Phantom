@@ -128,7 +128,7 @@ public class CollectionsController(PhantomDbContext db, LibraryService library) 
 [ApiController]
 [Authorize]
 [Route("api/playlists")]
-public class PlaylistsController(PhantomDbContext db, LibraryService library) : ControllerBase
+public class PlaylistsController(PhantomDbContext db, LibraryService library, ShowLibraryService shows) : ControllerBase
 {
     [HttpGet]
     public async Task<List<PlaylistDto>> List(CancellationToken ct)
@@ -136,20 +136,54 @@ public class PlaylistsController(PhantomDbContext db, LibraryService library) : 
         var userId = User.UserId();
         return await db.Playlists.AsNoTracking().Where(p => p.UserId == userId)
             .OrderBy(p => p.Name)
-            .Select(p => new PlaylistDto(p.Id, p.Name, p.Items.Count, p.Items.Sum(i => (long)(i.Movie!.RuntimeMinutes ?? 0))))
+            .Select(p => new PlaylistDto(p.Id, p.Name, p.Items.Count,
+                p.Items.Sum(i => (long)(i.Movie!.RuntimeMinutes ?? 0) + (i.Episode!.RuntimeMinutes ?? 0))))
             .ToListAsync(ct);
+    }
+
+    /// <summary>
+    /// The profile's playlists holding any of <paramref name="keys"/> ("m12,s4,e99"), and which: what a title's (or a
+    /// season's) playlist button shows.
+    /// </summary>
+    [HttpGet("containing")]
+    public async Task<List<PlaylistMembershipDto>> Containing([FromQuery] string keys, CancellationToken ct)
+    {
+        var (movieIds, showIds, episodeIds) = Parse(keys.Split(',', StringSplitOptions.RemoveEmptyEntries));
+        var userId = User.UserId();
+        var playlists = await db.Playlists.AsNoTracking().Where(p => p.UserId == userId).Include(p => p.Items).OrderBy(p => p.Name).ToListAsync(ct);
+        return playlists
+            .Select(p => new PlaylistMembershipDto(p.Id, p.Name, p.Items
+                .Where(i => i.MovieId is { } m && movieIds.Contains(m) || i.ShowId is { } sh && showIds.Contains(sh)
+                            || i.EpisodeId is { } e && episodeIds.Contains(e))
+                .Select(i => i.Key).ToList()))
+            .Where(p => p.Keys.Count > 0).ToList();
     }
 
     [HttpGet("{id:int}")]
     public async Task<ActionResult<PlaylistDetailDto>> Get(int id, CancellationToken ct)
     {
         var userId = User.UserId();
-        var p = await db.Playlists.AsNoTracking().Include(x => x.Items).FirstOrDefaultAsync(x => x.Id == id && x.UserId == userId, ct);
+        var p = await db.Playlists.AsNoTracking().Include(x => x.Items).ThenInclude(i => i.Episode)
+            .FirstOrDefaultAsync(x => x.Id == id && x.UserId == userId, ct);
         if (p is null) return NotFound();
-        var ids = p.Items.OrderBy(i => i.Order).Select(i => i.MovieId).ToList();
-        var movies = await library.SummariesAsync(library.Visible(User).Where(m => ids.Contains(m.Id)), userId, ct);
-        var ordered = ids.Select(i => movies.FirstOrDefault(m => m.Id == i)).OfType<MovieSummaryDto>().ToList();
-        return new PlaylistDetailDto(p.Id, p.Name, ordered);
+        // Movies, shows and episodes together, in the playlist's order. An episode is its show's card, the episode named.
+        var items = p.Items.OrderBy(i => i.Order).ToList();
+        var movieIds = items.Where(i => i.MovieId != null).Select(i => i.MovieId!.Value).ToList();
+        var showIds = items.Select(i => i.ShowId ?? i.Episode?.ShowId).OfType<int>().Distinct().ToList();
+        var movies = (await library.SummariesAsync(library.Visible(User).Where(m => movieIds.Contains(m.Id)), userId, ct)).ToDictionary(m => m.Id);
+        var showCards = (await shows.SummariesAsync(shows.Visible(User).Where(s => showIds.Contains(s.Id)), userId, ct)).ToDictionary(s => s.Id);
+        var entries = items.Select(i => (i.Key, Card:
+                i.MovieId is { } m ? movies.GetValueOrDefault(m)
+                : i.ShowId is { } sh ? showCards.GetValueOrDefault(sh)
+                : i.Episode is { } e && showCards.GetValueOrDefault(e.ShowId) is { } card
+                    ? card with
+                    {
+                        Caption = $"S{e.SeasonNumber}:E{e.EpisodeNumber}" + (string.IsNullOrWhiteSpace(e.Title) ? "" : $" · {e.Title}"),
+                        RuntimeMinutes = e.RuntimeMinutes ?? card.RuntimeMinutes,
+                    }
+                : null))
+            .Where(x => x.Card is not null).ToList();
+        return new PlaylistDetailDto(p.Id, p.Name, entries.Select(x => x.Card!).ToList(), entries.Select(x => x.Key).ToList());
     }
 
     [HttpPost]
@@ -172,23 +206,45 @@ public class PlaylistsController(PhantomDbContext db, LibraryService library) : 
         return NoContent();
     }
 
+    /// <summary>Adds a movie, a whole show, or episodes (one, or a season's) to the end; ones already in it stay where they are.</summary>
     [HttpPost("{id:int}/items")]
     public async Task<IActionResult> AddItem(int id, AddItemRequest req, CancellationToken ct)
     {
         var p = await FindAsync(id, ct);
-        if (p is null || !await db.Movies.AnyAsync(m => m.Id == req.MovieId, ct)) return NotFound();
-        if (p.Items.All(i => i.MovieId != req.MovieId))
-            p.Items.Add(new PlaylistItem { MovieId = req.MovieId, Order = p.Items.Count == 0 ? 0 : p.Items.Max(i => i.Order) + 1 });
+        if (p is null) return NotFound();
+        var order = p.Items.Count == 0 ? 0 : p.Items.Max(i => i.Order) + 1;
+        if (req.EpisodeIds is { Count: > 0 } episodeIds)
+        {
+            var known = await db.Episodes.Where(e => episodeIds.Contains(e.Id)).Select(e => e.Id).ToListAsync(ct);
+            if (known.Count == 0) return NotFound();
+            foreach (var e in episodeIds.Where(known.Contains).Distinct())
+                if (p.Items.All(i => i.EpisodeId != e)) p.Items.Add(new PlaylistItem { EpisodeId = e, Order = order++ });
+        }
+        else if (req.ShowId is { } showId)
+        {
+            if (!await db.Shows.AnyAsync(s => s.Id == showId, ct)) return NotFound();
+            if (p.Items.All(i => i.ShowId != showId)) p.Items.Add(new PlaylistItem { ShowId = showId, Order = order });
+        }
+        else
+        {
+            if (!await db.Movies.AnyAsync(m => m.Id == req.MovieId, ct)) return NotFound();
+            if (p.Items.All(i => i.MovieId != req.MovieId)) p.Items.Add(new PlaylistItem { MovieId = req.MovieId, Order = order });
+        }
         await db.SaveChangesAsync(ct);
         return NoContent();
     }
 
     [HttpDelete("{id:int}/items/{movieId:int}")]
-    public async Task<IActionResult> RemoveItem(int id, int movieId, CancellationToken ct)
+    public Task<IActionResult> RemoveItem(int id, int movieId, CancellationToken ct) => RemoveEntries(id, $"m{movieId}", ct);
+
+    /// <summary>Takes entries out, by key: "m12", "s4,e98,e99"...</summary>
+    [HttpDelete("{id:int}/entries/{keys}")]
+    public async Task<IActionResult> RemoveEntries(int id, string keys, CancellationToken ct)
     {
         var p = await FindAsync(id, ct);
         if (p is null) return NotFound();
-        db.PlaylistItems.RemoveRange(p.Items.Where(i => i.MovieId == movieId));
+        var remove = keys.Split(',', StringSplitOptions.RemoveEmptyEntries).ToHashSet();
+        db.PlaylistItems.RemoveRange(p.Items.Where(i => remove.Contains(i.Key)));
         await db.SaveChangesAsync(ct);
         return NoContent();
     }
@@ -198,8 +254,9 @@ public class PlaylistsController(PhantomDbContext db, LibraryService library) : 
     {
         var p = await FindAsync(id, ct);
         if (p is null) return NotFound();
-        for (var i = 0; i < req.MovieIds.Count; i++)
-            if (p.Items.FirstOrDefault(x => x.MovieId == req.MovieIds[i]) is { } item) item.Order = i;
+        var keys = req.Keys ?? req.MovieIds.Select(m => $"m{m}").ToList();
+        for (var i = 0; i < keys.Count; i++)
+            if (p.Items.FirstOrDefault(x => x.Key == keys[i]) is { } item) item.Order = i;
         await db.SaveChangesAsync(ct);
         return NoContent();
     }
@@ -218,5 +275,17 @@ public class PlaylistsController(PhantomDbContext db, LibraryService library) : 
     {
         var userId = User.UserId();
         return db.Playlists.Include(p => p.Items).FirstOrDefaultAsync(p => p.Id == id && p.UserId == userId, ct);
+    }
+
+    /// <summary>Entry keys ("m12", "s4", "e99") split by kind.</summary>
+    private static (HashSet<int> Movies, HashSet<int> Shows, HashSet<int> Episodes) Parse(IEnumerable<string> keys)
+    {
+        var result = (Movies: new HashSet<int>(), Shows: new HashSet<int>(), Episodes: new HashSet<int>());
+        foreach (var key in keys)
+        {
+            if (key.Length < 2 || !int.TryParse(key[1..], out var id)) continue;
+            (key[0] switch { 's' => result.Shows, 'e' => result.Episodes, _ => result.Movies }).Add(id);
+        }
+        return result;
     }
 }

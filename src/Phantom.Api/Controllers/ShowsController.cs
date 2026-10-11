@@ -10,8 +10,69 @@ namespace Phantom.Api.Controllers;
 [ApiController]
 [Authorize]
 [Route("api/shows")]
-public class ShowsController(PhantomDbContext db, ShowLibraryService shows) : ControllerBase
+public class ShowsController(PhantomDbContext db, ShowLibraryService shows, LibraryService library, DiscoverService discover) : ControllerBase
 {
+    /// <summary>"More Like This": shows (and movies) sharing the most genres, cast and creators with this one.</summary>
+    [HttpGet("{id:int}/related")]
+    public async Task<ActionResult<List<MovieSummaryDto>>> Related(int id, CancellationToken ct)
+    {
+        if (!await shows.Visible(User).AnyAsync(s => s.Id == id, ct)) return NotFound();
+        var refs = await discover.MoreLikeAsync(User, new TitleRef(true, id), ct);
+        var userId = User.UserId();
+        var movieIds = refs.Where(r => !r.IsShow).Select(r => r.Id).ToList();
+        var showIds = refs.Where(r => r.IsShow).Select(r => r.Id).ToList();
+        var found = (await library.SummariesAsync(library.Visible(User).Where(m => movieIds.Contains(m.Id)), userId, ct))
+            .Select(m => (Ref: new TitleRef(false, m.Id), Item: m))
+            .Concat((await shows.SummariesAsync(shows.Visible(User).Where(s => showIds.Contains(s.Id)), userId, ct))
+                .Select(s => (Ref: new TitleRef(true, s.Id), Item: s)))
+            .ToDictionary(x => x.Ref, x => x.Item);
+        return refs.Where(found.ContainsKey).Select(r => found[r]).ToList();
+    }
+
+    /// <summary>
+    /// The sources (releases) a season can be played from, best first: those of its episodes, the season's packs and
+    /// whole-show packs. Playing an episode from one that hasn't got it falls back to the best that has.
+    /// </summary>
+    [HttpGet("{id:int}/seasons/{season:int}/releases")]
+    public async Task<ActionResult<List<ReleaseDto>>> SeasonReleases(int id, int season, CancellationToken ct)
+    {
+        if (!await shows.Visible(User).AnyAsync(s => s.Id == id, ct)) return NotFound();
+        var settings = await db.Settings.AsNoTracking().FirstAsync(ct);
+        var releases = await db.Releases.AsNoTracking().Where(r => r.ShowId == id && (r.SeasonNumber == null || r.SeasonNumber == season)).ToListAsync(ct);
+        // On the server's disk first, then sharing, then whole packs (one choice covers the season), quality, seeders.
+        return releases
+            .OrderByDescending(r => r.LocalFilePath != null && System.IO.File.Exists(r.LocalFilePath))
+            .ThenByDescending(r => r.Seeders > 0)
+            .ThenByDescending(r => r.EpisodeNumber == null)
+            .ThenByDescending(r => settings.PreferredQuality != null && r.Quality == settings.PreferredQuality)
+            .ThenByDescending(r => ReleaseNameParser.QualityRank(r.Quality))
+            .ThenByDescending(r => r.Seeders)
+            .ThenBy(r => r.EpisodeNumber)
+            .Select(ShowLibraryService.ToReleaseDto).ToList();
+    }
+
+    /// <summary>Rates the show for this profile, out of 10 (null clears it). Steers recommendations.</summary>
+    [HttpPut("{id:int}/rating")]
+    public async Task<IActionResult> Rate(int id, SetRatingRequest req, CancellationToken ct)
+    {
+        if (req.Rating is < 0 or > 10) return BadRequest("Rating must be between 0 and 10.");
+        if (!await db.Shows.AnyAsync(s => s.Id == id, ct)) return NotFound();
+        var userId = User.UserId();
+        var rating = await db.ShowRatings.FindAsync([userId, id], ct);
+        if (req.Rating is not { } value)
+        {
+            if (rating is not null) db.ShowRatings.Remove(rating);
+        }
+        else if (rating is null) db.ShowRatings.Add(new ShowRating { UserId = userId, ShowId = id, Rating = value });
+        else
+        {
+            rating.Rating = value;
+            rating.RatedAt = DateTime.UtcNow;
+        }
+        await db.SaveChangesAsync(ct);
+        return NoContent();
+    }
+
     [HttpGet("{id:int}")]
     public async Task<ActionResult<ShowDetailDto>> Get(int id, CancellationToken ct) =>
         await shows.DetailAsync(User, id, ct) is { } dto ? dto : NotFound();

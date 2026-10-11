@@ -158,9 +158,17 @@ public class DiscoverService(PhantomDbContext db, LibraryService library, ShowLi
     /// <summary>How far back "lately" goes for what's popular on this server.</summary>
     public static readonly TimeSpan RecentWindow = TimeSpan.FromDays(14);
 
-    public async Task<List<DiscoverRow>> RowsAsync(ClaimsPrincipal user, int userId, CancellationToken ct)
+    /// <summary>"More Like This" for one title: the library's titles most like it (see <see cref="Recommender.MoreLike"/>).</summary>
+    public async Task<List<TitleRef>> MoreLikeAsync(ClaimsPrincipal user, TitleRef seed, CancellationToken ct, int take = 20)
     {
-        var now = DateTime.UtcNow;
+        var all = await CandidatesAsync(user, DateTime.UtcNow, ct);
+        if (all.FirstOrDefault(c => c.Ref == seed) is not { } item) return [];
+        return Recommender.MoreLike(item, all, DateTime.UtcNow, take).Select(c => c.Ref).ToList();
+    }
+
+    /// <summary>Every title this profile may see, with what the recommender needs to know about it.</summary>
+    private async Task<List<Candidate>> CandidatesAsync(ClaimsPrincipal user, DateTime now, CancellationToken ct)
+    {
         var since = now - RecentWindow;
 
         var movieViewers = await db.WatchStates.Where(w => w.LastViewedAt > since)
@@ -186,7 +194,13 @@ public class DiscoverService(PhantomDbContext db, LibraryService library, ShowLi
         }).AsSplitQuery().ToListAsync(ct))
             .Select(s => new Candidate(new TitleRef(true, s.Id), s.Title, s.Genres, s.People, s.Year, s.Rating, s.AddedAt, s.Seeders,
                 showViewers.GetValueOrDefault(s.Id)));
-        var all = movies.Concat(showList).ToList();
+        return movies.Concat(showList).ToList();
+    }
+
+    public async Task<List<DiscoverRow>> RowsAsync(ClaimsPrincipal user, int userId, CancellationToken ct)
+    {
+        var now = DateTime.UtcNow;
+        var all = await CandidatesAsync(user, now, ct);
         var byRef = all.ToDictionary(c => c.Ref);
 
         // What this profile did: finished, part-watched, rated, saved for later.
@@ -197,6 +211,7 @@ public class DiscoverService(PhantomDbContext db, LibraryService library, ShowLi
             .Select(g => new { ShowId = g.Key, Watched = g.Count(w => w.Watched), Last = g.Max(w => w.LastViewedAt) }).ToListAsync(ct);
         var watchlist = await db.Watchlist.Where(w => w.UserId == userId).Select(w => new { w.MovieId, w.AddedAt }).ToListAsync(ct);
         var showWatchlist = await db.ShowWatchlist.Where(w => w.UserId == userId).Select(w => new { w.ShowId, w.AddedAt }).ToListAsync(ct);
+        var showRatings = await db.ShowRatings.Where(r => r.UserId == userId).Select(r => new { r.ShowId, r.Rating, r.RatedAt }).ToListAsync(ct);
 
         var signals = new List<TasteSignal>();
         foreach (var s in movieStates)
@@ -210,6 +225,7 @@ public class DiscoverService(PhantomDbContext db, LibraryService library, ShowLi
             signals.Add(new TasteSignal(new TitleRef(true, s.ShowId), Math.Min(1.5, 0.4 + 0.1 * s.Watched), s.Last ?? now));
         signals.AddRange(watchlist.Select(w => new TasteSignal(new TitleRef(false, w.MovieId), 0.6, w.AddedAt)));
         signals.AddRange(showWatchlist.Select(w => new TasteSignal(new TitleRef(true, w.ShowId), 0.6, w.AddedAt)));
+        signals.AddRange(showRatings.Select(r => new TasteSignal(new TitleRef(true, r.ShowId), (r.Rating - 5.5) / 4.5 * 1.5, r.RatedAt)));
 
         // Recommended: nothing already seen, started, rated or on the watchlist (those have rows of their own).
         var seen = signals.Select(s => s.Ref).ToHashSet();

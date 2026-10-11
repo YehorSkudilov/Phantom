@@ -52,7 +52,7 @@ public partial class MainPage : ContentPage
 
         _instance = new(this);
         // The offline state's "Go to Downloads", wherever it shows.
-        Phantom.Controls.StateView.OpenDownloads = () => ShowTab(AppTab.Downloads);
+        Phantom.Controls.StateView.OpenDownloads = ShowDeviceDownloads;
     }
 
     /// <summary>Pops back to the tabs and switches to <paramref name="tab"/>.</summary>
@@ -61,6 +61,14 @@ public partial class MainPage : ContentPage
         await Shell.Current.GoToAsync("//main");
         if (_instance?.TryGetTarget(out var page) == true)
             page.NavBar.SelectItem(page._tabs[(int)tab]);
+    }
+
+    /// <summary>Opens Downloads on its "On this device" tab: what plays without a connection.</summary>
+    public static async Task ShowDeviceDownloads()
+    {
+        await ShowTab(AppTab.Downloads);
+        if (_instance?.TryGetTarget(out var page) == true && page._tabs[(int)AppTab.Downloads].Page.BindingContext is ViewModels.DownloadsViewModel downloads)
+            downloads.SelectedTab = 1;
     }
 
     /// <summary>

@@ -61,7 +61,8 @@ public class EpisodeStreamController(
         var releases = await Db.Releases.Where(r => r.ShowId == episode.ShowId).ToListAsync(ct);
         var settings = await Db.Settings.AsNoTracking().FirstAsync(ct);
         var candidates = ShowLibraryService.OrderForPlayback(releases, episode, settings.PreferredQuality).ToList();
-        var release = releaseId is { } rid ? candidates.FirstOrDefault(r => r.Id == rid) : candidates.FirstOrDefault();
+        // A source picked for the season that hasn't got this episode: the best that has.
+        var release = (releaseId is { } rid ? candidates.FirstOrDefault(r => r.Id == rid) : null) ?? candidates.FirstOrDefault();
         if (release is null) return null;
         var state = await Db.EpisodeWatchStates.AsNoTracking().FirstOrDefaultAsync(w => w.UserId == User.UserId() && w.EpisodeId == id, ct);
         return new StreamTarget(release, new VideoChoice(episode.SeasonNumber, episode.EpisodeNumber),

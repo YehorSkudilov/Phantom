@@ -10,6 +10,7 @@ public class PhantomDbContext(DbContextOptions<PhantomDbContext> options) : DbCo
     public DbSet<Episode> Episodes => Set<Episode>();
     public DbSet<EpisodeWatchState> EpisodeWatchStates => Set<EpisodeWatchState>();
     public DbSet<ShowWatchlistItem> ShowWatchlist => Set<ShowWatchlistItem>();
+    public DbSet<ShowRating> ShowRatings => Set<ShowRating>();
     public DbSet<Genre> Genres => Set<Genre>();
     public DbSet<Credit> Credits => Set<Credit>();
     public DbSet<Release> Releases => Set<Release>();
@@ -55,6 +56,12 @@ public class PhantomDbContext(DbContextOptions<PhantomDbContext> options) : DbCo
         b.Entity<WatchlistItem>().HasKey(w => new { w.UserId, w.MovieId });
         b.Entity<EpisodeWatchState>().HasKey(w => new { w.UserId, w.EpisodeId });
         b.Entity<ShowWatchlistItem>().HasKey(w => new { w.UserId, w.ShowId });
+        b.Entity<ShowRating>().HasKey(r => new { r.UserId, r.ShowId });
+        // A playlist entry goes with its movie or show.
+        b.Entity<PlaylistItem>().HasOne(i => i.Movie).WithMany().HasForeignKey(i => i.MovieId).OnDelete(DeleteBehavior.Cascade);
+        b.Entity<PlaylistItem>().HasOne(i => i.Show).WithMany().HasForeignKey(i => i.ShowId).OnDelete(DeleteBehavior.Cascade);
+        b.Entity<PlaylistItem>().HasOne(i => i.Episode).WithMany().HasForeignKey(i => i.EpisodeId).OnDelete(DeleteBehavior.Cascade);
+        b.Entity<PlaylistItem>().Ignore(i => i.Key);
 
         b.Entity<Collection>().HasMany(c => c.Movies).WithMany();
         b.Entity<Playlist>().HasMany(p => p.Items).WithOne().HasForeignKey(i => i.PlaylistId).OnDelete(DeleteBehavior.Cascade);

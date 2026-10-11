@@ -281,6 +281,29 @@ public class PhantomApi(HttpClient http, SettingsService settings)
     public Task RemoveFromPlaylistAsync(int id, int movieId) => SendNoContentAsync(HttpMethod.Delete, $"/api/playlists/{id}/items/{movieId}");
     public Task ReorderPlaylistAsync(int id, IReadOnlyList<int> ids) => SendNoContentAsync(HttpMethod.Put, $"/api/playlists/{id}/order", new ReorderRequest(ids));
 
+    /// <summary>Adds a whole show to a playlist.</summary>
+    public Task AddShowToPlaylistAsync(int id, int showId) =>
+        SendNoContentAsync(HttpMethod.Post, $"/api/playlists/{id}/items", new AddItemRequest(0, ShowId: showId));
+
+    /// <summary>Adds episodes (one, or a season's) to a playlist, in this order.</summary>
+    public Task AddEpisodesToPlaylistAsync(int id, IReadOnlyList<int> episodeIds) =>
+        SendNoContentAsync(HttpMethod.Post, $"/api/playlists/{id}/items", new AddItemRequest(0, EpisodeIds: episodeIds));
+
+    /// <summary>Takes entries out of a playlist by key ("m12", "s4", "e99").</summary>
+    public Task RemovePlaylistEntriesAsync(int id, IEnumerable<string> keys) =>
+        SendNoContentAsync(HttpMethod.Delete, $"/api/playlists/{id}/entries/{string.Join(',', keys)}");
+
+    public Task ReorderPlaylistEntriesAsync(int id, IReadOnlyList<string> keys) =>
+        SendNoContentAsync(HttpMethod.Put, $"/api/playlists/{id}/order", new ReorderRequest([], keys));
+
+    /// <summary>The playlists holding any of these entries ("m12", "s4", "e99"), and which.</summary>
+    public Task<List<PlaylistMembershipDto>> PlaylistsContainingAsync(IEnumerable<string> keys) =>
+        GetAsync<List<PlaylistMembershipDto>>($"/api/playlists/containing?keys={string.Join(',', keys)}");
+
+    public Task RateShowAsync(int id, double? rating) => SendNoContentAsync(HttpMethod.Put, $"/api/shows/{id}/rating", new SetRatingRequest(rating));
+    public Task<List<MovieSummaryDto>> RelatedShowsAsync(int id) => GetAsync<List<MovieSummaryDto>>($"/api/shows/{id}/related");
+    public Task<List<ReleaseDto>> SeasonReleasesAsync(int showId, int season) => GetAsync<List<ReleaseDto>>($"/api/shows/{showId}/seasons/{season}/releases");
+
     // ---------- Server downloads ----------
 
     public Task<List<ServerDownloadDto>> ServerDownloadsAsync() => GetAsync<List<ServerDownloadDto>>("/api/downloads");

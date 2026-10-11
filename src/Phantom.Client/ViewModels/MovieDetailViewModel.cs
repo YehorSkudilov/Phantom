@@ -7,13 +7,16 @@ using Phantom.Shared;
 
 namespace Phantom.ViewModels;
 
-public partial class MovieDetailViewModel(PhantomApi api, SettingsService settings, DownloadManager downloads) : BaseViewModel, IQueryAttributable
+public partial class MovieDetailViewModel(PhantomApi api, SettingsService settings, DownloadManager downloads, PlaylistMembership playlists)
+    : BaseViewModel, IQueryAttributable
 {
     protected override bool ShowsOfflineState => true;
 
     private int _id;
 
     public ObservableList<MovieSummaryDto> Related { get; } = [];
+
+    private bool _watchingPlaylists;
     public ObservableList<ReleaseDto> Releases { get; } = [];
 
     [ObservableProperty]
@@ -99,6 +102,16 @@ public partial class MovieDetailViewModel(PhantomApi api, SettingsService settin
         OnPropertyChanged(nameof(HasPlayChoices));
 
         Related.Sync(await related);
+        if (!_watchingPlaylists)
+        {
+            _watchingPlaylists = true;
+            playlists.Changed += (_, _) =>
+            {
+                OnPropertyChanged(nameof(IsInPlaylist));
+                OnPropertyChanged(nameof(PlaylistLabel));
+            };
+        }
+        await playlists.LoadAsync([$"m{_id}"]);
     });
 
     /// <summary>Plays, picking up where this profile left off (Start over beside it plays from the beginning).</summary>
@@ -188,23 +201,14 @@ public partial class MovieDetailViewModel(PhantomApi api, SettingsService settin
         Movie = Movie! with { UserRating = rating };
     }, showBusy: false);
 
+    /// <summary>Into a playlist, or (picking one it's already in) out of it.</summary>
     [RelayCommand]
-    private Task AddToPlaylist() => RunAsync(async () =>
-    {
-        var playlists = await api.PlaylistsAsync();
-        const string newPlaylist = "+ New playlist";
-        var choice = await Dialog.ChooseAsync("Add to playlist", null, [.. playlists.Select(p => p.Name), newPlaylist]);
-        if (choice is null or "Cancel") return;
-        PlaylistDto? target = playlists.FirstOrDefault(p => p.Name == choice);
-        if (choice == newPlaylist)
-        {
-            var name = await Dialog.PromptAsync("New playlist", "Name");
-            if (string.IsNullOrWhiteSpace(name)) return;
-            target = await api.CreatePlaylistAsync(name);
-        }
-        await api.AddToPlaylistAsync(target!.Id, _id);
-        await ToastAsync($"Added to {target.Name}");
-    }, showBusy: false);
+    private Task AddToPlaylist() => RunAsync(() => Movie is { } movie
+        ? playlists.ChooseAsync($"{movie.Title} · Playlist", [$"m{_id}"], id => api.AddToPlaylistAsync(id, _id))
+        : Task.CompletedTask, showBusy: false);
+
+    public bool IsInPlaylist => playlists.PlaylistsOf($"m{_id}").Count > 0;
+    public string PlaylistLabel => PlaylistMembership.Label(playlists.PlaylistsOf($"m{_id}"));
 
     /// <summary>Client download: copies the movie to this device for offline viewing.</summary>
     [RelayCommand]
@@ -217,7 +221,7 @@ public partial class MovieDetailViewModel(PhantomApi api, SettingsService settin
                 existing.Status is OfflineStatus.Paused or OfflineStatus.Failed ? "Resume download" : "Go to Downloads");
             if (action == "Delete download") await downloads.DeleteAsync(existing);
             else if (action == "Resume download") downloads.Resume(existing);
-            else if (action == "Go to Downloads") await Views.MainPage.ShowTab(Views.AppTab.Downloads);
+            else if (action == "Go to Downloads") await Views.MainPage.ShowDeviceDownloads();
             OfflineItem = downloads.Find(_id);
             return;
         }
