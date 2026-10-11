@@ -54,48 +54,6 @@ public class ReleaseNameParserTests
         Assert.Equal(expected, InternetArchiveSource.ParseRuntime(input));
 }
 
-public class TorznabSourceTests
-{
-    private const string Feed = """
-        <?xml version="1.0" encoding="UTF-8"?>
-        <rss version="2.0" xmlns:torznab="http://torznab.com/schemas/2015/feed">
-          <channel>
-            <item>
-              <title>Night.of.the.Living.Dead.1968.1080p.BluRay.x264</title>
-              <link>magnet:?xt=urn:btih:ABCDEF0123456789ABCDEF0123456789ABCDEF01&amp;dn=notld</link>
-              <size>2147483648</size>
-              <torznab:attr name="seeders" value="42" />
-              <torznab:attr name="peers" value="50" />
-              <torznab:attr name="imdbid" value="0063350" />
-            </item>
-            <item>
-              <title>No hash here</title>
-              <link>https://example.invalid/file.torrent</link>
-            </item>
-          </channel>
-        </rss>
-        """;
-
-    [Fact]
-    public void Parses_items_with_magnets_and_attributes()
-    {
-        var release = Assert.Single(TorznabSource.Parse(Feed));
-        Assert.Equal("Night of the Living Dead", release.Title);
-        Assert.Equal(1968, release.Year);
-        Assert.Equal("abcdef0123456789abcdef0123456789abcdef01", release.InfoHash);
-        Assert.Equal("1080p", release.Quality);
-        Assert.Equal(2147483648, release.SizeBytes);
-        Assert.Equal(42, release.Seeders);
-        Assert.Equal(8, release.Leechers);
-        Assert.Equal("tt0063350", release.ImdbId);
-    }
-
-    [Fact]
-    public void Indexer_errors_are_surfaced() =>
-        Assert.Throws<InvalidOperationException>(() =>
-            TorznabSource.Parse("""<?xml version="1.0"?><error code="100" description="Invalid API Key" />"""));
-}
-
 public class YtsSourceTests
 {
     private const string Page = """

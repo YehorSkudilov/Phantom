@@ -31,19 +31,9 @@ public class SeedingTests : IDisposable
     }
 
     [Fact]
-    public void A_removed_source_stays_removed_after_a_restart()
+    public void A_missing_built_in_source_comes_back_on_restart_without_duplicates()
     {
         StartAndListSources(db => db.Sources.RemoveRange(db.Sources.Where(s => s.Type == SourceType.PirateBay)));
-        Assert.Equal([SourceType.InternetArchive, SourceType.Yts], StartAndListSources());
-    }
-
-    [Fact]
-    public void Existing_server_gets_the_new_sources_without_a_second_archive_source()
-    {
-        // Recreate a server from before seeded-sources.txt: only the Internet Archive source, and no file.
-        StartAndListSources(db => db.Sources.RemoveRange(db.Sources.Where(s => s.Type != SourceType.InternetArchive)));
-        File.Delete(Path.Combine(_dataDir, "seeded-sources.txt"));
-
         Assert.Equal([SourceType.InternetArchive, SourceType.Yts, SourceType.PirateBay], StartAndListSources());
     }
 

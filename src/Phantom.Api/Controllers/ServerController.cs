@@ -72,6 +72,7 @@ public class ServerController(PhantomDbContext db, TorrentEngine engine, Transco
     }
 }
 
+/// <summary>The built-in sources (see Program.SeedSourcesAsync): listed, switched on or off, synced. Nothing else.</summary>
 [ApiController]
 [Authorize(Roles = "Admin")]
 [Route("api/sources")]
@@ -81,37 +82,15 @@ public class SourcesController(PhantomDbContext db, SourceSyncService sync) : Co
     public async Task<List<SourceDto>> List(CancellationToken ct) =>
         (await db.Sources.AsNoTracking().OrderBy(s => s.Name).ToListAsync(ct)).Select(ToDto).ToList();
 
-    [HttpPost]
-    public async Task<ActionResult<SourceDto>> Create(UpsertSourceRequest req, CancellationToken ct)
-    {
-        if (Validate(req) is { } error) return BadRequest(error);
-        var s = new Source { Name = req.Name };
-        Apply(s, req);
-        db.Sources.Add(s);
-        await db.SaveChangesAsync(ct);
-        sync.RequestSync(s.Id);
-        return ToDto(s);
-    }
-
-    [HttpPut("{id:int}")]
-    public async Task<ActionResult<SourceDto>> Update(int id, UpsertSourceRequest req, CancellationToken ct)
-    {
-        if (Validate(req) is { } error) return BadRequest(error);
-        var s = await db.Sources.FindAsync([id], ct);
-        if (s is null) return NotFound();
-        Apply(s, req);
-        await db.SaveChangesAsync(ct);
-        return ToDto(s);
-    }
-
-    [HttpDelete("{id:int}")]
-    public async Task<IActionResult> Delete(int id, CancellationToken ct)
+    [HttpPut("{id:int}/enabled")]
+    public async Task<ActionResult<SourceDto>> SetEnabled(int id, [FromQuery] bool value, CancellationToken ct)
     {
         var s = await db.Sources.FindAsync([id], ct);
         if (s is null) return NotFound();
-        db.Sources.Remove(s);
+        s.Enabled = value;
         await db.SaveChangesAsync(ct);
-        return NoContent();
+        if (value) sync.RequestSync(id);
+        return ToDto(s);
     }
 
     /// <summary>Triggers an immediate pull from one source (or all with id 0).</summary>
@@ -122,25 +101,7 @@ public class SourcesController(PhantomDbContext db, SourceSyncService sync) : Co
         return Accepted();
     }
 
-    private static string? Validate(UpsertSourceRequest req)
-    {
-        if (string.IsNullOrWhiteSpace(req.Name)) return "Name is required.";
-        if (req.Type == SourceType.Torznab && !Uri.TryCreate(req.BaseUrl, UriKind.Absolute, out _)) return "Torznab sources need an absolute base URL.";
-        if (req.SyncIntervalMinutes < 15) return "Sync interval must be at least 15 minutes.";
-        return null;
-    }
 
-    private static void Apply(Source s, UpsertSourceRequest req)
-    {
-        s.Name = req.Name.Trim();
-        s.Type = req.Type;
-        s.BaseUrl = req.BaseUrl;
-        if (req.ApiKey is not null) s.ApiKey = req.ApiKey.Length == 0 ? null : req.ApiKey; // null = keep existing
-        s.Categories = req.Categories;
-        s.Query = req.Query;
-        s.Enabled = req.Enabled;
-        s.SyncIntervalMinutes = req.SyncIntervalMinutes;
-    }
 
     private static SourceDto ToDto(Source s) =>
         new(s.Id, s.Name, s.Type, s.BaseUrl, !string.IsNullOrEmpty(s.ApiKey), s.Categories, s.Query, s.Enabled,

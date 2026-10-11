@@ -44,7 +44,6 @@ builder.Services.AddHostedService(sp => sp.GetRequiredService<SourceSyncService>
 
 // Sources & metadata
 builder.Services.AddHttpClient<IMovieSource, InternetArchiveSource>(c => c.Timeout = TimeSpan.FromSeconds(30));
-builder.Services.AddHttpClient<IMovieSource, TorznabSource>(c => c.Timeout = TimeSpan.FromSeconds(60));
 builder.Services.AddHttpClient<IMovieSource, YtsSource>(SourceClient);
 builder.Services.AddHttpClient<IMovieSource, PirateBaySource>(SourceClient);
 builder.Services.AddHttpClient<IMetadataProvider, TmdbMetadataProvider>(c => c.Timeout = TimeSpan.FromSeconds(15));
@@ -145,9 +144,8 @@ static async Task UpgradeSchemaAsync(PhantomDbContext db)
     }
 }
 
-// Every built-in source is added once, on new and existing servers alike. A file in the data folder remembers which
-// were added, so one the admin removes stays removed, and a built-in source added in a later version still arrives.
-// Torznab isn't here: it needs an indexer URL from the admin.
+// The sources are built in: each exists on every server (added on first start, and restored if missing). Admins can
+// only switch them on or off.
 static async Task SeedSourcesAsync(PhantomDbContext db, PhantomOptions options)
 {
     Source[] defaults =
@@ -160,18 +158,8 @@ static async Task SeedSourcesAsync(PhantomDbContext db, PhantomOptions options)
         new() { Name = "YTS", Type = SourceType.Yts, Categories = "4", SyncIntervalMinutes = 180 },
         new() { Name = "The Pirate Bay", Type = SourceType.PirateBay, Categories = PirateBaySource.DefaultCategories, SyncIntervalMinutes = 180 },
     ];
-
-    var markerPath = Path.Combine(options.DataDirectory, "seeded-sources.txt");
-    var seeded = File.Exists(markerPath) ? File.ReadAllLines(markerPath).ToHashSet() : [];
-    // Servers from before this file existed seeded the Internet Archive source only if they had no sources at all.
-    if (!File.Exists(markerPath) && await db.Sources.AnyAsync()) seeded.Add(nameof(SourceType.InternetArchive));
-
-    foreach (var source in defaults.Where(s => !seeded.Contains(s.Type.ToString())))
-    {
+    foreach (var source in defaults)
         if (!await db.Sources.AnyAsync(s => s.Type == source.Type)) db.Sources.Add(source);
-        seeded.Add(source.Type.ToString());
-    }
-    File.WriteAllLines(markerPath, seeded.Order());
 }
 
 public partial class Program;

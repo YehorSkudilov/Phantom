@@ -79,13 +79,13 @@
                     <Button Grid.Column="1" Text="Check all now" Style="{StaticResource GhostButton}" Command="{Binding SyncAllCommand}"
                             ImageSource="{controls:Icon sync, Color={StaticResource PrimaryLight}, Size=20}" ContentLayout="Left,6" />
                 </Grid>
-                <Label Text="Phantom checks these for new movies on a schedule. Turn one off to pause it."
+                <Label Text="The sources Phantom checks for new movies, on a schedule. They are built in; turn one off to stop checking it."
                        Style="{StaticResource Muted}" FontSize="12" />
                 <VerticalStackLayout BindableLayout.ItemsSource="{Binding Sources}" Spacing="8">
                     <BindableLayout.ItemTemplate>
                         <DataTemplate x:DataType="dto:SourceDto">
                             <Border Style="{StaticResource Card}">
-                                <Grid ColumnDefinitions="*,Auto,Auto,Auto" RowDefinitions="Auto,Auto,Auto" ColumnSpacing="2">
+                                <Grid ColumnDefinitions="*,Auto,Auto" RowDefinitions="Auto,Auto,Auto" ColumnSpacing="2">
                                     <Label Text="{Binding Name}" FontFamily="OpenSansSemibold" FontSize="15" VerticalOptions="Center" />
                                     <Label Grid.Row="1" Style="{StaticResource Muted}" FontSize="12">
                                         <Label.FormattedText>
@@ -101,18 +101,13 @@
                                     <ImageButton Grid.Column="1" Grid.RowSpan="3" Style="{StaticResource IconButton}" VerticalOptions="Center"
                                                  Source="{controls:Icon sync}" SemanticProperties.Description="Check now" ToolTipProperties.Text="Check now"
                                                  Command="{Binding Source={RelativeSource AncestorType={x:Type vm:AdminViewModel}}, Path=SyncCommand, x:DataType=vm:AdminViewModel}" CommandParameter="{Binding .}" />
-                                    <ImageButton Grid.Column="2" Grid.RowSpan="3" Style="{StaticResource IconButton}" VerticalOptions="Center"
-                                                 Source="{controls:Icon delete, Outlined=True, Color={StaticResource Danger}}" SemanticProperties.Description="Remove" ToolTipProperties.Text="Remove"
-                                                 Command="{Binding Source={RelativeSource AncestorType={x:Type vm:AdminViewModel}}, Path=DeleteSourceCommand, x:DataType=vm:AdminViewModel}" CommandParameter="{Binding .}" />
-                                    <Switch Grid.Column="3" Grid.RowSpan="3" VerticalOptions="Center" IsToggled="{Binding Enabled, Mode=OneWay}" Toggled="OnSourceToggled"
+                                    <Switch Grid.Column="2" Grid.RowSpan="3" VerticalOptions="Center" IsToggled="{Binding Enabled, Mode=OneWay}" Toggled="OnSourceToggled"
                                             SemanticProperties.Description="On or off" />
                                 </Grid>
                             </Border>
                         </DataTemplate>
                     </BindableLayout.ItemTemplate>
                 </VerticalStackLayout>
-                <Button Text="Add source" Style="{StaticResource SecondaryButton}" Command="{Binding AddSourceCommand}"
-                        ImageSource="{controls:Icon add, Size=20}" ContentLayout="Left,6" />
 
                 <!-- Accounts -->
                 <Label Text="Accounts" Style="{StaticResource H2}" Margin="0,8,0,0" />

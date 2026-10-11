@@ -254,53 +254,11 @@ public partial class AdminViewModel(PhantomApi api) : BaseViewModel
     [RelayCommand]
     private Task ToggleSource(SourceDto s) => RunAsync(async () =>
     {
-        var updated = await api.UpdateSourceAsync(s.Id, new UpsertSourceRequest(s.Name, s.Type, s.BaseUrl, null, s.Categories, s.Query, !s.Enabled, s.SyncIntervalMinutes));
+        var updated = await api.SetSourceEnabledAsync(s.Id, !s.Enabled);
         Sources[Sources.IndexOf(s)] = updated;
     }, showBusy: false);
 
-    [RelayCommand]
-    private Task DeleteSource(SourceDto s) => RunAsync(async () =>
-    {
-        if (!await Shell.Current.DisplayAlertAsync("Remove source", $"Remove {s.Name}? Movies already imported stay in the library.", "Remove", "Cancel")) return;
-        await api.DeleteSourceAsync(s.Id);
-        Sources.Remove(s);
-    }, showBusy: false);
 
-    /// <summary>Adds a built-in source in one tap, or a custom Torznab indexer.</summary>
-    [RelayCommand]
-    private Task AddSource() => RunAsync(async () =>
-    {
-        const string yts = "YTS", tpb = "The Pirate Bay", archive = "Internet Archive", torznab = "Custom Torznab indexer";
-        var choice = await Shell.Current.DisplayActionSheetAsync("Add source", "Cancel", null, yts, tpb, archive, torznab);
-        var request = choice switch
-        {
-            yts => new UpsertSourceRequest("YTS", SourceType.Yts, null, null, "4", null, true, 180),
-            tpb => new UpsertSourceRequest("The Pirate Bay", SourceType.PirateBay, null, null, "201,207,211", null, true, 180),
-            archive => await ArchiveRequest(),
-            torznab => await TorznabRequest(),
-            _ => null,
-        };
-        if (request is not null) Sources.Add(await api.CreateSourceAsync(request));
-    });
 
-    private static async Task<UpsertSourceRequest?> ArchiveRequest()
-    {
-        var query = await Shell.Current.DisplayPromptAsync("Internet Archive", "Archive.org search query",
-            initialValue: "collection:(feature_films) AND mediatype:(movies)");
-        return string.IsNullOrWhiteSpace(query) ? null
-            : new UpsertSourceRequest("Internet Archive", SourceType.InternetArchive, null, null, "100", query, true, 720);
-    }
 
-    private static async Task<UpsertSourceRequest?> TorznabRequest()
-    {
-        var page = Shell.Current;
-        var name = await page.DisplayPromptAsync("Torznab indexer", "Display name", initialValue: "Jackett");
-        if (string.IsNullOrWhiteSpace(name)) return null;
-        var url = await page.DisplayPromptAsync("Torznab indexer", "Feed base URL (the part before /api)", keyboard: Keyboard.Url);
-        if (string.IsNullOrWhiteSpace(url)) return null;
-        var key = await page.DisplayPromptAsync("Torznab indexer", "API key");
-        var cats = await page.DisplayPromptAsync("Torznab indexer", "Categories", initialValue: "2000");
-        var query = await page.DisplayPromptAsync("Torznab indexer", "Optional search query (empty = latest)");
-        return new UpsertSourceRequest(name, SourceType.Torznab, url, key, cats, query, true, 360);
-    }
 }

@@ -22,7 +22,7 @@ public class PhantomOptions
 
     public int TorrentListenPort { get; set; } = 55125;
 
-    /// <summary>Add the built-in sources (Internet Archive, YTS, The Pirate Bay) - each once, see Program.SeedSourcesAsync.</summary>
+    /// <summary>Make sure the built-in sources (Internet Archive, YTS, The Pirate Bay) exist; see Program.SeedSourcesAsync.</summary>
     public bool SeedDefaultSources { get; set; } = true;
 
     public string DatabasePath => Path.Combine(DataDirectory, "phantom.db");

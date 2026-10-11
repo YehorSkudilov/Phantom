@@ -185,9 +185,7 @@ public class PhantomApi(HttpClient http, SettingsService settings)
     // ---------- Admin ----------
 
     public Task<List<SourceDto>> SourcesAsync() => GetAsync<List<SourceDto>>("/api/sources");
-    public Task<SourceDto> CreateSourceAsync(UpsertSourceRequest req) => SendAsync<SourceDto>(HttpMethod.Post, "/api/sources", req);
-    public Task<SourceDto> UpdateSourceAsync(int id, UpsertSourceRequest req) => SendAsync<SourceDto>(HttpMethod.Put, $"/api/sources/{id}", req);
-    public Task DeleteSourceAsync(int id) => SendNoContentAsync(HttpMethod.Delete, $"/api/sources/{id}");
+    public Task<SourceDto> SetSourceEnabledAsync(int id, bool value) => SendAsync<SourceDto>(HttpMethod.Put, $"/api/sources/{id}/enabled?value={value}", null);
     public Task SyncSourceAsync(int id) => SendNoContentAsync(HttpMethod.Post, $"/api/sources/{id}/sync");
     public Task<ServerSettingsDto> ServerSettingsAsync() => GetAsync<ServerSettingsDto>("/api/server/settings");
     public Task SaveServerSettingsAsync(ServerSettingsDto s) => SendNoContentAsync(HttpMethod.Put, "/api/server/settings", s);

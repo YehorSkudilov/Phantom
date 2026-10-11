@@ -18,7 +18,7 @@ The **client** (.NET MAUI) gives you a Plex-like experience on Android, iOS, mac
 └────────────────────┘                               │  Source sync · TMDB metadata     │
                                                      └──────────────┬───────────────────┘
                                                                     │ BitTorrent / web seeds
-                                                      Internet Archive · YTS · TPB · Torznab
+                                                      Internet Archive · YTS · The Pirate Bay
 ```
 
 ## Projects
@@ -33,14 +33,13 @@ The **client** (.NET MAUI) gives you a Plex-like experience on Android, iOS, mac
 
 ## Content sources (read this)
 
-Phantom pulls movies automatically. Every built-in source is added and enabled out of the box, on new servers and on existing ones the first time they
-start this version. Remove any you don't want under *Admin → Sources*; a removed source stays removed.
+Phantom pulls movies automatically. The sources are built in and on out of the box; under *Manage server → Sources* an admin can switch each on or off
+and sync it now, but not add or remove sources.
 
 - **Internet Archive – Feature Films**: public-domain films. Every archive.org torrent carries HTTP web seeds, so
   playback starts even with no peers.
 - **YTS**: small, well-seeded encodes, with posters, genres and IMDb ids on every movie.
 - **The Pirate Bay**: the top 100 of Movies, HD Movies and UHD Movies (or a search query).
-- **Torznab** (Jackett, Prowlarr, …) can be added for any other indexer you run.
 
 Downloading copyrighted movies without permission is illegal in many countries. You are responsible for complying
 with copyright law where you live.
@@ -94,7 +93,7 @@ with copyright law where you live.
   (*More → Sign in a TV*), or with a username and password
 
 **Server admin**
-- Sources (YTS, The Pirate Bay, Internet Archive queries, Torznab indexers), sync status, enable/disable
+- Sources (built in: YTS, The Pirate Bay, Internet Archive), sync status, on/off, sync now
 - Settings: server name, preferred quality, download/upload limits, max active downloads,
   stream cache lifetime, seeding, minimum seeders, auto-download
 - Idle stream caches are evicted automatically

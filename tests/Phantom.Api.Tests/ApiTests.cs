@@ -239,15 +239,26 @@ public class ApiTests : IClassFixture<PhantomFactory>
     }
 
     [Fact]
-    public async Task Torznab_source_requires_url_and_hides_api_key()
+    public async Task Sources_are_built_in_and_can_only_be_switched_on_or_off()
     {
         var client = await AdminClientAsync();
-        var bad = await client.PostAsJsonAsync("/api/sources", new UpsertSourceRequest("x", SourceType.Torznab, null, null, null, null, false, 60), Json);
-        Assert.Equal(HttpStatusCode.BadRequest, bad.StatusCode);
+        Assert.Equal(HttpStatusCode.MethodNotAllowed, (await client.PostAsJsonAsync("/api/sources", new { Name = "x" }, Json)).StatusCode);
 
-        var ok = await client.PostAsJsonAsync("/api/sources", new UpsertSourceRequest("Indexer", SourceType.Torznab, "http://127.0.0.1:9/torznab", "secret", "2000", null, false, 60), Json);
-        var body = await ok.Content.ReadAsStringAsync();
-        Assert.DoesNotContain("secret", body);
-        Assert.True(JsonSerializer.Deserialize<SourceDto>(body, Json)!.HasApiKey);
+        // The test server skips seeding, so add one directly.
+        int id;
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<PhantomDbContext>();
+            var source = new Source { Name = "YTS", Type = SourceType.Yts, Enabled = false };
+            db.Sources.Add(source);
+            db.SaveChanges();
+            id = source.Id;
+        }
+        Assert.False((await client.DeleteAsync($"/api/sources/{id}")).IsSuccessStatusCode);
+
+        var updated = await (await client.PutAsync($"/api/sources/{id}/enabled?value=true", null)).Content.ReadFromJsonAsync<SourceDto>(Json);
+        Assert.True(updated!.Enabled);
     }
+
+
 }

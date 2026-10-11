@@ -8,5 +8,6 @@ public partial class AccountPage : ContentPage
     {
         InitializeComponent();
         BindingContext = vm;
+        vm.LoadCommand.Execute(null);
     }
 }

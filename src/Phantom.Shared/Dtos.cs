@@ -206,7 +206,8 @@ public record CreateServerDownloadRequest(int MovieId, int? ReleaseId);
 
 // ---------- Sources ----------
 
-// Stored as integers: append new types, never reorder.
+// Stored as integers: append new types, never reorder. Torznab is no longer used (sources are built in) but keeps its
+// number so the others don't shift.
 public enum SourceType { InternetArchive, Torznab, Yts, PirateBay }
 
 public record SourceDto(
@@ -222,15 +223,6 @@ public record SourceDto(
     DateTime? LastSyncAt,
     string? LastSyncResult);
 
-public record UpsertSourceRequest(
-    string Name,
-    SourceType Type,
-    string? BaseUrl,
-    string? ApiKey,
-    string? Categories,
-    string? Query,
-    bool Enabled,
-    int SyncIntervalMinutes);
 
 // ---------- Server ----------
 
