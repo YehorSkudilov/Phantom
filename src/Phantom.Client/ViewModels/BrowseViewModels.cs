@@ -67,7 +67,7 @@ public partial class HomeViewModel(PhantomApi api, SettingsService settings, Dow
     private Task GoToDownloads() => Views.MainPage.ShowTab(Views.AppTab.Downloads);
 }
 
-/// <summary>What the Library lists.</summary>
+/// <summary>What the Search tab lists.</summary>
 public enum LibraryKind { All, Movies, Shows }
 
 public record SortOption(string Name, MovieSort Sort, bool Descending)
@@ -75,15 +75,13 @@ public record SortOption(string Name, MovieSort Sort, bool Descending)
     public override string ToString() => Name;
 }
 
-public partial class LibraryViewModel(PhantomApi api, SettingsService settings, SearchViewModel search,
-    MovieListViewModel watchlist, MovieListViewModel history, CollectionsViewModel collections, PlaylistsViewModel playlists)
-    : BaseViewModel, IQueryAttributable
+/// <summary>
+/// The profile's own lists, in the My Stuff tab: the watchlist, what was watched lately, collections and playlists.
+/// </summary>
+public partial class MyStuffViewModel(MovieListViewModel watchlist, MovieListViewModel history, CollectionsViewModel collections,
+    PlaylistsViewModel playlists) : BaseViewModel
 {
-    /// <summary>The search box at the top of the Library tab.</summary>
-    public SearchViewModel Search => search;
-
-    // Sub-tabs: the whole library, then the profile's own lists.
-    public IReadOnlyList<string> Tabs { get; } = ["All", "Watchlist", "Recently watched", "Collections", "Playlists"];
+    public IReadOnlyList<string> Tabs { get; } = ["Watchlist", "Recently watched", "Collections", "Playlists"];
     public MovieListViewModel Watchlist { get; } = watchlist.Use("watchlist");
     public MovieListViewModel History { get; } = history.Use("history");
     public CollectionsViewModel Collections => collections;
@@ -91,22 +89,30 @@ public partial class LibraryViewModel(PhantomApi api, SettingsService settings, 
 
     [ObservableProperty] private int selectedTab;
 
-    partial void OnSelectedTabChanged(int value) => LoadSelectedTab();
+    partial void OnSelectedTabChanged(int value) => LoadSelectedTab(onlyIfEmpty: true);
 
     /// <summary>
-    /// Loads the open sub-tab's list the first time it's shown (the whole library loads itself as it scrolls). After
-    /// that it's reloaded by pulling down, not every time the tab appears.
+    /// Loads the open list: the first time it's shown, and again each time the tab comes back into view (what was
+    /// watched, or added to the watchlist, changes elsewhere in the app). Quietly, so the list stays on screen meanwhile.
     /// </summary>
-    public void LoadSelectedTab()
+    public void LoadSelectedTab(bool onlyIfEmpty = false)
     {
         switch (SelectedTab)
         {
-            case 1 when Watchlist.Movies.Count == 0: Watchlist.LoadCommand.Execute(null); break;
-            case 2 when History.Movies.Count == 0: History.LoadCommand.Execute(null); break;
-            case 3 when Collections.Collections.Count == 0: Collections.LoadCommand.Execute(null); break;
-            case 4 when Playlists.Playlists.Count == 0: Playlists.LoadCommand.Execute(null); break;
+            case 0 when !onlyIfEmpty || Watchlist.Movies.Count == 0: Watchlist.LoadCommand.Execute(null); break;
+            case 1 when !onlyIfEmpty || History.Movies.Count == 0: History.LoadCommand.Execute(null); break;
+            case 2 when !onlyIfEmpty || Collections.Collections.Count == 0: Collections.LoadCommand.Execute(null); break;
+            case 3 when !onlyIfEmpty || Playlists.Playlists.Count == 0: Playlists.LoadCommand.Execute(null); break;
         }
     }
+}
+
+/// <summary>The Search tab: the whole library to browse (sorted and filtered) and a search box across it.</summary>
+public partial class LibraryViewModel(PhantomApi api, SettingsService settings, SearchViewModel search)
+    : BaseViewModel, IQueryAttributable
+{
+    /// <summary>The search box at the top of the Search tab.</summary>
+    public SearchViewModel Search => search;
 
     private const int PageSize = 90;
 
@@ -176,7 +182,6 @@ public partial class LibraryViewModel(PhantomApi api, SettingsService settings, 
 
     public void ApplyQueryAttributes(IDictionary<string, object> query)
     {
-        SelectedTab = 0;
         _suspendReload = true;
         SelectedSort = SortOptions[0];
         SelectedGenre = "All genres";

@@ -4,7 +4,7 @@ using AppSkeleton;
 namespace Phantom.Views;
 
 /// <summary>The tabs, in the order they sit in the nav bar (and swipe).</summary>
-public enum AppTab { Home, Library, Downloads, More }
+public enum AppTab { Discover, Search, MyStuff, Downloads, More }
 
 /// <summary>The signed-in root: the tabs live in a swipeable CView with a CNavBar underneath. Detail pages still push through Shell.</summary>
 public partial class MainPage : ContentPage
@@ -16,7 +16,7 @@ public partial class MainPage : ContentPage
     private CNavItem? _loadAfterSlide;
     private bool _visible;
 
-    public MainPage(HomePage home, LibraryPage library, DownloadsPage downloads, MorePage more)
+    public MainPage(HomePage home, LibraryPage library, MyStuffPage myStuff, DownloadsPage downloads, MorePage more)
     {
         InitializeComponent();
 
@@ -26,8 +26,9 @@ public partial class MainPage : ContentPage
         // In AppTab order. Material icon names; the filled font is used for the selected tab.
         _tabs =
         [
-            new() { Glyph = "home", PageName = "Home", Page = home, Color = color, SelectedColor = selected },
-            new() { Glyph = "video_library", PageName = "Library", Page = library, Color = color, SelectedColor = selected },
+            new() { Glyph = "explore", PageName = "Discover", Page = home, Color = color, SelectedColor = selected },
+            new() { Glyph = "search", PageName = "Search", Page = library, Color = color, SelectedColor = selected },
+            new() { Glyph = "bookmarks", PageName = "My Stuff", Page = myStuff, Color = color, SelectedColor = selected },
             new() { Glyph = "download_for_offline", PageName = "Downloads", Page = downloads, Color = color, SelectedColor = selected },
             new() { Glyph = "account_circle", PageName = "More", Page = more, Color = color, SelectedColor = selected },
         ];
@@ -47,7 +48,7 @@ public partial class MainPage : ContentPage
             NavBar.HorizontalOptions = LayoutOptions.Center;
             NavBar.WidthRequest = _tabs.Count * 80 + 16;
         }
-        NavBar.SelectItem(_tabs[(int)AppTab.Home]);
+        NavBar.SelectItem(_tabs[(int)AppTab.Discover]);
 
         _instance = new(this);
     }
@@ -61,19 +62,19 @@ public partial class MainPage : ContentPage
     }
 
     /// <summary>
-    /// Opens the Library tab with filters, e.g. <c>genre=Drama</c> or <c>actor=...&amp;sort=Year</c> - the keys
+    /// Opens the Search tab with filters, e.g. <c>genre=Drama</c> or <c>actor=...&amp;sort=Year</c> - the keys
     /// LibraryViewModel.ApplyQueryAttributes reads, as Shell used to pass them in a <c>//main/library?...</c> route.
     /// </summary>
     public static async Task ShowLibrary(string query)
     {
-        if (_instance?.TryGetTarget(out var page) == true && page._tabs[(int)AppTab.Library].Page.BindingContext is IQueryAttributable library)
+        if (_instance?.TryGetTarget(out var page) == true && page._tabs[(int)AppTab.Search].Page.BindingContext is IQueryAttributable library)
         {
             var parameters = query.Split('&', StringSplitOptions.RemoveEmptyEntries)
                 .Select(p => p.Split('=', 2))
                 .ToDictionary(p => p[0], p => (object)(p.Length > 1 ? p[1] : ""));
             library.ApplyQueryAttributes(parameters);
         }
-        await ShowTab(AppTab.Library);
+        await ShowTab(AppTab.Search);
     }
 
     private void Show(CNavItem item)
@@ -120,7 +121,7 @@ public partial class MainPage : ContentPage
         }
     }
 
-    /// <summary>The RefreshView showing on a tab (the Library has one per sub-tab, only one of them visible).</summary>
+    /// <summary>The RefreshView showing on a tab (My Stuff has one per list, only one of them visible).</summary>
     private static RefreshView? ActiveRefreshView(IVisualTreeElement element)
     {
         foreach (var child in element.GetVisualChildren())
@@ -133,7 +134,7 @@ public partial class MainPage : ContentPage
     }
 
     // Android's Back button (Shell hands it to this page): the visible tab gets it first, so it can close what's open
-    // on it (the Library's filters popup) instead of the app closing.
+    // on it (the Search tab's filters popup) instead of the app closing.
     protected override bool OnBackButtonPressed() =>
         _current?.Page is TabView tab && tab.HandleBack() || base.OnBackButtonPressed();
 

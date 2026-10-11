@@ -41,6 +41,7 @@ public static class MauiProgram
         // Tab pages keep their state; pushed pages are created per navigation.
         builder.Services.AddSingleton<HomeViewModel>();
         builder.Services.AddSingleton<LibraryViewModel>();
+        builder.Services.AddSingleton<MyStuffViewModel>();
         builder.Services.AddSingleton<SearchViewModel>();
         builder.Services.AddSingleton<DownloadsViewModel>();
         builder.Services.AddSingleton<MoreViewModel>();
@@ -62,6 +63,7 @@ public static class MauiProgram
         builder.Services.AddSingleton<MainPage>();
         builder.Services.AddSingleton<HomePage>();
         builder.Services.AddSingleton<LibraryPage>();
+        builder.Services.AddSingleton<MyStuffPage>();
         builder.Services.AddSingleton<DownloadsPage>();
         builder.Services.AddSingleton<MorePage>();
         builder.Services.AddTransient<ConnectPage>();

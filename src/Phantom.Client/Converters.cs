@@ -186,3 +186,13 @@ public class PosterWidthConverter : IValueConverter
 
     public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture) => throw new NotSupportedException();
 }
+
+/// <summary>Whether a Discover row (by its key) has a fuller list to open: not the rows picked for the profile.</summary>
+public class HasSeeAllConverter : IValueConverter
+{
+    public object Convert(object? value, Type targetType, object? parameter, System.Globalization.CultureInfo culture) =>
+        value is string key && key is not ("foryou" or "popular") && !key.StartsWith("because:");
+
+    public object ConvertBack(object? value, Type targetType, object? parameter, System.Globalization.CultureInfo culture) =>
+        throw new NotSupportedException();
+}

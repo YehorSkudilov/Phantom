@@ -168,6 +168,8 @@ public class ShowRowTests : IClassFixture<PhantomFactory>
         var client = await ClientAsync();
         var hubs = await client.GetFromJsonAsync<List<HubDto>>("/api/library/hubs", Json);
         Assert.Equal(["New Show", "Old Show"], hubs!.Single(h => h.Key == "shows-recent").Items.Select(i => i.Title));
+        // Discover always has picks and what's popular, even for a profile that hasn't watched anything yet.
+        Assert.Equal("Top Picks", hubs.Single(h => h.Key == "foryou").Title);
     }
 
     [Fact]

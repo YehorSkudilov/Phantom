@@ -26,6 +26,7 @@
             <local:SourceTypeConverter x:Key="SourceType" />
             <local:IntervalConverter x:Key="Interval" />
             <local:AllTrueConverter x:Key="AllTrue" />
+            <local:HasSeeAllConverter x:Key="HasSeeAll" />
             <local:Below100Converter x:Key="Below100" />
 
             <!-- Poster card used by every movie row/grid: artwork, watched tick, resume bar. -->

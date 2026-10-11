@@ -13,8 +13,11 @@
             <CollectionView.Header>
             <VerticalStackLayout Spacing="8">
                 <Grid ColumnDefinitions="Auto,*" Padding="16,18,16,4" ColumnSpacing="10">
-                    <Image Source="logo_mark.png" HeightRequest="28" />
-                    <Label Grid.Column="1" Text="{Binding Greeting}" Style="{StaticResource H2}" VerticalOptions="Center" />
+                    <Image Source="logo_mark.png" HeightRequest="36" />
+                    <VerticalStackLayout Grid.Column="1" VerticalOptions="Center">
+                        <Label Text="Discover" Style="{StaticResource H1}" />
+                        <Label Text="{Binding Greeting}" Style="{StaticResource Muted}" FontSize="13" />
+                    </VerticalStackLayout>
                 </Grid>
 
                 <!-- Offline banner: jump straight to downloaded movies -->
@@ -72,7 +75,9 @@
                             <VerticalStackLayout Spacing="8" Padding="0,14,0,0">
                                 <Grid ColumnDefinitions="*,Auto" Padding="16,0,8,0">
                                     <Label Text="{Binding Title}" Style="{StaticResource H2}" VerticalOptions="Center" />
+                                    <!-- Rows picked for the profile (For You, Popular Now, Because You Watched) are the whole list -->
                                     <Button Grid.Column="1" Text="See all ›" Style="{StaticResource GhostButton}"
+                                            IsVisible="{Binding Key, Converter={StaticResource HasSeeAll}}"
                                             Command="{Binding Source={RelativeSource AncestorType={x:Type vm:HomeViewModel}}, Path=SeeAllCommand, x:DataType=vm:HomeViewModel}"
                                             CommandParameter="{Binding .}" />
                                 </Grid>

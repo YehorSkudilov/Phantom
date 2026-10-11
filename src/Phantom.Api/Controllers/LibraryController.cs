@@ -10,7 +10,7 @@ namespace Phantom.Api.Controllers;
 [ApiController]
 [Authorize]
 [Route("api/library")]
-public class LibraryController(PhantomDbContext db, LibraryService library, ShowLibraryService shows) : ControllerBase
+public class LibraryController(PhantomDbContext db, LibraryService library, ShowLibraryService shows, DiscoverService discover) : ControllerBase
 {
     /// <summary>A page of the library: movies, or with kind=Show the shows.</summary>
     [HttpGet("movies")]
@@ -131,7 +131,10 @@ public class LibraryController(PhantomDbContext db, LibraryService library, Show
             ratings.OrderBy(ContentRatings.Rank).ToList());
     }
 
-    /// <summary>Home screen rows, in the same spirit as Plex's hubs.</summary>
+    /// <summary>
+    /// Discover's rows, in the same spirit as Plex's hubs: carrying on, then picked for this profile (see
+    /// <see cref="Recommender"/>) and what's popular, then the library's own rows.
+    /// </summary>
     [HttpGet("hubs")]
     public async Task<List<HubDto>> Hubs(CancellationToken ct)
     {
@@ -159,6 +162,9 @@ public class LibraryController(PhantomDbContext db, LibraryService library, Show
         await AddMixed("continue", "Continue Watching",
             continueMovies.ToDictionary(x => x.Id, x => x.Last), continueShows.ToDictionary(x => x.Id, x => x.Last), nextEpisode: true);
 
+        var picks = await discover.RowsAsync(User, userId, ct);
+        foreach (var row in picks) await AddRanked(row);
+
         await AddMixed("watchlist", "Watchlist",
             await db.Watchlist.Where(w => w.UserId == userId).ToDictionaryAsync(w => w.MovieId, w => (DateTime?)w.AddedAt, ct),
             await db.ShowWatchlist.Where(w => w.UserId == userId).ToDictionaryAsync(w => w.ShowId, w => (DateTime?)w.AddedAt, ct));
@@ -171,17 +177,6 @@ public class LibraryController(PhantomDbContext db, LibraryService library, Show
         await AddShows("shows-recent", "New On TV", shows.Visible(User)
             .Join(newestRelease, s => s.Id, r => r.ShowId, (s, r) => new { Show = s, r.Newest })
             .OrderByDescending(x => x.Newest).Select(x => x.Show));
-
-        // Recommendations: unwatched movies sharing genres with what this user finished.
-        var likedGenres = await db.WatchStates.Where(w => w.UserId == userId && w.Watched)
-            .SelectMany(w => w.Movie!.Genres).GroupBy(g => g.Name)
-            .OrderByDescending(g => g.Count()).Select(g => g.Key).Take(3).ToListAsync(ct);
-        if (likedGenres.Count > 0)
-        {
-            await Add("recommended", "Recommended For You",
-                visible.Where(m => !states.Any(w => w.MovieId == m.Id && w.Watched) && m.Genres.Any(g => likedGenres.Contains(g.Name)))
-                    .OrderByDescending(m => m.Rating));
-        }
 
         await Add("released", "Recently Released", visible.Where(m => m.Year != null).OrderByDescending(m => m.Year).ThenByDescending(m => m.AddedAt));
         await Add("top", "Top Rated", visible.Where(m => m.Rating != null).OrderByDescending(m => m.Rating));
@@ -197,6 +192,20 @@ public class LibraryController(PhantomDbContext db, LibraryService library, Show
             await Add($"genre:{genre}", genre, visible.Where(m => m.Genres.Any(g => g.Name == genre)).OrderByDescending(m => m.Rating).ThenByDescending(m => m.AddedAt));
 
         return hubs;
+
+        // A row of movies and shows in the order given.
+        async Task AddRanked(DiscoverRow row)
+        {
+            var movieIds = row.Titles.Where(t => !t.IsShow).Select(t => t.Id).ToList();
+            var showIds = row.Titles.Where(t => t.IsShow).Select(t => t.Id).ToList();
+            var found = (await library.SummariesAsync(visible.Where(m => movieIds.Contains(m.Id)), userId, ct))
+                .Select(m => (Ref: new TitleRef(false, m.Id), Item: m))
+                .Concat((await shows.SummariesAsync(shows.Visible(User).Where(s => showIds.Contains(s.Id)), userId, ct))
+                    .Select(s => (Ref: new TitleRef(true, s.Id), Item: s)))
+                .ToDictionary(x => x.Ref, x => x.Item);
+            var items = row.Titles.Where(found.ContainsKey).Select(t => found[t]).ToList();
+            if (items.Count > 0) hubs.Add(new HubDto(row.Key, row.Title, items));
+        }
 
         async Task AddShows(string key, string title, IQueryable<Show> q)
         {

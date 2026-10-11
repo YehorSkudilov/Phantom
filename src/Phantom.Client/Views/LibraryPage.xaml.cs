@@ -34,7 +34,6 @@ public partial class LibraryPage : TabView
     public override void Load()
     {
         if (_vm.Movies.Count == 0) _vm.ReloadCommand.Execute(null);
-        _vm.LoadSelectedTab();
     }
 
     // Loads the next page once the list is halfway into the last one, so it's in before the user gets there. The list's own "remaining items" event
