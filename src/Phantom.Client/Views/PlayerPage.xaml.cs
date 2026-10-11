@@ -503,10 +503,10 @@ public partial class PlayerPage : ContentPage
     // the request, so the server stops pulling that part of the torrent and playback isn't kept waiting behind it.
     private async void OnSeekValueChanged(object? sender, ValueChangedEventArgs e)
     {
-        if (!_seeking) return;
+        if (!_seeking || !double.IsFinite(e.NewValue)) return;
         var total = _vm.TotalDuration(Media.Duration);
         if (total <= TimeSpan.Zero) return;
-        var at = total * e.NewValue;
+        var at = total * Math.Clamp(e.NewValue, 0, 1);
 
         SeekPreview.IsVisible = true;
         SeekPreviewTime.Text = TimeSpanConverter.Format(at);

@@ -211,11 +211,17 @@ public class PhantomApi(HttpClient http, SettingsService settings)
         return await res.Content.ReadAsStringAsync(ct);
     }
 
-    /// <summary>A seek-bar preview frame, or null when the server has none for that point.</summary>
+    /// <summary>
+    /// A seek-bar preview frame, or null when the server has none for that point. Only a real JPEG counts: the server
+    /// answers 204 (no body) when a newer preview replaced this one, and an empty image crashed the app on iOS when the
+    /// image view tried to decode it.
+    /// </summary>
     public async Task<byte[]?> ThumbnailAsync(string url, CancellationToken ct)
     {
         using var res = await http.GetAsync(url, ct);
-        return res.IsSuccessStatusCode ? await res.Content.ReadAsByteArrayAsync(ct) : null;
+        if (!res.IsSuccessStatusCode || res.StatusCode == HttpStatusCode.NoContent) return null;
+        var bytes = await res.Content.ReadAsByteArrayAsync(ct);
+        return bytes is [0xFF, 0xD8, ..] && bytes.Length > 64 ? bytes : null;
     }
 
     // ---------- Lists ----------

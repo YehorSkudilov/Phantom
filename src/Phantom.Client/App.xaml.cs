@@ -19,6 +19,11 @@ public partial class App : Application
         });
     }
 
-    protected override Window CreateWindow(IActivationState? activationState) =>
-        new(new AppShell(_settings)) { Title = "Phantom" };
+    protected override Window CreateWindow(IActivationState? activationState)
+    {
+        var shell = new AppShell(_settings);
+        // If the app crashed last time, say so once it's up, with the details to copy into feedback.
+        shell.Loaded += async (_, _) => await CrashLog.OfferLastAsync(shell);
+        return new Window(shell) { Title = "Phantom" };
+    }
 }
