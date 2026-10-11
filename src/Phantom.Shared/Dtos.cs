@@ -215,7 +215,7 @@ public record CreateServerDownloadRequest(int MovieId, int? ReleaseId);
 
 // Stored as integers: append new types, never reorder. Torznab is no longer used (sources are built in) but keeps its
 // number so the others don't shift.
-public enum SourceType { InternetArchive, Torznab, Yts, PirateBay }
+public enum SourceType { InternetArchive, Torznab, Yts, PirateBay, Knaben }
 
 public record SourceDto(
     int Id,

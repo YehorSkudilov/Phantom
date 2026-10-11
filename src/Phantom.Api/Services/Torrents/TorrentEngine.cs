@@ -275,6 +275,41 @@ public sealed class TorrentEngine : IHostedService, IAsyncDisposable
             m.Peers.Available + m.OpenConnections, video?.Length ?? 0, video is not null && IsFileComplete(video));
     }
 
+    /// <summary>Free space on the disk holding the stream cache.</summary>
+    public long FreeDiskBytes => new DriveInfo(Path.GetFullPath(_options.CacheDirectory)).AvailableFreeSpace;
+
+    /// <summary>
+    /// When the disk runs low, clears stream caches (never server downloads) that aren't playing right now, least
+    /// recently watched first, plus the seek-preview thumbnails, until there's <see cref="PhantomOptions.MinFreeDiskGb"/>
+    /// free again. A full disk otherwise stops every stream and download, and the database's writes.
+    /// </summary>
+    public async Task EnsureFreeSpaceAsync()
+    {
+        if (_engine is null) return;
+        var wanted = (long)_options.MinFreeDiskGb << 30;
+        if (FreeDiskBytes >= wanted) return;
+
+        var thumbnails = Path.Combine(_options.CacheDirectory, "thumbnails");
+        if (Directory.Exists(thumbnails)) Directory.Delete(thumbnails, recursive: true);
+
+        var playing = DateTime.UtcNow - TimeSpan.FromMinutes(5);
+        var candidates = _engine.Torrents
+            .Select(m => (Manager: m, Hash: m.InfoHashes.V1OrV2.ToHex().ToLowerInvariant()))
+            .Where(t => !_pinned.ContainsKey(t.Hash))
+            .Select(t => (t.Hash, t.Manager.Name, Last: _lastAccess.TryGetValue(t.Hash, out var last) ? last : DateTime.MinValue))
+            .Where(t => t.Last < playing)
+            .OrderBy(t => t.Last)
+            .ToList();
+        foreach (var (hash, name, _) in candidates)
+        {
+            if (FreeDiskBytes >= wanted) break;
+            _log.LogWarning("Low disk space: clearing the stream cache of {Name}", name);
+            await RemoveAsync(hash, deleteData: true);
+        }
+        if (FreeDiskBytes < wanted)
+            _log.LogWarning("Disk space still low ({Free} MB free) after clearing idle stream caches", FreeDiskBytes >> 20);
+    }
+
     /// <summary>Stops and deletes streaming-cache torrents nobody has touched for a while.</summary>
     public async Task EvictIdleAsync(TimeSpan idle)
     {

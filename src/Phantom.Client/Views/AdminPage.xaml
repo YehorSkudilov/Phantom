@@ -11,7 +11,9 @@
         <ScrollView>
             <VerticalStackLayout Padding="16" Spacing="14">
                 <Label Text="{Binding ErrorMessage}" TextColor="{StaticResource Danger}" IsVisible="{Binding ErrorMessage, Converter={StaticResource HasValue}}" />
+                <controls:TabStrip Tabs="{Binding Tabs}" SelectedIndex="{Binding SelectedTab}" Margin="-16,0" />
 
+                <VerticalStackLayout Spacing="14" IsVisible="{Binding SelectedTab, Converter={StaticResource Equals}, ConverterParameter=0}">
                 <!-- Status -->
                 <Border Style="{StaticResource Card}">
                     <Grid ColumnDefinitions="*,*,*" RowDefinitions="Auto,Auto" RowSpacing="2">
@@ -73,6 +75,9 @@
                     </BindableLayout.ItemTemplate>
                 </VerticalStackLayout>
 
+                </VerticalStackLayout>
+
+                <VerticalStackLayout Spacing="14" IsVisible="{Binding SelectedTab, Converter={StaticResource Equals}, ConverterParameter=1}">
                 <!-- Sources -->
                 <Grid ColumnDefinitions="*,Auto">
                     <Label Text="Sources" Style="{StaticResource H2}" VerticalOptions="Center" />
@@ -109,8 +114,10 @@
                     </BindableLayout.ItemTemplate>
                 </VerticalStackLayout>
 
+                </VerticalStackLayout>
+
+                <VerticalStackLayout Spacing="14" IsVisible="{Binding SelectedTab, Converter={StaticResource Equals}, ConverterParameter=2}">
                 <!-- Accounts -->
-                <Label Text="Accounts" Style="{StaticResource H2}" Margin="0,8,0,0" />
                 <Label Text="Everyone signs in with their own account, and each account has its own profiles."
                        Style="{StaticResource Muted}" FontSize="12" />
                 <Border Style="{StaticResource Card}" Padding="0">
@@ -140,8 +147,10 @@
                 <Button Text="Add account" Style="{StaticResource SecondaryButton}" Command="{Binding AddAccountCommand}"
                         ImageSource="{controls:Icon person_add, Size=20}" ContentLayout="Left,6" />
 
+                </VerticalStackLayout>
+
+                <VerticalStackLayout Spacing="14" IsVisible="{Binding SelectedTab, Converter={StaticResource Equals}, ConverterParameter=3}">
                 <!-- Settings -->
-                <Label Text="Server settings" Style="{StaticResource H2}" Margin="0,8,0,0" />
                 <Border Style="{StaticResource Card}">
                     <VerticalStackLayout Spacing="10">
                         <Label Text="Server name" Style="{StaticResource Muted}" />
@@ -171,6 +180,7 @@
                         <Button Text="Save settings" Command="{Binding SaveSettingsCommand}" />
                     </VerticalStackLayout>
                 </Border>
+                </VerticalStackLayout>
             </VerticalStackLayout>
         </ScrollView>
     </RefreshView>

@@ -1,19 +1,26 @@
 using System.Globalization;
 using System.Text.Json;
+using Microsoft.Extensions.Options;
 using Phantom.Api.Data;
 using Phantom.Shared;
 
 namespace Phantom.Api.Services.Sources;
 
 /// <summary>
-/// Reads The Pirate Bay through its JSON API (apibay.org). With no <see cref="Source.Query"/> it pulls the
-/// all-time and last-48-hours top 100 of each category; with one it searches. <see cref="Source.Categories"/> is a comma-separated list
-/// of TPB categories (201 Movies, 207 HD Movies, 211 UHD/4K Movies).
+/// Reads The Pirate Bay through its JSON API (apibay.org), which has no full listing: each sync takes the all-time and
+/// last-48-hours top 100 of every movie category, then searches the next <see cref="SearchesPerSync"/> of
+/// <see cref="CrawlTerms"/> (100 results each) until the walk is done. <see cref="Source.Categories"/> lists the movie
+/// categories: 201 Movies, 202 DVDR, 207 HD, 209 3D, 211 UHD/4K.
 /// </summary>
-public class PirateBaySource(HttpClient http, ILogger<PirateBaySource> log) : IMovieSource
+public class PirateBaySource(HttpClient http, IOptions<PhantomOptions> options, ILogger<PirateBaySource> log) : IMovieSource, IBackfillingSource
 {
     public const string DefaultBaseUrl = "https://apibay.org";
-    public const string DefaultCategories = "201,207,211";
+    public const string DefaultCategories = "201,202,207,209,211";
+    private const int SearchesPerSync = 25;
+
+    private CatalogueCrawl Crawl(Source source) => new(options.Value.DataDirectory, $"tpb-{source.Id}");
+
+    public bool HasMore(Source source) => string.IsNullOrWhiteSpace(source.Query) && Crawl(source).HasMore;
 
     public SourceType Type => SourceType.PirateBay;
 
@@ -42,11 +49,34 @@ public class PirateBaySource(HttpClient http, ILogger<PirateBaySource> log) : IM
                 }
             }
         }
-        // The same torrent can sit in several top lists.
+        // The keyword walk: apibay's search ignores its category filter for some queries, so filter here instead.
+        var crawl = Crawl(source);
+        if (string.IsNullOrWhiteSpace(source.Query) && crawl.Next() is var (step, _))
+        {
+            var movieCategories = cats.ToHashSet();
+            var terms = CrawlTerms.All;
+            for (var i = 0; i < SearchesPerSync && step < terms.Count; i++, step++)
+            {
+                await Task.Delay(300, ct); // be polite
+                try
+                {
+                    results.AddRange(Parse(await http.GetStringAsync($"{baseUrl}/q.php?q={Uri.EscapeDataString(terms[step])}", ct), movieCategories));
+                }
+                catch (HttpRequestException ex)
+                {
+                    log.LogWarning(ex, "Pirate Bay search {Term} failed", terms[step]);
+                }
+            }
+            if (step >= terms.Count) crawl.Finish();
+            else crawl.Save(step, 0);
+        }
+
+        // The same torrent can sit in several lists.
         return results.DistinctBy(r => r.InfoHash).ToList();
     }
 
-    public static IReadOnlyList<SourceRelease> Parse(string json)
+    /// <param name="categories">When set, only items in these categories (search results mix in TV, games...).</param>
+    public static IReadOnlyList<SourceRelease> Parse(string json, IReadOnlySet<string>? categories = null)
     {
         using var doc = JsonDocument.Parse(json);
         if (doc.RootElement.ValueKind != JsonValueKind.Array) return [];
@@ -58,6 +88,7 @@ public class PirateBaySource(HttpClient http, ILogger<PirateBaySource> log) : IM
             var name = Str(item, "name");
             // An empty search returns one placeholder row with a zero hash.
             if (string.IsNullOrWhiteSpace(hash) || hash.Trim('0').Length == 0 || string.IsNullOrWhiteSpace(name)) continue;
+            if (categories is not null && !categories.Contains(Str(item, "category") ?? "")) continue;
 
             var parsed = ReleaseNameParser.Parse(name);
             var imdb = Str(item, "imdb");

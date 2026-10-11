@@ -46,6 +46,7 @@ builder.Services.AddHostedService(sp => sp.GetRequiredService<SourceSyncService>
 builder.Services.AddHttpClient<IMovieSource, InternetArchiveSource>(c => c.Timeout = TimeSpan.FromSeconds(30));
 builder.Services.AddHttpClient<IMovieSource, YtsSource>(SourceClient);
 builder.Services.AddHttpClient<IMovieSource, PirateBaySource>(SourceClient);
+builder.Services.AddHttpClient<IMovieSource, KnabenSource>(SourceClient);
 builder.Services.AddHttpClient<IMetadataProvider, TmdbMetadataProvider>(c => c.Timeout = TimeSpan.FromSeconds(15));
 
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme).AddJwtBearer();
@@ -144,23 +145,38 @@ static async Task UpgradeSchemaAsync(PhantomDbContext db)
     }
 }
 
-// The sources are built in: each exists on every server (added on first start, and restored if missing). Admins can
-// only switch them on or off.
+// The sources are built in: each exists on every server and keeps the definition below (added on first start, put back
+// if missing, and corrected if a stored copy drifted). Admins can only switch them on or off.
 static async Task SeedSourcesAsync(PhantomDbContext db, PhantomOptions options)
 {
-    Source[] defaults =
+    Source[] builtIn =
     [
+        new() { Name = "YTS", Type = SourceType.Yts, Categories = "4", SyncIntervalMinutes = 180 },
+        new() { Name = "Knaben (many sites)", Type = SourceType.Knaben, SyncIntervalMinutes = 180 },
+        new() { Name = "The Pirate Bay", Type = SourceType.PirateBay, Categories = PirateBaySource.DefaultCategories, SyncIntervalMinutes = 180 },
         new()
         {
-            Name = "Internet Archive – Feature Films", Type = SourceType.InternetArchive,
+            Name = "Internet Archive - Feature Films", Type = SourceType.InternetArchive,
             Query = InternetArchiveSource.DefaultQuery, Categories = "100", SyncIntervalMinutes = 720,
         },
-        new() { Name = "YTS", Type = SourceType.Yts, Categories = "4", SyncIntervalMinutes = 180 },
-        new() { Name = "The Pirate Bay", Type = SourceType.PirateBay, Categories = PirateBaySource.DefaultCategories, SyncIntervalMinutes = 180 },
     ];
-    foreach (var source in defaults)
-        if (!await db.Sources.AnyAsync(s => s.Type == source.Type)) db.Sources.Add(source);
+    foreach (var definition in builtIn)
+    {
+        var stored = await db.Sources.FirstOrDefaultAsync(s => s.Type == definition.Type);
+        if (stored is null)
+        {
+            db.Sources.Add(definition);
+            continue;
+        }
+        stored.Name = definition.Name;
+        stored.BaseUrl = null;
+        stored.ApiKey = null;
+        stored.Query = definition.Query;
+        stored.Categories = definition.Categories;
+        stored.SyncIntervalMinutes = definition.SyncIntervalMinutes;
+    }
 }
+
 
 public partial class Program;
 

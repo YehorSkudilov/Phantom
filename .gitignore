@@ -63,7 +63,7 @@ nunit-*.xml
 # the whole folder (that would silently skip new entity files).
 **/[Dd]ata/phantom.db*
 **/[Dd]ata/jwt.key
-**/[Dd]ata/yts-catalogue-*.txt
+**/[Dd]ata/crawl-*.txt
 **/[Dd]ata/cache/
 **/[Dd]ata/media/
 **/[Dd]ata/engine/

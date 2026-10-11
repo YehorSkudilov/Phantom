@@ -18,7 +18,7 @@ The **client** (.NET MAUI) gives you a Plex-like experience on Android, iOS, mac
 └────────────────────┘                               │  Source sync · TMDB metadata     │
                                                      └──────────────┬───────────────────┘
                                                                     │ BitTorrent / web seeds
-                                                      Internet Archive · YTS · The Pirate Bay
+                                                      YTS · Knaben · The Pirate Bay · Internet Archive
 ```
 
 ## Projects
@@ -36,10 +36,15 @@ The **client** (.NET MAUI) gives you a Plex-like experience on Android, iOS, mac
 Phantom pulls movies automatically. The sources are built in and on out of the box; under *Manage server → Sources* an admin can switch each on or off
 and sync it now, but not add or remove sources.
 
-- **Internet Archive – Feature Films**: public-domain films. Every archive.org torrent carries HTTP web seeds, so
-  playback starts even with no peers.
-- **YTS**: small, well-seeded encodes, with posters, genres and IMDb ids on every movie.
-- **The Pirate Bay**: the top 100 of Movies, HD Movies and UHD Movies (or a search query).
+- **YTS**: small, well-seeded encodes with posters, genres and IMDb ids; works through its whole catalogue (~77,000 movies).
+- **Knaben**: one search over many torrent sites (The Pirate Bay, YTS, 1337x, RuTracker, ...); crawls every release
+  year and common release tags, most-seeded first.
+- **The Pirate Bay**: the all-time and last-48-hours top 100 of every movie category, plus the same keyword crawl.
+- **Internet Archive - Feature Films**: public-domain films with HTTP web seeds, so playback starts even with no peers.
+
+The catalogue crawls run a batch per sync, a minute apart, until done, and start over weekly to pick up new releases;
+where each got to is kept in the data folder. New movies get TMDB artwork as they arrive, so the first full import
+takes several hours.
 
 Downloading copyrighted movies without permission is illegal in many countries. You are responsible for complying
 with copyright law where you live.
@@ -93,7 +98,8 @@ with copyright law where you live.
   (*More → Sign in a TV*), or with a username and password
 
 **Server admin**
-- Sources (built in: YTS, The Pirate Bay, Internet Archive), sync status, on/off, sync now
+- Sources (built in: YTS, Knaben, The Pirate Bay, Internet Archive), sync status, on/off, sync now
+- Low disk space: idle stream caches are cleared, oldest first, below `Phantom:MinFreeDiskGb` (5 GB) free
 - Settings: server name, preferred quality, download/upload limits, max active downloads,
   stream cache lifetime, seeding, minimum seeders, auto-download
 - Idle stream caches are evicted automatically

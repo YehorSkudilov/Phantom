@@ -113,7 +113,7 @@ public class InitialConverter : IValueConverter
     public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture) => throw new NotSupportedException();
 }
 
-/// <summary>A source's kind as people say it: YTS, The Pirate Bay, Internet Archive.</summary>
+/// <summary>A source's kind as people say it: YTS, The Pirate Bay, Knaben, Internet Archive.</summary>
 public class SourceTypeConverter : IValueConverter
 {
     public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture) => value switch
@@ -121,6 +121,7 @@ public class SourceTypeConverter : IValueConverter
         Phantom.Shared.SourceType.InternetArchive => "Internet Archive",
         Phantom.Shared.SourceType.Yts => "YTS",
         Phantom.Shared.SourceType.PirateBay => "The Pirate Bay",
+        Phantom.Shared.SourceType.Knaben => "Knaben (many sites)",
         _ => value?.ToString() ?? "",
     };
 

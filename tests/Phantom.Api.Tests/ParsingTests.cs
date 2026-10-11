@@ -110,6 +110,43 @@ public class PirateBaySourceTests
             """));
 }
 
+public class KnabenSourceTests
+{
+    [Fact]
+    public void Keeps_movies_and_skips_episodes_and_other_categories()
+    {
+        var (releases, hits, total) = KnabenSource.Parse("""
+            {"total":{"relation":"eq","value":5604},"hits":[
+              {"title":"Fight Club (1999) 1080p BrRip x264 -YIFY","hash":"ABCDEF0123456789ABCDEF0123456789ABCDEF01","categoryId":[3001000,3000000],
+               "bytes":1825361101,"seeders":700,"peers":720,"magnetUrl":"magnet:?xt=urn:btih:ABCDEF0123456789ABCDEF0123456789ABCDEF01"},
+              {"title":"Some Show S01E02 1080p","hash":"BBCDEF0123456789ABCDEF0123456789ABCDEF01","categoryId":[3000000],"seeders":5},
+              {"title":"Album (1999) FLAC","hash":"CBCDEF0123456789ABCDEF0123456789ABCDEF01","categoryId":[1000000],"seeders":5}
+            ]}
+            """);
+        Assert.Equal(3, hits);
+        Assert.Equal(5604, total);
+        var r = Assert.Single(releases);
+        Assert.Equal("Fight Club", r.Title);
+        Assert.Equal(1999, r.Year);
+        Assert.Equal("1080p", r.Quality);
+        Assert.Equal(700, r.Seeders);
+        Assert.Equal(20, r.Leechers);
+    }
+}
+
+public class PirateBayCategoryTests
+{
+    [Fact]
+    public void Search_results_are_filtered_to_movie_categories()
+    {
+        var releases = PirateBaySource.Parse("""
+            [{"name":"The Matrix (1999) 1080p","info_hash":"ABCDEF0123456789ABCDEF0123456789ABCDEF01","category":"207","seeders":"9"},
+             {"name":"The Matrix soundtrack (1999)","info_hash":"BBCDEF0123456789ABCDEF0123456789ABCDEF01","category":"101","seeders":"9"}]
+            """, new HashSet<string> { "201", "207" });
+        Assert.Equal("The Matrix", Assert.Single(releases).Title);
+    }
+}
+
 public class SubtitleConverterTests
 {
     [Fact]

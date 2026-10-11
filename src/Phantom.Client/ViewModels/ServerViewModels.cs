@@ -60,6 +60,8 @@ public partial class MoreViewModel(PhantomApi api, SettingsService settings) : B
     [ObservableProperty] private string avatarColor = "#8B5CF6";
     [ObservableProperty] private string initial = "?";
 
+    public string AppVersion => $"Phantom {AppInfo.Current.VersionString} · {settings.ServerUrl}";
+
     [RelayCommand]
     public Task Load() => RunAsync(async () =>
     {
@@ -119,10 +121,6 @@ public partial class SettingsViewModel(SettingsService settings) : BaseViewModel
     [ObservableProperty] private double subtitleSize = settings.SubtitleSize;
     [ObservableProperty] private int skipForward = settings.SkipForwardSeconds;
     [ObservableProperty] private int skipBack = settings.SkipBackSeconds;
-    [ObservableProperty] private bool wifiOnly = settings.DownloadOnWifiOnly;
-
-    public string ServerUrl => settings.ServerUrl;
-    public string AppVersion => $"Phantom {AppInfo.Current.VersionString} ({AppInfo.Current.BuildString})";
 
     partial void OnQualityChanged(QualityOption value) => settings.StreamingQualityIndex = QualityOption.All.ToList().IndexOf(value);
     partial void OnAutoPlayNextChanged(bool value) => settings.AutoPlayNext = value;
@@ -132,7 +130,6 @@ public partial class SettingsViewModel(SettingsService settings) : BaseViewModel
     partial void OnSubtitleSizeChanged(double value) => settings.SubtitleSize = value;
     partial void OnSkipForwardChanged(int value) => settings.SkipForwardSeconds = value;
     partial void OnSkipBackChanged(int value) => settings.SkipBackSeconds = value;
-    partial void OnWifiOnlyChanged(bool value) => settings.DownloadOnWifiOnly = value;
 }
 
 /// <summary>Server dashboard for admins: activity, sources and server settings.</summary>
@@ -141,6 +138,9 @@ public partial class AdminViewModel(PhantomApi api) : BaseViewModel
     public ObservableCollection<NowPlayingDto> Sessions { get; } = [];
     public ObservableCollection<SourceDto> Sources { get; } = [];
     public ObservableCollection<UserDto> Accounts { get; } = [];
+
+    public IReadOnlyList<string> Tabs { get; } = ["Overview", "Sources", "Accounts", "Server settings"];
+    [ObservableProperty] private int selectedTab;
     public IReadOnlyList<string> QualityChoices { get; } = ["2160p", "1080p", "720p", "SD"];
 
     [ObservableProperty]

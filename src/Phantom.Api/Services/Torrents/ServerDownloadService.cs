@@ -86,6 +86,7 @@ public class ServerDownloadService(IServiceScopeFactory scopes, TorrentEngine en
             _lastEviction = DateTime.UtcNow;
             await engine.EvictIdleAsync(TimeSpan.FromHours(Math.Max(1, settings.StreamCacheHours)));
         }
+        await engine.EnsureFreeSpaceAsync();
     }
 
     private async Task StartAsync(int downloadId, Release release, CancellationToken ct)

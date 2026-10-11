@@ -38,26 +38,31 @@ public class YtsSource(HttpClient http, IOptions<PhantomOptions> options, ILogge
         }
 
         // Then the next stretch of the back catalogue.
-        var next = ReadCursor(source) ?? pages + 1;
-        if (next > 0)
+        var crawl = Crawl(source);
+        if (crawl.Next() is var (step, _))
         {
+            var next = Math.Max(step, pages + 1);
+            var finished = false;
             for (var i = 0; i < BackfillPages; i++, next++)
             {
                 var batch = await PageAsync(baseUrl, source, next, ct);
                 results.AddRange(batch.Releases);
                 if (batch.MovieCount < PageSize)
                 {
-                    next = 0; // reached the end
+                    finished = true;
                     break;
                 }
             }
-            WriteCursor(source, next);
+            if (finished) crawl.Finish();
+            else crawl.Save(next, 0);
+            log.LogDebug("YTS catalogue at page {Page}", next);
         }
-        log.LogDebug("YTS returned {Count} releases (catalogue page {Page})", results.Count, next);
         return results;
     }
 
-    public bool HasMore(Source source) => ReadCursor(source) is not 0;
+    private CatalogueCrawl Crawl(Source source) => new(options.Value.DataDirectory, $"yts-{source.Id}");
+
+    public bool HasMore(Source source) => Crawl(source).HasMore;
 
     private async Task<(IReadOnlyList<SourceRelease> Releases, int MovieCount)> PageAsync(string baseUrl, Source source, int page, CancellationToken ct)
     {
@@ -66,13 +71,6 @@ public class YtsSource(HttpClient http, IOptions<PhantomOptions> options, ILogge
         return Parse(await http.GetStringAsync(url, ct));
     }
 
-    // The next back-catalogue page for this source, 0 once it's all in, null before the first sync.
-    private string CursorPath(Source source) => Path.Combine(options.Value.DataDirectory, $"yts-catalogue-{source.Id}.txt");
-
-    private int? ReadCursor(Source source) =>
-        File.Exists(CursorPath(source)) && int.TryParse(File.ReadAllText(CursorPath(source)), out var page) ? page : null;
-
-    private void WriteCursor(Source source, int page) => File.WriteAllText(CursorPath(source), page.ToString());
 
     public static (IReadOnlyList<SourceRelease> Releases, int MovieCount) Parse(string json)
     {

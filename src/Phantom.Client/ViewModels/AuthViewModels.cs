@@ -232,9 +232,6 @@ public partial class AccountViewModel(PhantomApi api, SettingsService settings) 
         await ToastAsync("Account saved");
     });
 
-    [RelayCommand]
-    private Task Profiles() => GoToAsync("//profiles");
-
     /// <summary>On a managed profile, the account's name comes from its default profile.</summary>
     [RelayCommand]
     public Task Load() => Username.Length > 0 ? Task.CompletedTask : RunAsync(async () =>

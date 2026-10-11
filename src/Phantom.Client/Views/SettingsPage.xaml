@@ -4,7 +4,7 @@
              xmlns:vm="clr-namespace:Phantom.ViewModels"
              x:Class="Phantom.Views.SettingsPage"
              x:DataType="vm:SettingsViewModel"
-             Title="Settings">
+             Title="Playback and subtitles">
     <ContentPage.Resources>
         <Style x:Key="Row" TargetType="Grid">
             <Setter Property="ColumnDefinitions" Value="*,Auto" />
@@ -53,20 +53,6 @@
                 </VerticalStackLayout>
             </Border>
 
-            <Border Style="{StaticResource Card}">
-                <VerticalStackLayout Spacing="10">
-                    <Label Text="Downloads" Style="{StaticResource H2}" />
-                    <Grid Style="{StaticResource Row}">
-                        <Label Text="Download over Wi-Fi only" VerticalOptions="Center" />
-                        <Switch Grid.Column="1" IsToggled="{Binding WifiOnly}" />
-                    </Grid>
-                </VerticalStackLayout>
-            </Border>
-
-            <VerticalStackLayout Spacing="4" Padding="4,8">
-                <Label Text="{Binding ServerUrl, StringFormat='Server: {0}'}" Style="{StaticResource Muted}" />
-                <Label Text="{Binding AppVersion}" Style="{StaticResource Muted}" />
-            </VerticalStackLayout>
         </VerticalStackLayout>
     </ScrollView>
 </ContentPage>

@@ -25,6 +25,9 @@ public class PhantomOptions
     /// <summary>Make sure the built-in sources (Internet Archive, YTS, The Pirate Bay) exist; see Program.SeedSourcesAsync.</summary>
     public bool SeedDefaultSources { get; set; } = true;
 
+    /// <summary>Below this much free disk, idle stream caches are cleared (oldest first) to make room.</summary>
+    public int MinFreeDiskGb { get; set; } = 5;
+
     public string DatabasePath => Path.Combine(DataDirectory, "phantom.db");
     public string CacheDirectory => Path.Combine(DataDirectory, "cache");
     public string MediaDirectory => Path.Combine(DataDirectory, "media");
