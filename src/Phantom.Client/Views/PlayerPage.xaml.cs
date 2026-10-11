@@ -207,12 +207,33 @@ public partial class PlayerPage : ContentPage
     // read, well before the first frame.
     private async void OnOpened()
     {
-        if (_pendingResume)
-        {
-            _pendingResume = false;
-            await Media.SeekTo(_vm.ResumePosition);
-        }
+        await TryResumeAsync();
         Media.Play();
+    }
+
+    /// <summary>
+    /// Jumps to where the movie was left off. On iOS MediaOpened comes when the item is ready but the player may not be,
+    /// and SeekTo throws until it is, so a failed attempt is retried when it starts playing (see OnStateChanged).
+    /// </summary>
+    private async Task TryResumeAsync()
+    {
+        if (!_pendingResume) return;
+        _pendingResume = false;
+        if (!await TrySeekAsync(_vm.ResumePosition)) _pendingResume = true;
+    }
+
+    /// <summary>MediaElement's SeekTo, without the exceptions iOS throws while the player isn't ready (they'd crash the app from an async void handler).</summary>
+    private async Task<bool> TrySeekAsync(TimeSpan target)
+    {
+        try
+        {
+            await Media.SeekTo(target);
+            return true;
+        }
+        catch (InvalidOperationException)
+        {
+            return false;
+        }
     }
 
     private void OnPositionChanged(TimeSpan elementPosition)
@@ -225,7 +246,8 @@ public partial class PlayerPage : ContentPage
         // When it'll finish at this speed, as Plex shows.
         EndsAtLabel.Text = total > position ? $"Ends at {DateTime.Now + (total - position) / Math.Max(0.25, _vm.Speed):t}" : "";
         UpdateUpNext(position, total);
-        _vm.OnPosition(elementPosition, Media.Duration, Media.CurrentState == MediaElementState.Playing);
+        // Until the resume seek lands the position is the start of the file, not progress worth saving.
+        if (!_pendingResume) _vm.OnPosition(elementPosition, Media.Duration, Media.CurrentState == MediaElementState.Playing);
     }
 
     private void OnStateChanged(MediaElementState state)
@@ -240,6 +262,7 @@ public partial class PlayerPage : ContentPage
             case MediaElementState.Playing:
                 _started = true;
                 SetLoading(false);
+                _ = TryResumeAsync();
                 break;
             case MediaElementState.Paused or MediaElementState.Stopped when _started:
                 SetLoading(false);
@@ -298,7 +321,7 @@ public partial class PlayerPage : ContentPage
         if (target < TimeSpan.Zero) target = TimeSpan.Zero;
         // Transcodes restart server-side at the new offset; direct streams seek with HTTP ranges.
         if (_vm.TrySeekTranscode(target)) return Task.CompletedTask;
-        return Media.SeekTo(target);
+        return TrySeekAsync(target);
     }
 
     private async void OnSkipBack(object? sender, EventArgs e)
