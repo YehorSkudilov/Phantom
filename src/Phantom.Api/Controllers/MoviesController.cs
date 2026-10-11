@@ -27,12 +27,19 @@ public class MoviesController(PhantomDbContext db, LibraryService library) : Con
         var genres = movie.Genres.Select(g => g.Name).ToList();
         var directors = movie.Credits.Where(c => c.Kind == CreditKind.Director).Select(c => c.Name).ToList();
 
-        var q = library.Visible(User)
-            .Where(m => m.Id != id && (m.Genres.Any(g => genres.Contains(g.Name)) || m.Credits.Any(c => c.Kind == CreditKind.Director && directors.Contains(c.Name))))
-            .OrderByDescending(m => m.Credits.Count(c => c.Kind == CreditKind.Director && directors.Contains(c.Name)) * 3 + m.Genres.Count(g => genres.Contains(g.Name)))
-            .ThenByDescending(m => m.Rating)
-            .Take(20);
-        return await library.SummariesAsync(q, User.UserId(), ct);
+        // Scored from the matches themselves (a point per shared genre, three per shared director), grouped by movie:
+        // scoring every movie in the library with per-movie subqueries got slow as it grew.
+        var points = db.Genres.Where(g => genres.Contains(g.Name)).SelectMany(g => g.Movies).Select(m => new { MovieId = m.Id, Points = 1 })
+            .Concat(db.Credits.Where(c => c.MovieId != null && c.Kind == CreditKind.Director && directors.Contains(c.Name))
+                .Select(c => new { MovieId = c.MovieId!.Value, Points = 3 }))
+            .GroupBy(x => x.MovieId)
+            .Select(g => new { MovieId = g.Key, Score = g.Sum(x => x.Points) });
+        var ids = await library.Visible(User).Where(m => m.Id != id)
+            .Join(points, m => m.Id, p => p.MovieId, (m, p) => new { m.Id, p.Score, m.Rating })
+            .OrderByDescending(x => x.Score).ThenByDescending(x => x.Rating).ThenBy(x => x.Id)
+            .Take(20).Select(x => x.Id).ToListAsync(ct);
+        var items = await library.SummariesAsync(library.Visible(User).Where(m => ids.Contains(m.Id)), User.UserId(), ct);
+        return items.OrderBy(i => ids.IndexOf(i.Id)).ToList();
     }
 
     [HttpPost("{id:int}/watched")]

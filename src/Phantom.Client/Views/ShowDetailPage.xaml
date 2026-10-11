@@ -7,6 +7,12 @@
              x:Class="Phantom.Views.ShowDetailPage"
              x:DataType="vm:ShowDetailViewModel">
 
+    <ContentPage.Resources>
+        <!-- Shared by every episode row, rather than a new icon per row -->
+        <FontImageSource x:Key="EpisodeWatchedIcon" Glyph="check_circle" FontFamily="RegularIcons" Size="24" Color="{StaticResource Primary}" />
+        <FontImageSource x:Key="EpisodeUnwatchedIcon" Glyph="radio_button_unchecked" FontFamily="RegularIcons" Size="24" Color="{StaticResource TextSecondary}" />
+    </ContentPage.Resources>
+
     <RefreshView IsRefreshing="{Binding IsRefreshing}" Command="{Binding LoadCommand}">
         <ScrollView>
             <VerticalStackLayout Padding="0,0,0,32" Spacing="16">
@@ -107,18 +113,20 @@
                                         <Label Text="{Binding Overview}" Style="{StaticResource Muted}" FontSize="12" MaxLines="2" LineBreakMode="TailTruncation"
                                                IsVisible="{Binding Overview, Converter={StaticResource HasValue}}" />
                                     </VerticalStackLayout>
-                                    <Grid Grid.Column="2" VerticalOptions="Center">
-                                        <ImageButton Style="{StaticResource IconButton}" Source="{controls:Icon check_circle, Color={StaticResource Primary}}"
-                                                     IsVisible="{Binding Playback.Watched}"
-                                                     Command="{Binding Source={RelativeSource AncestorType={x:Type vm:ShowDetailViewModel}}, Path=ToggleEpisodeWatchedCommand, x:DataType=vm:ShowDetailViewModel}"
-                                                     CommandParameter="{Binding .}"
-                                                     SemanticProperties.Description="Watched" ToolTipProperties.Text="Mark unwatched" />
-                                        <ImageButton Style="{StaticResource IconButton}" Source="{controls:Icon radio_button_unchecked, Color={StaticResource TextSecondary}}"
-                                                     IsVisible="{Binding Playback.Watched, Converter={StaticResource Not}}"
-                                                     Command="{Binding Source={RelativeSource AncestorType={x:Type vm:ShowDetailViewModel}}, Path=ToggleEpisodeWatchedCommand, x:DataType=vm:ShowDetailViewModel}"
-                                                     CommandParameter="{Binding .}"
-                                                     SemanticProperties.Description="Not watched" ToolTipProperties.Text="Mark watched" />
-                                    </Grid>
+                                    <!-- One button whose icon follows the state (two, one hidden, doubled every row's controls) -->
+                                    <ImageButton Grid.Column="2" VerticalOptions="Center" Style="{StaticResource IconButton}"
+                                                 Source="{StaticResource EpisodeUnwatchedIcon}"
+                                                 Command="{Binding Source={RelativeSource AncestorType={x:Type vm:ShowDetailViewModel}}, Path=ToggleEpisodeWatchedCommand, x:DataType=vm:ShowDetailViewModel}"
+                                                 CommandParameter="{Binding .}"
+                                                 SemanticProperties.Description="Not watched" ToolTipProperties.Text="Mark watched">
+                                        <ImageButton.Triggers>
+                                            <DataTrigger TargetType="ImageButton" Binding="{Binding Playback.Watched}" Value="True">
+                                                <Setter Property="Source" Value="{StaticResource EpisodeWatchedIcon}" />
+                                                <Setter Property="SemanticProperties.Description" Value="Watched" />
+                                                <Setter Property="ToolTipProperties.Text" Value="Mark unwatched" />
+                                            </DataTrigger>
+                                        </ImageButton.Triggers>
+                                    </ImageButton>
                                 </Grid>
                             </DataTemplate>
                         </BindableLayout.ItemTemplate>

@@ -116,11 +116,11 @@ public partial class LibraryViewModel(PhantomApi api, SettingsService settings, 
     private int _total;
     private CancellationTokenSource? _loadCts;
 
-    public ObservableCollection<MovieSummaryDto> Movies { get; } = [];
-    public ObservableCollection<string> Genres { get; } = ["All genres"];
-    public ObservableCollection<string> Decades { get; } = ["Any decade"];
-    public ObservableCollection<string> Qualities { get; } = ["Any quality"];
-    public ObservableCollection<string> Ratings { get; } = ["Any rating"];
+    public ObservableList<MovieSummaryDto> Movies { get; } = [];
+    public ObservableList<string> Genres { get; } = ["All genres"];
+    public ObservableList<string> Decades { get; } = ["Any decade"];
+    public ObservableList<string> Qualities { get; } = ["Any quality"];
+    public ObservableList<string> Ratings { get; } = ["Any rating"];
     public IReadOnlyList<string> Letters { get; } = ["All", "#", .. Enumerable.Range('A', 26).Select(c => ((char)c).ToString())];
     public IReadOnlyList<string> WatchStates { get; } = ["All", "Unwatched", "Watched", "In progress"];
 
@@ -260,8 +260,8 @@ public partial class LibraryViewModel(PhantomApi api, SettingsService settings, 
             if (!_filtersLoaded) await LoadFiltersAsync();
             var result = await api.MoviesAsync(BuildQuery(1), ct);
             if (ct.IsCancellationRequested) return;
-            Movies.Clear();
-            foreach (var m in result.Items) Movies.Add(m);
+            // Pulling to refresh mostly gets the same titles back: only the rows that changed are redrawn.
+            Movies.Sync(result.Items);
             _page = 1;
             _total = result.Total;
             HasMore = Movies.Count < _total;
@@ -290,7 +290,7 @@ public partial class LibraryViewModel(PhantomApi api, SettingsService settings, 
             {
                 var result = await api.MoviesAsync(BuildQuery(_page + 1), cts.Token);
                 if (cts.IsCancellationRequested) return; // the filters changed meanwhile: this page is of the old list
-                foreach (var m in result.Items) Movies.Add(m);
+                Movies.AddRange(result.Items);
                 _page++;
                 _total = result.Total;
             }, showBusy: false);
@@ -305,12 +305,10 @@ public partial class LibraryViewModel(PhantomApi api, SettingsService settings, 
     private async Task LoadFiltersAsync()
     {
         var filters = await api.FiltersAsync(Kind == LibraryKind.Shows ? MediaKind.Show : MediaKind.Movie, all: Kind == LibraryKind.All);
-        foreach (var list in new[] { Genres, Decades, Qualities, Ratings })
-            while (list.Count > 1) list.RemoveAt(list.Count - 1);
-        foreach (var g in filters.Genres) Genres.Add(g);
-        foreach (var d in filters.Years.Select(y => y / 10 * 10).Distinct()) Decades.Add($"{d}s");
-        foreach (var q in filters.Qualities) Qualities.Add(q);
-        foreach (var r in filters.ContentRatings) Ratings.Add(r);
+        Genres.Sync(["All genres", .. filters.Genres]);
+        Decades.Sync(["Any decade", .. filters.Years.Select(y => $"{y / 10 * 10}s").Distinct()]);
+        Qualities.Sync(["Any quality", .. filters.Qualities]);
+        Ratings.Sync(["Any rating", .. filters.ContentRatings]);
         _filtersLoaded = true;
     }
 
@@ -343,9 +341,9 @@ public partial class SearchViewModel(PhantomApi api) : BaseViewModel
 {
     private CancellationTokenSource? _debounce;
 
-    public ObservableCollection<MovieSummaryDto> Movies { get; } = [];
-    public ObservableCollection<string> People { get; } = [];
-    public ObservableCollection<string> Genres { get; } = [];
+    public ObservableList<MovieSummaryDto> Movies { get; } = [];
+    public ObservableList<string> People { get; } = [];
+    public ObservableList<string> Genres { get; } = [];
 
     [ObservableProperty] private string query = "";
     [ObservableProperty] private bool hasResults;
@@ -379,12 +377,10 @@ public partial class SearchViewModel(PhantomApi api) : BaseViewModel
         }
         var result = await api.SearchAsync(q);
         if (q != Query.Trim()) return; // stale
-        Movies.Clear();
-        People.Clear();
-        Genres.Clear();
-        foreach (var m in result.Movies) Movies.Add(m);
-        foreach (var p in result.People) People.Add(p);
-        foreach (var g in result.Genres) Genres.Add(g);
+        // Typing one more letter usually keeps most results: those rows (and their posters) stay put.
+        Movies.Sync(result.Movies);
+        People.Sync(result.People);
+        Genres.Sync(result.Genres);
         HasResults = Movies.Count + People.Count + Genres.Count > 0;
         NoResults = !HasResults;
     }, showBusy: false);

@@ -132,7 +132,7 @@ public partial class ConnectViewModel(PhantomApi api, SettingsService settings) 
 /// <summary>"Who's watching?" — Plex Home profile picker.</summary>
 public partial class ProfilesViewModel(PhantomApi api, SettingsService settings) : BaseViewModel
 {
-    public ObservableCollection<UserDto> Profiles { get; } = [];
+    public ObservableList<UserDto> Profiles { get; } = [];
 
     [ObservableProperty] private bool canManage;
 
@@ -140,8 +140,7 @@ public partial class ProfilesViewModel(PhantomApi api, SettingsService settings)
     public Task Load() => RunAsync(async () =>
     {
         var profiles = await api.ProfilesAsync();
-        Profiles.Clear();
-        foreach (var p in profiles) Profiles.Add(p);
+        Profiles.Sync(profiles);
         CanManage = settings.User is { IsManaged: false };
     });
 

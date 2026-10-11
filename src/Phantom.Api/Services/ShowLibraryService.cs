@@ -66,35 +66,82 @@ public class ShowLibraryService(PhantomDbContext db)
     /// Shows as row items. With <paramref name="nextEpisode"/> the caption names the episode Play would start (for
     /// Continue Watching), else how many seasons there are.
     /// </summary>
+    /// <remarks>
+    /// The page is picked first (ids only, so sorting and LIMIT stay cheap), then everything about those shows is
+    /// fetched in a handful of batched queries and worked out in memory. Counting available episodes per show in SQL
+    /// meant a correlated episodes-by-releases subquery that SQLite ran for every show before sorting.
+    /// </remarks>
     public async Task<List<MovieSummaryDto>> SummariesAsync(IQueryable<Show> q, int userId, CancellationToken ct, bool nextEpisode = false)
     {
-        var rows = await q.Select(s => new
-        {
-            s.Id, s.Title, s.Year, s.PosterUrl, s.BackdropUrl, s.Rating, s.ContentRating, s.AddedAt,
-            Seasons = s.Episodes.Where(e => e.SeasonNumber > 0).Select(e => e.SeasonNumber).Distinct().Count(),
-            Available = s.Episodes.Count(e => s.Releases.Any(r => r.SeasonNumber == null
-                || r.SeasonNumber == e.SeasonNumber && (r.EpisodeNumber == null || r.EpisodeNumber == e.EpisodeNumber))),
-            Watched = db.EpisodeWatchStates.Count(w => w.UserId == userId && w.Watched && w.Episode!.ShowId == s.Id),
-        }).ToListAsync(ct);
+        var ids = await q.Select(s => s.Id).ToListAsync(ct);
+        if (ids.Count == 0) return [];
 
-        var result = new List<MovieSummaryDto>(rows.Count);
-        foreach (var r in rows)
+        var shows = await db.Shows.AsNoTracking().Where(s => ids.Contains(s.Id))
+            .Select(s => new { s.Id, s.Title, s.Year, s.PosterUrl, s.BackdropUrl, s.Rating, s.ContentRating, s.AddedAt })
+            .ToDictionaryAsync(s => s.Id, ct);
+        var progress = await LoadProgressAsync(userId, ids, ct);
+
+        var result = new List<MovieSummaryDto>(ids.Count);
+        foreach (var id in ids)
         {
-            var caption = r.Seasons switch { 0 => null, 1 => "1 season", var n => $"{n} seasons" };
-            double progress = r.Available > 0 ? Math.Round(Math.Min(r.Watched, r.Available) * 100.0 / r.Available, 1) : 0;
-            if (nextEpisode && await NextEpisodeAsync(userId, r.Id, ct) is { } next)
+            if (!shows.TryGetValue(id, out var r)) continue;
+            var p = progress[id];
+            var playable = p.Episodes.Where(p.Coverage.Covers).ToList();
+            var available = playable.Count;
+            var watched = playable.Count(e => p.States.TryGetValue(e.Id, out var st) && st.Watched);
+            var seasons = p.Episodes.Where(e => e.SeasonNumber > 0).Select(e => e.SeasonNumber).Distinct().Count();
+
+            var caption = seasons switch { 0 => null, 1 => "1 season", var n => $"{n} seasons" };
+            double percent = available > 0 ? Math.Round(watched * 100.0 / available, 1) : 0;
+            if (nextEpisode && Next(p.Episodes, p.Coverage, p.States) is { } next)
             {
                 caption = $"S{next.Episode.SeasonNumber} · E{next.Episode.EpisodeNumber}";
                 // On Continue Watching the bar is the episode's, as Netflix shows it.
-                progress = next.State is { DurationMs: > 0, Watched: false } st ? Math.Round(st.PositionMs * 100.0 / st.DurationMs, 1) : 0;
+                percent = next.State is { DurationMs: > 0, Watched: false } st ? Math.Round(st.PositionMs * 100.0 / st.DurationMs, 1) : 0;
             }
             result.Add(new MovieSummaryDto(
                 r.Id, r.Title, r.Year, r.PosterUrl, r.Rating, null, r.ContentRating,
-                r.Available > 0 && r.Watched >= r.Available, progress, r.AddedAt, null, r.BackdropUrl,
+                available > 0 && watched >= available, percent, r.AddedAt, null, r.BackdropUrl,
                 MediaKind.Show, caption));
         }
         return result;
     }
+
+    /// <summary>What row items need about each show: its episodes (numbers only), which have a release, and progress.</summary>
+    private sealed record ShowProgress(List<Episode> Episodes, ReleaseCoverage Coverage, Dictionary<int, EpisodeWatchState> States);
+
+    /// <summary>Three queries for any number of shows, instead of three per show.</summary>
+    private async Task<Dictionary<int, ShowProgress>> LoadProgressAsync(int userId, List<int> showIds, CancellationToken ct)
+    {
+        var episodes = await db.Episodes.AsNoTracking().Where(e => showIds.Contains(e.ShowId))
+            .OrderBy(e => e.SeasonNumber == 0).ThenBy(e => e.SeasonNumber).ThenBy(e => e.EpisodeNumber)
+            .Select(e => new Episode { Id = e.Id, ShowId = e.ShowId, SeasonNumber = e.SeasonNumber, EpisodeNumber = e.EpisodeNumber })
+            .ToListAsync(ct);
+        var releases = await db.Releases.AsNoTracking().Where(r => r.ShowId != null && showIds.Contains(r.ShowId.Value))
+            .Select(r => new { ShowId = r.ShowId!.Value, r.SeasonNumber, r.EpisodeNumber }).Distinct().ToListAsync(ct);
+        var states = await db.EpisodeWatchStates.AsNoTracking()
+            .Where(w => w.UserId == userId && showIds.Contains(w.Episode!.ShowId))
+            .Select(w => new { w.Episode!.ShowId, State = w })
+            .ToListAsync(ct);
+
+        var episodesByShow = episodes.ToLookup(e => e.ShowId);
+        var releasesByShow = releases.ToLookup(r => r.ShowId);
+        var statesByShow = states.ToLookup(s => s.ShowId);
+        return showIds.Distinct().ToDictionary(id => id, id => new ShowProgress(
+            episodesByShow[id].ToList(),
+            new ReleaseCoverage(releasesByShow[id].Select(r => (r.SeasonNumber, r.EpisodeNumber))),
+            statesByShow[id].ToDictionary(s => s.State.EpisodeId, s => s.State)));
+    }
+
+    /// <summary>
+    /// Each show's last watched time for a profile, as one grouped query to join on. Filtering and sorting every show by a
+    /// per-show MAX subquery repeated it several times over; a join computes it once. (As a sort key over a UNION, keep
+    /// the per-show MAX: EF turns this into a correlated GROUP BY there, which is slower.)
+    /// </summary>
+    public IQueryable<ShowLastViewed> LastViewed(int userId) =>
+        db.EpisodeWatchStates.Where(w => w.UserId == userId && w.LastViewedAt != null)
+            .GroupBy(w => w.Episode!.ShowId)
+            .Select(g => new ShowLastViewed { ShowId = g.Key, LastViewedAt = g.Max(w => w.LastViewedAt) });
 
     public async Task<ShowDetailDto?> DetailAsync(ClaimsPrincipal user, int id, CancellationToken ct)
     {
@@ -107,16 +154,17 @@ public class ShowLibraryService(PhantomDbContext db)
         if (s is null) return null;
 
         var (episodes, releases, states) = await LoadAsync(userId, id, ct);
+        var coverage = new ReleaseCoverage(releases);
         var seasons = episodes.GroupBy(e => e.SeasonNumber)
             .OrderBy(g => g.Key == 0).ThenBy(g => g.Key)
             .Select(g => new SeasonDto(
                 g.Key,
                 g.Key == 0 ? "Specials" : $"Season {g.Key}",
                 g.Count(),
-                g.Count(e => releases.Any(r => Covers(r, e))),
+                g.Count(coverage.Covers),
                 g.Count(e => states.TryGetValue(e.Id, out var st) && st.Watched)))
             .ToList();
-        var next = Next(episodes, releases, states);
+        var next = Next(episodes, coverage, states);
         var onWatchlist = await db.ShowWatchlist.AnyAsync(w => w.UserId == userId && w.ShowId == id, ct);
 
         return new ShowDetailDto(
@@ -126,7 +174,7 @@ public class ShowLibraryService(PhantomDbContext db)
             s.Credits.Where(c => c.Kind == CreditKind.Cast).OrderBy(c => c.Order).Select(c => new CastMemberDto(c.Name, c.Character, c.ProfileUrl)).ToList(),
             s.Credits.Where(c => c.Kind != CreditKind.Cast).OrderBy(c => c.Order).Select(c => new CrewMemberDto(c.Name, "Creator")).ToList(),
             seasons,
-            next is null ? null : ToDto(next.Value.Episode, releases, next.Value.State),
+            next is null ? null : ToDto(next.Value.Episode, coverage, next.Value.State),
             onWatchlist,
             s.AddedAt);
     }
@@ -135,9 +183,9 @@ public class ShowLibraryService(PhantomDbContext db)
     public async Task<List<EpisodeDto>?> SeasonAsync(ClaimsPrincipal user, int showId, int season, CancellationToken ct)
     {
         if (!await Visible(user).AnyAsync(s => s.Id == showId, ct)) return null;
-        var (episodes, releases, states) = await LoadAsync(user.UserId(), showId, ct);
-        return episodes.Where(e => e.SeasonNumber == season)
-            .Select(e => ToDto(e, releases, states.GetValueOrDefault(e.Id))).ToList();
+        var (episodes, releases, states) = await LoadAsync(user.UserId(), showId, ct, season);
+        var coverage = new ReleaseCoverage(releases);
+        return episodes.Select(e => ToDto(e, coverage, states.GetValueOrDefault(e.Id))).ToList();
     }
 
     public async Task<EpisodeDetailDto?> EpisodeAsync(ClaimsPrincipal user, int episodeId, CancellationToken ct)
@@ -146,14 +194,15 @@ public class ShowLibraryService(PhantomDbContext db)
         if (episode is null || !await Visible(user).AnyAsync(s => s.Id == episode.ShowId, ct)) return null;
 
         var (episodes, releases, states) = await LoadAsync(user.UserId(), episode.ShowId, ct);
+        var coverage = new ReleaseCoverage(releases);
         var index = episodes.FindIndex(e => e.Id == episodeId);
-        var next = episodes.Skip(index + 1).FirstOrDefault(e => releases.Any(r => Covers(r, e)));
+        var next = episodes.Skip(index + 1).FirstOrDefault(coverage.Covers);
         var settings = await db.Settings.AsNoTracking().FirstAsync(ct);
         return new EpisodeDetailDto(
-            ToDto(episode, releases, states.GetValueOrDefault(episode.Id)),
+            ToDto(episode, coverage, states.GetValueOrDefault(episode.Id)),
             episode.Show!.Title, episode.Show.PosterUrl, episode.Show.BackdropUrl,
             OrderForPlayback(releases.Where(r => Covers(r, episode)), episode, settings.PreferredQuality).Select(ToReleaseDto).ToList(),
-            next is null ? null : ToDto(next, releases, states.GetValueOrDefault(next.Id)));
+            next is null ? null : ToDto(next, coverage, states.GetValueOrDefault(next.Id)));
     }
 
     /// <summary>
@@ -163,12 +212,12 @@ public class ShowLibraryService(PhantomDbContext db)
     public async Task<(Episode Episode, EpisodeWatchState? State)?> NextEpisodeAsync(int userId, int showId, CancellationToken ct)
     {
         var (episodes, releases, states) = await LoadAsync(userId, showId, ct);
-        return Next(episodes, releases, states);
+        return Next(episodes, new ReleaseCoverage(releases), states);
     }
 
-    private static (Episode Episode, EpisodeWatchState? State)? Next(List<Episode> episodes, List<Release> releases, Dictionary<int, EpisodeWatchState> states)
+    private static (Episode Episode, EpisodeWatchState? State)? Next(List<Episode> episodes, ReleaseCoverage coverage, Dictionary<int, EpisodeWatchState> states)
     {
-        var playable = episodes.Where(e => releases.Any(r => Covers(r, e))).ToList();
+        var playable = episodes.Where(coverage.Covers).ToList();
         if (playable.Count == 0) return null;
         EpisodeWatchState? State(Episode e) => states.GetValueOrDefault(e.Id);
 
@@ -187,15 +236,26 @@ public class ShowLibraryService(PhantomDbContext db)
         return (first, State(first));
     }
 
-    /// <summary>A show's episodes in watching order (specials last), its releases and this profile's progress.</summary>
+    /// <summary>
+    /// A show's episodes in watching order (specials last), its releases and this profile's progress; with
+    /// <paramref name="season"/>, only that season's episodes and progress (and the releases that can cover it).
+    /// </summary>
     private async Task<(List<Episode> Episodes, List<Release> Releases, Dictionary<int, EpisodeWatchState> States)> LoadAsync(
-        int userId, int showId, CancellationToken ct)
+        int userId, int showId, CancellationToken ct, int? season = null)
     {
-        var episodes = await db.Episodes.AsNoTracking().Where(e => e.ShowId == showId)
+        var episodeQuery = db.Episodes.AsNoTracking().Where(e => e.ShowId == showId);
+        var releaseQuery = db.Releases.AsNoTracking().Where(r => r.ShowId == showId);
+        if (season is { } n)
+        {
+            episodeQuery = episodeQuery.Where(e => e.SeasonNumber == n);
+            releaseQuery = releaseQuery.Where(r => r.SeasonNumber == null || r.SeasonNumber == n);
+        }
+        var episodes = await episodeQuery
             .OrderBy(e => e.SeasonNumber == 0).ThenBy(e => e.SeasonNumber).ThenBy(e => e.EpisodeNumber).ToListAsync(ct);
-        var releases = await db.Releases.AsNoTracking().Where(r => r.ShowId == showId).ToListAsync(ct);
-        var states = await db.EpisodeWatchStates.AsNoTracking()
-            .Where(w => w.UserId == userId && w.Episode!.ShowId == showId).ToDictionaryAsync(w => w.EpisodeId, ct);
+        var releases = await releaseQuery.ToListAsync(ct);
+        var stateQuery = db.EpisodeWatchStates.AsNoTracking().Where(w => w.UserId == userId && w.Episode!.ShowId == showId);
+        if (season is { } s) stateQuery = stateQuery.Where(w => w.Episode!.SeasonNumber == s);
+        var states = await stateQuery.ToDictionaryAsync(w => w.EpisodeId, ct);
         return (episodes, releases, states);
     }
 
@@ -223,9 +283,41 @@ public class ShowLibraryService(PhantomDbContext db)
             Covers = r.EpisodeNumber is not null ? null : r.SeasonNumber is { } season ? $"Season {season} pack" : "Several seasons",
         };
 
-    private static EpisodeDto ToDto(Episode e, List<Release> releases, EpisodeWatchState? state) =>
+    private static EpisodeDto ToDto(Episode e, ReleaseCoverage coverage, EpisodeWatchState? state) =>
         new(e.Id, e.ShowId, e.SeasonNumber, e.EpisodeNumber, e.Title, e.Overview, e.StillUrl, e.AirDate, e.RuntimeMinutes,
-            releases.Any(r => Covers(r, e)),
+            coverage.Covers(e),
             state is null ? new PlaybackStateDto(0, 0, false, 0, null)
                 : new PlaybackStateDto(state.PositionMs, state.DurationMs, state.Watched, state.ViewCount, state.LastViewedAt));
+}
+
+public sealed class ShowLastViewed
+{
+    public int ShowId { get; init; }
+    public DateTime? LastViewedAt { get; init; }
+}
+
+/// <summary>
+/// Which episodes a show's releases cover, as hash lookups: checking every release for every episode got slow for
+/// long-running shows (thousands of each). Same rules as <see cref="ShowLibraryService.Covers"/>.
+/// </summary>
+public sealed class ReleaseCoverage
+{
+    private readonly bool _wholeShow;
+    private readonly HashSet<int> _seasons = [];
+    private readonly HashSet<(int, int)> _episodes = [];
+
+    public ReleaseCoverage(IEnumerable<Release> releases) : this(releases.Select(r => (r.SeasonNumber, r.EpisodeNumber))) { }
+
+    public ReleaseCoverage(IEnumerable<(int? Season, int? Episode)> releases)
+    {
+        foreach (var (season, episode) in releases)
+        {
+            if (season is not { } s) _wholeShow = true;
+            else if (episode is not { } e) _seasons.Add(s);
+            else _episodes.Add((s, e));
+        }
+    }
+
+    public bool Covers(Episode e) =>
+        _wholeShow || _seasons.Contains(e.SeasonNumber) || _episodes.Contains((e.SeasonNumber, e.EpisodeNumber));
 }

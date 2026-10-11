@@ -10,8 +10,8 @@ public partial class MovieDetailViewModel(PhantomApi api, SettingsService settin
 {
     private int _id;
 
-    public ObservableCollection<MovieSummaryDto> Related { get; } = [];
-    public ObservableCollection<ReleaseDto> Releases { get; } = [];
+    public ObservableList<MovieSummaryDto> Related { get; } = [];
+    public ObservableList<ReleaseDto> Releases { get; } = [];
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(Meta), nameof(CanResume), nameof(PlayLabel), nameof(Directors), nameof(Writers), nameof(GenreText), nameof(IsWatched), nameof(IsOnWatchlist), nameof(WatchedLabel), nameof(WatchlistLabel), nameof(WatchlistGlyph), nameof(IsRated), nameof(RateLabel))]
@@ -73,12 +73,15 @@ public partial class MovieDetailViewModel(PhantomApi api, SettingsService settin
         if (_id == 0) return;
         IsAdmin = settings.User?.IsAdmin == true;
         OfflineItem = downloads.Find(_id);
+        // The movie and its More Like This row in parallel: one round trip's wait instead of two.
+        var related = api.RelatedAsync(_id);
         try
         {
             Movie = await api.MovieAsync(_id);
         }
         catch (HttpRequestException) when (OfflineItem is { IsComplete: true } offline)
         {
+            _ = related.ContinueWith(t => t.Exception, TaskContinuationOptions.OnlyOnFaulted); // offline too: nothing to show
             // Offline: build a minimal page from the downloaded copy.
             Movie = new MovieDetailDto(offline.MovieId, offline.Title, null, offline.Year, null, offline.Overview, offline.PosterSource, null,
                 null, null, offline.RuntimeMinutes, null, null, null, null, null, [], [], [], [],
@@ -86,13 +89,13 @@ public partial class MovieDetailViewModel(PhantomApi api, SettingsService settin
             return;
         }
         Title = Movie.Title;
-        Releases.Clear();
-        foreach (var r in Movie.Releases) Releases.Add(r);
-        SelectedRelease = Releases.FirstOrDefault();
+        // Reloaded on coming back from the player: keep the version that was picked if it's still there.
+        var picked = SelectedRelease?.Id;
+        Releases.Sync(Movie.Releases);
+        SelectedRelease = Releases.FirstOrDefault(r => r.Id == picked) ?? Releases.FirstOrDefault();
         OnPropertyChanged(nameof(HasPlayChoices));
 
-        Related.Clear();
-        foreach (var m in await api.RelatedAsync(_id)) Related.Add(m);
+        Related.Sync(await related);
     });
 
     /// <summary>Plays, picking up where this profile left off (Start over beside it plays from the beginning).</summary>
@@ -137,11 +140,29 @@ public partial class MovieDetailViewModel(PhantomApi api, SettingsService settin
         else if (choice == streamLabel) await Open(CanResume, offline: false, stream);
     }
 
+    /// <summary>Shows the change straight away, as the server will make it, then tells the server (undone if that fails).</summary>
     [RelayCommand]
     private Task ToggleWatched() => RunAsync(async () =>
     {
-        await api.MarkWatchedAsync(_id, Movie?.Playback.Watched != true);
-        Movie = await api.MovieAsync(_id);
+        if (Movie is not { } before) return;
+        var watched = !before.Playback.Watched;
+        Movie = before with
+        {
+            Playback = before.Playback with
+            {
+                Watched = watched, PositionMs = 0,
+                ViewCount = watched ? before.Playback.ViewCount + 1 : before.Playback.ViewCount,
+            },
+        };
+        try
+        {
+            await api.MarkWatchedAsync(_id, watched);
+        }
+        catch
+        {
+            Movie = before;
+            throw;
+        }
     }, showBusy: false);
 
     [RelayCommand]
