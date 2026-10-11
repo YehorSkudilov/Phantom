@@ -13,7 +13,12 @@
                 <Border WidthRequest="56" HeightRequest="56" StrokeShape="RoundRectangle 16" BackgroundColor="{Binding AvatarColor}">
                     <Label Text="{Binding Initial}" FontSize="24" FontFamily="OpenSansSemibold" HorizontalOptions="Center" VerticalOptions="Center" />
                 </Border>
-                <Label Grid.Column="1" Text="{Binding Username}" Style="{StaticResource H2}" VerticalOptions="Center" />
+                <!-- The profile in use, and the account it belongs to -->
+                <VerticalStackLayout Grid.Column="1" VerticalOptions="Center">
+                    <Label Text="{Binding Username}" Style="{StaticResource H2}" />
+                    <Label Text="{Binding AccountName, StringFormat='Account: {0}'}" Style="{StaticResource Muted}"
+                           IsVisible="{Binding AccountName, Converter={StaticResource HasValue}}" />
+                </VerticalStackLayout>
             </Grid>
 
             <Label Text="PROFILE" Style="{StaticResource SectionLabel}" />

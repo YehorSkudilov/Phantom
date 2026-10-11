@@ -54,7 +54,11 @@ public partial class ServerDownloadsViewModel(PhantomApi api, SettingsService se
 
 public partial class MoreViewModel(PhantomApi api, SettingsService settings) : BaseViewModel
 {
+    /// <summary>The profile in use.</summary>
     [ObservableProperty] private string username = "";
+
+    /// <summary>The account it belongs to (its owner's username).</summary>
+    [ObservableProperty] private string? accountName;
     [ObservableProperty] private bool isAdmin;
     [ObservableProperty] private string avatarColor = "#8B5CF6";
     [ObservableProperty] private string initial = "?";
@@ -69,7 +73,10 @@ public partial class MoreViewModel(PhantomApi api, SettingsService settings) : B
         Initial = Username.Length > 0 ? Username[..1].ToUpperInvariant() : "?";
         AvatarColor = user?.AvatarColor ?? "#8B5CF6";
         IsAdmin = user?.IsAdmin == true;
-        await Task.CompletedTask;
+        // A managed profile's account is its owner, the one profile that isn't managed.
+        AccountName = user is { IsManaged: false } ? user.Username : null;
+        var profiles = await api.ProfilesAsync();
+        AccountName = profiles.FirstOrDefault(p => !p.IsManaged)?.Username ?? AccountName;
     }, showBusy: false);
 
     [RelayCommand]
