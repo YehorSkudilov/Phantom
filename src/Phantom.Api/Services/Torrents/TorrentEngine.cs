@@ -112,9 +112,11 @@ public sealed class TorrentEngine : IHostedService, IAsyncDisposable
 
     /// <summary>
     /// Adds (or returns) the torrent for a release and makes sure it is running. With an episode <paramref name="choice"/>
-    /// that episode's file is the one downloaded from now on; otherwise it carries on with whichever it was.
+    /// to <paramref name="play"/>, that episode's file is the one downloaded first from now on; otherwise it carries on
+    /// with whichever it was. A server download (not <paramref name="play"/>) doesn't take that over from a viewer: its
+    /// episodes are fetched alongside (see KeepEpisodesAsync).
     /// </summary>
-    public async Task<TorrentManager> EnsureStartedAsync(Release release, bool keep, CancellationToken ct, VideoChoice choice = default)
+    public async Task<TorrentManager> EnsureStartedAsync(Release release, bool keep, CancellationToken ct, VideoChoice choice = default, bool play = true)
     {
         Touch(release.InfoHash);
         if (keep) _pinned[release.InfoHash] = true;
@@ -145,7 +147,7 @@ public sealed class TorrentEngine : IHostedService, IAsyncDisposable
         }
 
         var hash = release.InfoHash.ToLowerInvariant();
-        if (choice.IsEpisode && Video(manager, choice, release.SeasonNumber) is { } chosen) _chosen[hash] = chosen.Path;
+        if (play && choice.IsEpisode && Video(manager, choice, release.SeasonNumber) is { } chosen) _chosen[hash] = chosen.Path;
         await PrioritiseAsync(manager, hash, release);
         return manager;
     }
@@ -175,6 +177,9 @@ public sealed class TorrentEngine : IHostedService, IAsyncDisposable
         var kept = _pinned.ContainsKey(release.InfoHash) && _kept.TryGetValue(hash, out var episodes)
             ? episodes.Select(e => Video(manager, e, release.SeasonNumber)).OfType<ITorrentManagerFile>().ToHashSet()
             : [];
+        // Whatever is being streamed right now keeps downloading, whichever file was picked last.
+        if (_streams.TryGetValue(hash, out var stream) && manager.Files.FirstOrDefault(f => f.Path == stream.FilePath) is { } streamed)
+            kept.Add(streamed);
         return PrioritiseAsync(manager, playing, kept);
     }
 

@@ -198,6 +198,8 @@ public class PhantomApi(HttpClient http, SettingsService settings)
     public Task<List<EpisodeDto>> SeasonAsync(int showId, int season) => GetAsync<List<EpisodeDto>>($"/api/shows/{showId}/seasons/{season}");
     public Task<EpisodeDetailDto> EpisodeAsync(int id) => GetAsync<EpisodeDetailDto>($"/api/episodes/{id}");
     public Task MarkShowWatchedAsync(int id, bool watched) => SendNoContentAsync(HttpMethod.Post, $"/api/shows/{id}/{(watched ? "watched" : "unwatched")}");
+    public Task MarkSeasonWatchedAsync(int showId, int season, bool watched) =>
+        SendNoContentAsync(HttpMethod.Post, $"/api/shows/{showId}/seasons/{season}/{(watched ? "watched" : "unwatched")}");
     public Task MarkEpisodeWatchedAsync(int id, bool watched) => SendNoContentAsync(HttpMethod.Post, $"/api/episodes/{id}/{(watched ? "watched" : "unwatched")}");
     public Task SetShowWatchlistAsync(int id, bool on) => SendNoContentAsync(on ? HttpMethod.Put : HttpMethod.Delete, $"/api/shows/{id}/watchlist");
 

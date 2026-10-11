@@ -24,8 +24,6 @@
                         <Button Grid.Column="1" Text="Downloads" Command="{Binding GoToDownloadsCommand}" />
                     </Grid>
                 </Border>
-                <Label Text="{Binding ErrorMessage}" TextColor="{StaticResource Danger}" Margin="16,0"
-                       IsVisible="{Binding ErrorMessage, Converter={StaticResource HasValue}}" />
 
                 <!-- Featured hero: continue watching or newest addition. Its height follows its width (about 16:9, see
                      HomePage.OnHeroSizeChanged) so a backdrop isn't cut down to a strip on a wide screen. -->

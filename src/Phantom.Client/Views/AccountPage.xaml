@@ -10,7 +10,6 @@
              Title="Username and password">
     <ScrollView>
         <VerticalStackLayout Padding="16" Spacing="14" MaximumWidthRequest="640">
-            <skeleton:CLabel Text="{Binding ErrorMessage}" TextColor="{StaticResource Danger}" IsVisible="{Binding ErrorMessage, Converter={StaticResource HasValue}}" />
 
             <Border Style="{StaticResource Card}">
                 <VerticalStackLayout Spacing="10">

@@ -1,3 +1,4 @@
+using Phantom.Controls;
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -157,9 +158,9 @@ public partial class ProfilesViewModel(PhantomApi api, SettingsService settings)
         var needsSecret = profile.HasPin || (!profile.IsManaged && current?.IsManaged == true);
         if (needsSecret)
         {
-            pin = await Shell.Current.DisplayPromptAsync(profile.Username,
+            pin = await Dialog.PromptAsync(profile.Username,
                 profile.IsManaged ? "Enter PIN" : "Enter the account password",
-                keyboard: profile.IsManaged ? Keyboard.Numeric : Keyboard.Default, maxLength: profile.IsManaged ? 8 : 128);
+                keyboard: profile.IsManaged ? Keyboard.Numeric : Keyboard.Default, maxLength: profile.IsManaged ? 8 : 128, password: true);
             if (pin is null) return;
         }
 
@@ -173,11 +174,11 @@ public partial class ProfilesViewModel(PhantomApi api, SettingsService settings)
     [RelayCommand]
     private Task AddProfile() => RunAsync(async () =>
     {
-        var name = await Shell.Current.DisplayPromptAsync("New profile", "Name");
+        var name = await Dialog.PromptAsync("New profile", "Name");
         if (string.IsNullOrWhiteSpace(name)) return;
-        var pin = await Shell.Current.DisplayPromptAsync("New profile", "Optional PIN (leave empty for none)", keyboard: Keyboard.Numeric, maxLength: 8);
-        var rating = await Shell.Current.DisplayActionSheetAsync("Content restriction", "Cancel", null, "No restriction", "G", "PG", "PG-13", "R");
-        if (rating is null or "Cancel") return;
+        var pin = await Dialog.PromptAsync("New profile", "Optional PIN (leave empty for none)", keyboard: Keyboard.Numeric, maxLength: 8);
+        var rating = await Dialog.ChooseAsync("Content restriction", null, "No restriction", "G", "PG", "PG-13", "R");
+        if (rating is null) return;
 
         var colors = new[] { "#8B5CF6", "#22D3EE", "#F472B6", "#34D399", "#FBBF24", "#60A5FA" };
         var created = await api.CreateProfileAsync(new CreateProfileRequest(
@@ -190,7 +191,7 @@ public partial class ProfilesViewModel(PhantomApi api, SettingsService settings)
     private Task DeleteProfile(UserDto profile) => RunAsync(async () =>
     {
         if (!profile.IsManaged) return;
-        if (!await Shell.Current.DisplayAlertAsync("Delete profile", $"Delete {profile.Username} and its watch history?", "Delete", "Cancel")) return;
+        if (!await Dialog.ConfirmAsync("Delete profile", $"Delete {profile.Username} and its watch history?", "Delete", destructive: true)) return;
         await api.DeleteProfileAsync(profile.Id);
         Profiles.Remove(profile);
     });

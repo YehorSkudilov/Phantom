@@ -45,8 +45,6 @@
         </ScrollView>
 
         <VerticalStackLayout Grid.Row="2" Spacing="10">
-            <Label Text="{Binding ErrorMessage}" TextColor="{StaticResource Danger}" HorizontalOptions="Center"
-                   IsVisible="{Binding ErrorMessage, Converter={StaticResource HasValue}}" />
             <Button Text="+ Add profile" Style="{StaticResource SecondaryButton}" Command="{Binding AddProfileCommand}"
                     IsVisible="{Binding CanManage}" HorizontalOptions="Center" />
         </VerticalStackLayout>

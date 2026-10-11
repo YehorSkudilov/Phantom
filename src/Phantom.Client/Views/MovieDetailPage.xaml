@@ -31,8 +31,6 @@
                 </Grid>
 
                 <ActivityIndicator IsRunning="{Binding IsBusy}" IsVisible="{Binding IsBusy}" />
-                <Label Text="{Binding ErrorMessage}" TextColor="{StaticResource Danger}" Margin="16,0"
-                       IsVisible="{Binding ErrorMessage, Converter={StaticResource HasValue}}" />
 
                 <!-- Primary actions -->
                 <VerticalStackLayout Padding="16,0" Spacing="10">

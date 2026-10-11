@@ -5,10 +5,10 @@ using Phantom.Services;
 namespace Phantom.Controls;
 
 /// <summary>
-/// An episode row's download button: its icon says whether the episode is on this device (downloaded, downloading,
-/// paused or failed), and follows the download as it goes.
+/// An episode's Download button: its icon and label say whether the episode is on this device (downloaded,
+/// downloading and how far along, paused or failed), and follow the download as it goes.
 /// </summary>
-public class EpisodeDownloadButton : ImageButton
+public class EpisodeDownloadButton : Button
 {
     public static readonly BindableProperty DownloadsProperty =
         BindableProperty.Create(nameof(Downloads), typeof(DownloadManager), typeof(EpisodeDownloadButton),
@@ -22,6 +22,7 @@ public class EpisodeDownloadButton : ImageButton
     public int EpisodeId { get => (int)GetValue(EpisodeIdProperty); set => SetValue(EpisodeIdProperty, value); }
 
     private OfflineDownload? _item;
+    private (string Glyph, string Color) _look;
     private bool _onScreen;
 
     public EpisodeDownloadButton()
@@ -55,7 +56,7 @@ public class EpisodeDownloadButton : ImageButton
 
     private void OnItemChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (e.PropertyName is nameof(OfflineDownload.Status)) Update();
+        if (e.PropertyName is nameof(OfflineDownload.Status) or nameof(OfflineDownload.DownloadedBytes) or nameof(OfflineDownload.TotalBytes)) Update();
     }
 
     private void Refresh()
@@ -75,14 +76,22 @@ public class EpisodeDownloadButton : ImageButton
         var resources = Application.Current!.Resources;
         var (glyph, colorKey, text) = _item?.Status switch
         {
-            null => ("download", "TextSecondary", "Download"),
+            null => ("download", "TextPrimary", "Download"),
             OfflineStatus.Completed => ("download_done", "PrimaryLight", "Downloaded"),
-            OfflineStatus.Paused => ("pause_circle", "TextSecondary", "Download paused"),
-            OfflineStatus.Failed => ("error", "Danger", "Download failed"),
-            _ => ("downloading", "PrimaryLight", "Downloading"),
+            OfflineStatus.Paused => ("pause_circle", "TextSecondary", "Paused"),
+            OfflineStatus.Failed => ("error", "Danger", "Failed"),
+            OfflineStatus.Downloading when _item!.TotalBytes > 0 => ("downloading", "PrimaryLight", $"{_item.Progress:0%}"),
+            _ => ("downloading", "PrimaryLight", "Waiting"),
         };
-        Source = IconExtension.Create(glyph, (Color)resources[colorKey]);
-        SemanticProperties.SetDescription(this, text);
-        ToolTipProperties.SetText(this, text);
+        // The icon only changes with the state, not with each step of progress.
+        if ((glyph, colorKey) != _look)
+        {
+            _look = (glyph, colorKey);
+            var color = (Color)resources[colorKey];
+            ImageSource = IconExtension.Create(glyph, color, size: 18);
+            TextColor = color;
+        }
+        if (Text != text) Text = text;
+        SemanticProperties.SetDescription(this, $"Download to this device: {text}");
     }
 }

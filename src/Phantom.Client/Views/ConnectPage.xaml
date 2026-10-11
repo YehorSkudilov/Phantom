@@ -70,8 +70,6 @@
                         </VerticalStackLayout>
 
                         <ActivityIndicator IsRunning="{Binding IsBusy}" IsVisible="{Binding IsBusy}" />
-                        <Label Text="{Binding ErrorMessage}" TextColor="{StaticResource Danger}"
-                               IsVisible="{Binding ErrorMessage, Converter={StaticResource HasValue}}" />
                     </VerticalStackLayout>
                 </Border>
             </VerticalStackLayout>

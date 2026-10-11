@@ -1,3 +1,4 @@
+using Phantom.Controls;
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -16,10 +17,18 @@ public partial class ShowDetailViewModel(PhantomApi api, SettingsService setting
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(Meta), nameof(GenreText), nameof(Creators), nameof(PlayLabel), nameof(CanPlay), nameof(NextProgress),
-        nameof(IsOnWatchlist), nameof(WatchlistLabel), nameof(WatchlistGlyph), nameof(IsWatched), nameof(WatchedLabel))]
+        nameof(IsOnWatchlist), nameof(WatchlistLabel), nameof(WatchlistGlyph), nameof(IsWatched), nameof(WatchedLabel),
+        nameof(IsSeasonWatched), nameof(SeasonWatchedLabel))]
     private ShowDetailDto? show;
 
-    [ObservableProperty] private SeasonDto? selectedSeason;
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsSeasonWatched), nameof(SeasonWatchedLabel))]
+    private SeasonDto? selectedSeason;
+
+    /// <summary>Every episode of the season on screen that can be played has been watched.</summary>
+    public bool IsSeasonWatched => Show?.Seasons.FirstOrDefault(s => s.Number == SelectedSeason?.Number) is { AvailableCount: > 0 } season
+                                   && season.WatchedCount >= season.AvailableCount;
+    public string SeasonWatchedLabel => IsSeasonWatched ? "Season watched" : "Mark season watched";
 
     public bool CanPlay => Show?.NextEpisode is not null;
 
@@ -137,38 +146,77 @@ public partial class ShowDetailViewModel(PhantomApi api, SettingsService setting
     /// <summary>Some of the show's episodes are on this device (highlights the Download tile).</summary>
     public bool HasDownloads => downloads.Items.Any(i => i.ShowId == _id);
 
-    /// <summary>An episode's "⋯" menu: play from the start, save it on the server, mark it.</summary>
+    /// <summary>An episode's Save on server button: the server downloads and keeps just that episode.</summary>
     [RelayCommand]
-    private async Task EpisodeOptions(EpisodeDto? episode)
+    private async Task SaveEpisodeOnServer(EpisodeDto? episode)
     {
         if (episode is null) return;
-        const string playFromStart = "Play from the beginning", onServer = "Save on the server";
-        var options = new List<string>();
-        if (episode.Available && InProgress(episode)) options.Add(playFromStart);
-        if (episode.Available) options.Add(onServer);
-        var markWatched = episode.Playback.Watched ? "Mark unwatched" : "Mark watched";
-        options.Add(markWatched);
-
-        var choice = await Shell.Current.DisplayActionSheetAsync(EpisodeName(episode), "Cancel", null, [.. options]);
-        switch (choice)
+        if (!episode.Available)
         {
-            case playFromStart:
-                await GoToAsync($"{nameof(Views.PlayerPage)}?episode={episode.Id}&resume=false");
-                break;
-            case onServer:
-                await SaveOnServerAsync([episode], EpisodeName(episode));
-                break;
-            default:
-                if (choice == markWatched) await ToggleEpisodeWatchedCommand.ExecuteAsync(episode);
-                break;
+            await ToastAsync("No copy of this episode has been found yet.");
+            return;
         }
+        await SaveOnServerAsync([episode], $"S{episode.SeasonNumber}:E{episode.EpisodeNumber}");
+    }
+
+    /// <summary>The season on screen's episodes that can be played.</summary>
+    private List<EpisodeDto> SeasonEpisodes() => SelectedSeason is { } season
+        ? Episodes.Where(e => e.Available && e.SeasonNumber == season.Number).ToList()
+        : [];
+
+    private string SeasonName => SelectedSeason is { Number: 0 } ? "the specials" : $"season {SelectedSeason?.Number}";
+
+    /// <summary>The season's Download button: every episode of it not yet on this device.</summary>
+    [RelayCommand]
+    private async Task DownloadSeason()
+    {
+        if (Show is not { } show) return;
+        var episodes = SeasonEpisodes();
+        if (episodes.Count == 0)
+        {
+            await ToastAsync("No episodes of this season have been found yet.");
+            return;
+        }
+        var missing = episodes.Where(e => downloads.FindEpisode(e.Id) is null).ToList();
+        if (missing.Count == 0)
+        {
+            await ToastAsync($"All of {SeasonName} is already on this device.");
+            return;
+        }
+        if (!await ConfirmManyAsync($"Download {SeasonName}?", missing.Count,
+                "to this device" + (settings.DownloadOnWifiOnly ? " (over Wi-Fi only)" : ""), "Download")) return;
+        foreach (var e in missing) await downloads.EnqueueEpisodeAsync(show, e);
+        OnPropertyChanged(nameof(HasDownloads));
+        await ToastAsync((missing.Count == 1 ? "Downloading 1 episode" : $"Downloading {missing.Count} episodes")
+                         + (settings.DownloadOnWifiOnly ? " (Wi-Fi only)" : ""));
+    }
+
+    /// <summary>
+    /// Asks before something that affects several episodes at once (one episode goes ahead without asking).
+    /// </summary>
+    private static async Task<bool> ConfirmManyAsync(string title, int count, string what, string accept) =>
+        count <= 1 || await Dialog.ConfirmAsync(title, $"This will {accept.ToLowerInvariant()} {count} episodes {what}.", accept);
+
+    /// <summary>The season's Save on server button: the server downloads and keeps every episode of it.</summary>
+    [RelayCommand]
+    private async Task SaveSeasonOnServer()
+    {
+        var episodes = SeasonEpisodes();
+        if (episodes.Count == 0)
+        {
+            await ToastAsync("No episodes of this season have been found yet.");
+            return;
+        }
+        var name = SeasonName;
+        if (!await ConfirmManyAsync($"Save {name} on the server?", episodes.Count, "on the server, where everyone can play them", "Save")) return;
+        await SaveOnServerAsync(episodes, char.ToUpper(name[0]) + name[1..]);
     }
 
     private static string EpisodeName(EpisodeDto e) => $"S{e.SeasonNumber}:E{e.EpisodeNumber} {e.Title}".Trim();
 
     /// <summary>
-    /// An episode row's download button: downloads just that episode to this device in one tap; once it's there (or on
-    /// its way), offers to pause, resume or delete it.
+    /// An episode's Download button: downloads just that episode to this device in one tap; once it's there (or on its
+    /// way), offers to pause, resume or delete it.
     /// </summary>
     [RelayCommand]
     private async Task DownloadEpisode(EpisodeDto? episode)
@@ -192,7 +240,7 @@ public partial class ShowDetailViewModel(PhantomApi api, SettingsService setting
         if (offline.CanPause) options.Add(pause);
         if (offline.CanResume) options.Add(resume);
         options.Add(goToDownloads);
-        var choice = await Shell.Current.DisplayActionSheetAsync($"{EpisodeName(episode)} · {offline.StatusText}", "Cancel", delete, [.. options]);
+        var choice = await Dialog.ChooseAsync($"{EpisodeName(episode)} · {offline.StatusText}", delete, [.. options]);
         switch (choice)
         {
             case pause:
@@ -225,6 +273,7 @@ public partial class ShowDetailViewModel(PhantomApi api, SettingsService setting
             await Views.MainPage.ShowTab(Views.AppTab.Downloads);
             return;
         }
+        if (!await ConfirmManyAsync($"Download {picked.Value.Name.ToLowerInvariant()}?", episodes.Count, "to this device", "Download")) return;
         foreach (var e in episodes) await downloads.EnqueueEpisodeAsync(show, e);
         OnPropertyChanged(nameof(HasDownloads));
         await ToastAsync((episodes.Count == 1 ? "Downloading 1 episode" : $"Downloading {episodes.Count} episodes")
@@ -236,7 +285,10 @@ public partial class ShowDetailViewModel(PhantomApi api, SettingsService setting
     private async Task SaveShowOnServer()
     {
         var picked = await PickEpisodesAsync("Save on the server", _ => true, null);
-        if (picked?.Episodes is { } episodes) await SaveOnServerAsync(episodes, picked.Value.Name);
+        if (picked?.Episodes is not { } episodes) return;
+        if (!await ConfirmManyAsync($"Save {picked.Value.Name.ToLowerInvariant()} on the server?", episodes.Count,
+                "on the server, where everyone can play them", "Save")) return;
+        await SaveOnServerAsync(episodes, picked.Value.Name);
     }
 
     /// <summary>
@@ -276,7 +328,7 @@ public partial class ShowDetailViewModel(PhantomApi api, SettingsService setting
         }
         var options = choices.Select(c => c.Label).ToList();
         if (extra is not null) options.Add(extra);
-        var choice = await Shell.Current.DisplayActionSheetAsync(title, "Cancel", null, [.. options]);
+        var choice = await Dialog.ChooseAsync(title, null, [.. options]);
         if (choice is null || choice == "Cancel") return null;
         if (choice == extra) return ("", null);
         var picked = choices.FirstOrDefault(c => c.Label == choice);
@@ -322,11 +374,43 @@ public partial class ShowDetailViewModel(PhantomApi api, SettingsService setting
     private Task ToggleWatched() => RunAsync(async () =>
     {
         var watched = !IsWatched;
+        if (Show is not { } show) return;
+        var count = show.Seasons.Sum(s => s.EpisodeCount);
+        if (!await Dialog.ConfirmAsync(watched ? "Mark the whole show watched?" : "Mark the whole show unwatched?",
+                watched ? $"All {count} episodes of {show.Title} will be marked as watched, and where you were in any of them is forgotten."
+                        : $"All {count} episodes of {show.Title} will be marked as not watched.",
+                watched ? "Mark watched" : "Mark unwatched", destructive: true)) return;
         var before = (Show, Episodes: Episodes.ToList());
         SetWatchedLocally(Episodes.ToList(), watched, wholeShow: true);
         try
         {
             await api.MarkShowWatchedAsync(_id, watched);
+        }
+        catch
+        {
+            Show = before.Show;
+            Episodes.Sync(before.Episodes);
+            throw;
+        }
+        await RefreshHeaderAsync();
+    }, showBusy: false);
+
+    /// <summary>The season on screen watched (or not), after asking: it changes every episode of it at once.</summary>
+    [RelayCommand]
+    private Task ToggleSeasonWatched() => RunAsync(async () =>
+    {
+        if (SelectedSeason is not { } season) return;
+        var watched = !IsSeasonWatched;
+        var name = SeasonName;
+        if (!await Dialog.ConfirmAsync(watched ? $"Mark {name} watched?" : $"Mark {name} unwatched?",
+                watched ? $"All {Episodes.Count} episodes of {name} will be marked as watched, and where you were in any of them is forgotten."
+                        : $"All {Episodes.Count} episodes of {name} will be marked as not watched.",
+                watched ? "Mark watched" : "Mark unwatched", destructive: true)) return;
+        var before = (Show, Episodes: Episodes.ToList());
+        SetWatchedLocally(Episodes.ToList(), watched);
+        try
+        {
+            await api.MarkSeasonWatchedAsync(_id, season.Number, watched);
         }
         catch
         {

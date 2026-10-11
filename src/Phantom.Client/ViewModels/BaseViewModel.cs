@@ -1,3 +1,4 @@
+using Phantom.Controls;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Phantom.Services;
@@ -11,8 +12,14 @@ public abstract partial class BaseViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(IsNotBusy))]
     private bool isBusy;
 
+    /// <summary>What went wrong, shown in a pop-up (the same everywhere in the app) as soon as it's set.</summary>
     [ObservableProperty]
     private string? errorMessage;
+
+    partial void OnErrorMessageChanged(string? value)
+    {
+        if (!string.IsNullOrWhiteSpace(value)) _ = Dialog.ErrorAsync(value);
+    }
 
     [ObservableProperty]
     private string title = "";

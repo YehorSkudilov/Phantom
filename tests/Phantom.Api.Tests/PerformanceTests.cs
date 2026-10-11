@@ -120,6 +120,23 @@ public class ShowRowTests : IClassFixture<PhantomFactory>
     }
 
     [Fact]
+    public async Task A_season_can_be_marked_watched_on_its_own()
+    {
+        var client = await ClientAsync();
+        var old = await RowAsync(client, "Old Show");
+        Assert.Equal(HttpStatusCode.NoContent, (await client.PostAsync($"/api/shows/{old.Id}/seasons/2/watched", null)).StatusCode);
+        var season1 = (await client.GetFromJsonAsync<List<EpisodeDto>>($"/api/shows/{old.Id}/seasons/1", Json))!;
+        var season2 = (await client.GetFromJsonAsync<List<EpisodeDto>>($"/api/shows/{old.Id}/seasons/2", Json))!;
+        Assert.All(season2, e => Assert.True(e.Playback.Watched));
+        Assert.All(season1, e => Assert.False(e.Playback.Watched));
+
+        await client.PostAsync($"/api/shows/{old.Id}/seasons/2/unwatched", null);
+        season2 = (await client.GetFromJsonAsync<List<EpisodeDto>>($"/api/shows/{old.Id}/seasons/2", Json))!;
+        Assert.All(season2, e => Assert.False(e.Playback.Watched));
+        Assert.Equal(HttpStatusCode.NotFound, (await client.PostAsync($"/api/shows/{old.Id}/seasons/9/watched", null)).StatusCode);
+    }
+
+    [Fact]
     public async Task Saving_episodes_of_a_pack_on_the_server_saves_each_on_its_own()
     {
         var client = await ClientAsync();

@@ -50,8 +50,6 @@
                         ImageSource="{controls:Icon cloud_download, Color=White, Size=20}" ContentLayout="Left,8" />
             </VerticalStackLayout>
         </Border>
-        <Label Text="{Binding ErrorMessage}" TextColor="{StaticResource Danger}" HorizontalOptions="Center" VerticalOptions="Center" Margin="0,120,0,0"
-               IsVisible="{Binding ErrorMessage, Converter={StaticResource HasValue}}" />
 
         <!-- "−10s" / "+30s" after a double-tap or arrow key -->
         <Border x:Name="SkipFlash" IsVisible="False" Opacity="0" VerticalOptions="Center" Padding="18,10" Margin="60,0"

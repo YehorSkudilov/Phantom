@@ -11,7 +11,15 @@
         <!-- Shared by every episode row, rather than a new icon per row -->
         <FontImageSource x:Key="EpisodeWatchedIcon" Glyph="check_circle" FontFamily="RegularIcons" Size="24" Color="{StaticResource Primary}" />
         <FontImageSource x:Key="EpisodeUnwatchedIcon" Glyph="radio_button_unchecked" FontFamily="RegularIcons" Size="24" Color="{StaticResource TextSecondary}" />
-        <FontImageSource x:Key="EpisodeMoreIcon" Glyph="more_vert" FontFamily="RegularIcons" Size="24" Color="{StaticResource TextSecondary}" />
+        <FontImageSource x:Key="EpisodeServerIcon" Glyph="cloud_download" FontFamily="RegularIcons" Size="18" Color="{StaticResource TextPrimary}" />
+        <!-- The small buttons under each episode -->
+        <Style x:Key="EpisodeActionButton" TargetType="Button" BasedOn="{StaticResource SecondaryButton}">
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="HeightRequest" Value="34" />
+            <Setter Property="Padding" Value="12,0" />
+            <Setter Property="CornerRadius" Value="17" />
+            <Setter Property="ContentLayout" Value="Left,6" />
+        </Style>
     </ContentPage.Resources>
 
     <RefreshView IsRefreshing="{Binding IsRefreshing}" Command="{Binding LoadCommand}">
@@ -38,8 +46,6 @@
                 </Grid>
 
                 <ActivityIndicator IsRunning="{Binding IsBusy}" IsVisible="{Binding IsBusy}" />
-                <Label Text="{Binding ErrorMessage}" TextColor="{StaticResource Danger}" Margin="16,0"
-                       IsVisible="{Binding ErrorMessage, Converter={StaticResource HasValue}}" />
 
                 <!-- Play the next episode; trailer, watchlist, watched, download, save on the server -->
                 <VerticalStackLayout Padding="16,0" Spacing="10">
@@ -76,18 +82,42 @@
                     </Label>
                 </VerticalStackLayout>
 
-                <!-- Seasons and their episodes -->
+                <!-- Seasons and their episodes: the season (picked like a title), then "Episodes" and the season's
+                     download buttons, then each episode with its own -->
                 <VerticalStackLayout Padding="16,0" Spacing="10" IsVisible="{Binding Seasons.Count, Converter={StaticResource HasValue}}">
-                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
-                        <Label Text="Episodes" Style="{StaticResource H2}" VerticalOptions="Center" />
-                        <Picker Grid.Column="1" ItemsSource="{Binding Seasons}" SelectedItem="{Binding SelectedSeason}" MinimumWidthRequest="140"
-                                ItemDisplayBinding="{Binding Title, x:DataType=dto:SeasonDto}" SemanticProperties.Description="Season" />
+                    <!-- The season picker, shown as a heading with a drop-down arrow so it reads as something to tap -->
+                    <Grid ColumnDefinitions="Auto,Auto" ColumnSpacing="2" HorizontalOptions="Start">
+                        <Picker ItemsSource="{Binding Seasons}" SelectedItem="{Binding SelectedSeason}" MinimumWidthRequest="120"
+                                ItemDisplayBinding="{Binding Title, x:DataType=dto:SeasonDto}" SemanticProperties.Description="Season"
+                                FontFamily="OpenSansSemibold" FontSize="24" BackgroundColor="Transparent" />
+                        <Image Grid.Column="1" Source="{controls:Icon expand_more, Size=28}" WidthRequest="28" HeightRequest="28"
+                               VerticalOptions="Center" InputTransparent="True" />
                     </Grid>
-                    <VerticalStackLayout BindableLayout.ItemsSource="{Binding Episodes}" Spacing="12">
+                    <Label Text="Episodes" Style="{StaticResource H2}" />
+                    <!-- The season: to this device, kept on the server, marked watched. Wraps onto two lines on a narrow phone
+                         rather than cutting the labels short. -->
+                    <FlexLayout Wrap="Wrap" Margin="-4,0">
+                        <Button Text="Download season" Style="{StaticResource SecondaryButton}" FontSize="13" HeightRequest="42" Margin="4"
+                                ImageSource="{controls:Icon download, Size=18}" ContentLayout="Left,6"
+                                Command="{Binding DownloadSeasonCommand}" SemanticProperties.Description="Download this season to this device" />
+                        <Button Text="Save season on server" Style="{StaticResource SecondaryButton}" FontSize="13" HeightRequest="42" Margin="4"
+                                ImageSource="{controls:Icon cloud_download, Size=18}" ContentLayout="Left,6"
+                                Command="{Binding SaveSeasonOnServerCommand}" SemanticProperties.Description="Save this season on the server" />
+                        <Button Text="{Binding SeasonWatchedLabel}" Style="{StaticResource SecondaryButton}" FontSize="13" HeightRequest="42" Margin="4"
+                                ImageSource="{controls:Icon check_circle, Size=18}" ContentLayout="Left,6"
+                                Command="{Binding ToggleSeasonWatchedCommand}">
+                            <Button.Triggers>
+                                <DataTrigger TargetType="Button" Binding="{Binding IsSeasonWatched}" Value="True">
+                                    <Setter Property="TextColor" Value="{StaticResource PrimaryLight}" />
+                                </DataTrigger>
+                            </Button.Triggers>
+                        </Button>
+                    </FlexLayout>
+                    <VerticalStackLayout BindableLayout.ItemsSource="{Binding Episodes}" Spacing="18" Margin="0,6,0,0">
                         <BindableLayout.ItemTemplate>
                             <DataTemplate x:DataType="dto:EpisodeDto">
                                 <!-- Not found yet: shown faded, and says so -->
-                                <Grid ColumnDefinitions="128,*,Auto,Auto,Auto" ColumnSpacing="10">
+                                <Grid ColumnDefinitions="128,*,Auto" RowDefinitions="Auto,Auto" ColumnSpacing="10" RowSpacing="8">
                                     <Grid.Triggers>
                                         <DataTrigger TargetType="Grid" Binding="{Binding Available}" Value="False">
                                             <Setter Property="Opacity" Value="0.45" />
@@ -97,7 +127,7 @@
                                         <TapGestureRecognizer Command="{Binding Source={RelativeSource AncestorType={x:Type vm:ShowDetailViewModel}}, Path=PlayEpisodeCommand, x:DataType=vm:ShowDetailViewModel}"
                                                               CommandParameter="{Binding .}" />
                                     </Grid.GestureRecognizers>
-                                    <Border StrokeShape="RoundRectangle 8" HeightRequest="84" VerticalOptions="Start" BackgroundColor="{StaticResource SurfaceRaised}">
+                                    <Border StrokeShape="RoundRectangle 8" HeightRequest="76" VerticalOptions="Start" BackgroundColor="{StaticResource SurfaceRaised}">
                                         <Grid>
                                             <Image Source="{Binding StillUrl, Converter={StaticResource Poster}}" Aspect="AspectFill" />
                                             <ProgressBar Progress="{Binding Playback.ProgressPercent, Converter={StaticResource Percent}}" VerticalOptions="End"
@@ -133,18 +163,18 @@
                                             </DataTrigger>
                                         </ImageButton.Triggers>
                                     </ImageButton>
-                                    <!-- Just this episode to this device, in one tap; its icon shows how the download is doing -->
-                                    <controls:EpisodeDownloadButton Grid.Column="3" VerticalOptions="Center" Style="{StaticResource IconButton}" Margin="-8,0,0,0"
-                                                 EpisodeId="{Binding Id}" IsVisible="{Binding Available}"
+                                    <!-- Under the episode: just it, to this device (the label follows the download) or kept on the server -->
+                                    <HorizontalStackLayout Grid.Row="1" Grid.ColumnSpan="3" Spacing="8" IsVisible="{Binding Available}">
+                                        <controls:EpisodeDownloadButton Style="{StaticResource EpisodeActionButton}"
+                                                 EpisodeId="{Binding Id}"
                                                  Downloads="{Binding Source={RelativeSource AncestorType={x:Type vm:ShowDetailViewModel}}, Path=Downloads, x:DataType=vm:ShowDetailViewModel}"
                                                  Command="{Binding Source={RelativeSource AncestorType={x:Type vm:ShowDetailViewModel}}, Path=DownloadEpisodeCommand, x:DataType=vm:ShowDetailViewModel}"
                                                  CommandParameter="{Binding .}" />
-                                    <!-- Save on the server, play from the start, mark -->
-                                    <ImageButton Grid.Column="4" VerticalOptions="Center" Style="{StaticResource IconButton}" Margin="-8,0,0,0"
-                                                 Source="{StaticResource EpisodeMoreIcon}"
-                                                 Command="{Binding Source={RelativeSource AncestorType={x:Type vm:ShowDetailViewModel}}, Path=EpisodeOptionsCommand, x:DataType=vm:ShowDetailViewModel}"
-                                                 CommandParameter="{Binding .}"
-                                                 SemanticProperties.Description="More options" ToolTipProperties.Text="More" />
+                                        <Button Text="Save on server" Style="{StaticResource EpisodeActionButton}"
+                                                ImageSource="{StaticResource EpisodeServerIcon}"
+                                                Command="{Binding Source={RelativeSource AncestorType={x:Type vm:ShowDetailViewModel}}, Path=SaveEpisodeOnServerCommand, x:DataType=vm:ShowDetailViewModel}"
+                                                CommandParameter="{Binding .}" SemanticProperties.Description="Save this episode on the server" />
+                                    </HorizontalStackLayout>
                                 </Grid>
                             </DataTemplate>
                         </BindableLayout.ItemTemplate>

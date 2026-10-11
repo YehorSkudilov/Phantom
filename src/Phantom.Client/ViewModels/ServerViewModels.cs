@@ -1,3 +1,4 @@
+using Phantom.Controls;
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -37,7 +38,7 @@ public partial class ServerDownloadsViewModel(PhantomApi api, SettingsService se
     [RelayCommand]
     private Task Remove(ServerDownloadDto d) => RunAsync(async () =>
     {
-        var choice = await Shell.Current.DisplayActionSheetAsync(d.MovieTitle, "Cancel", "Remove and delete files", "Remove from list (keep files)");
+        var choice = await Dialog.ChooseAsync(d.MovieTitle, "Remove and delete files", "Remove from list (keep files)");
         if (choice is null or "Cancel") return;
         await api.DeleteServerDownloadAsync(d.Id, deleteFiles: choice.Contains("delete"));
         await Refresh();
@@ -81,24 +82,24 @@ public partial class MoreViewModel(PhantomApi api, SettingsService settings) : B
     [RelayCommand]
     private Task SignInTv() => RunAsync(async () =>
     {
-        var code = await Shell.Current.DisplayPromptAsync("Sign in a TV", "Enter the code shown on the TV", "Sign in", "Cancel",
+        var code = await Dialog.PromptAsync("Sign in a TV", "Enter the code shown on the TV", "Sign in", "Cancel",
             maxLength: 7, keyboard: Keyboard.Create(KeyboardFlags.CapitalizeCharacter));
         if (string.IsNullOrWhiteSpace(code)) return;
         try
         {
             var approved = await api.ApprovePairingAsync(code);
-            await Shell.Current.DisplayAlertAsync("Sign in a TV", $"{approved.DeviceName} is now signed in to your account.", "OK");
+            await Dialog.AlertAsync("Sign in a TV", $"{approved.DeviceName} is now signed in to your account.");
         }
         catch (ApiException ex) when (ex.Status == System.Net.HttpStatusCode.NotFound)
         {
-            await Shell.Current.DisplayAlertAsync("Sign in a TV", ex.Message, "OK");
+            await Dialog.AlertAsync("Sign in a TV", ex.Message);
         }
     }, showBusy: false);
 
     [RelayCommand]
     private async Task SignOut()
     {
-        if (!await Shell.Current.DisplayAlertAsync("Sign out", "Sign out of this server?", "Sign out", "Cancel")) return;
+        if (!await Dialog.ConfirmAsync("Sign out", "Sign out of this server?", "Sign out")) return;
         settings.SignOut();
         await GoToAsync("//connect");
     }
@@ -197,10 +198,10 @@ public partial class AdminViewModel(PhantomApi api) : BaseViewModel
         {
             if (item.DownloadId is not { } id)
             {
-                await Shell.Current.DisplayAlertAsync("Saved on the server", "This copy isn't from a download Phantom knows about, so it can't be removed here.", "OK");
+                await Dialog.AlertAsync("Saved on the server", "This copy isn't from a download Phantom knows about, so it can't be removed here.");
                 return;
             }
-            if (!await Shell.Current.DisplayAlertAsync("Remove from the server", $"Delete the saved copy of {item.Title} ({BytesConverter.Format(item.SizeBytes)})? It can still be streamed.", "Delete", "Cancel")) return;
+            if (!await Dialog.ConfirmAsync("Remove from the server", $"Delete the saved copy of {item.Title} ({BytesConverter.Format(item.SizeBytes)})? It can still be streamed.", "Delete", destructive: true)) return;
             await api.DeleteServerDownloadAsync(id, deleteFiles: true);
         }
         else
@@ -213,7 +214,7 @@ public partial class AdminViewModel(PhantomApi api) : BaseViewModel
     [RelayCommand]
     private Task ClearIdleCaches() => RunAsync(async () =>
     {
-        if (!await Shell.Current.DisplayAlertAsync("Clear stream cache", "Delete the cached parts of everything nobody is watching right now? They download again when played.", "Clear", "Cancel")) return;
+        if (!await Dialog.ConfirmAsync("Clear stream cache", "Delete the cached parts of everything nobody is watching right now? They download again when played.", "Clear", destructive: true)) return;
         ShowStorage(await api.ClearIdleCachesAsync());
         await ToastAsync("Stream cache cleared");
     }, showBusy: false);
@@ -280,7 +281,7 @@ public partial class AdminViewModel(PhantomApi api) : BaseViewModel
     [RelayCommand]
     private Task RefreshAllMetadata() => RunAsync(async () =>
     {
-        if (!await Shell.Current.DisplayAlertAsync("Refresh metadata", "Fetch posters, cast and details again for every movie? It runs in the background.", "Refresh all", "Cancel")) return;
+        if (!await Dialog.ConfirmAsync("Refresh metadata", "Fetch posters, cast and details again for every movie? It runs in the background.", "Refresh all")) return;
         await api.RefreshAllMetadataAsync();
         await LoadMetadataAsync();
     }, showBusy: false);
@@ -329,9 +330,9 @@ public partial class AdminViewModel(PhantomApi api) : BaseViewModel
     private Task AddAccount() => RunAsync(async () =>
     {
         var page = Shell.Current;
-        var name = await page.DisplayPromptAsync("New account", "Username (what they sign in with)");
+        var name = await Dialog.PromptAsync("New account", "Username (what they sign in with)");
         if (string.IsNullOrWhiteSpace(name)) return;
-        var password = await page.DisplayPromptAsync("New account", "Password (at least 6 characters)");
+        var password = await Dialog.PromptAsync("New account", "Password (at least 6 characters)", password: true);
         if (string.IsNullOrEmpty(password)) return;
         await api.CreateAccountAsync(name.Trim(), password);
         await LoadAccountsAsync();
@@ -344,7 +345,7 @@ public partial class AdminViewModel(PhantomApi api) : BaseViewModel
         var user = row.Account;
         var makeAdmin = !user.IsAdmin;
         var question = makeAdmin ? $"Let {user.Username} manage the server?" : $"Stop {user.Username} managing the server?";
-        if (!await Shell.Current.DisplayAlertAsync("Server admin", question, makeAdmin ? "Make admin" : "Remove admin", "Cancel")) return;
+        if (!await Dialog.ConfirmAsync("Server admin", question, makeAdmin ? "Make admin" : "Remove admin", "Cancel")) return;
         await api.SetAdminAsync(user.Id, makeAdmin);
         await LoadAccountsAsync();
     }, showBusy: false);
@@ -353,7 +354,7 @@ public partial class AdminViewModel(PhantomApi api) : BaseViewModel
     private Task DeleteAccount(AccountRow row) => RunAsync(async () =>
     {
         var user = row.Account;
-        if (!await Shell.Current.DisplayAlertAsync("Delete account", $"Delete {user.Username}, its profiles and their watch history?", "Delete", "Cancel")) return;
+        if (!await Dialog.ConfirmAsync("Delete account", $"Delete {user.Username}, its profiles and their watch history?", "Delete", destructive: true)) return;
         await api.DeleteUserAsync(user.Id);
         Accounts.Remove(row);
     }, showBusy: false);

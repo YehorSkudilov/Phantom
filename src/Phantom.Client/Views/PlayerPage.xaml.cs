@@ -36,7 +36,15 @@ public partial class PlayerPage : ContentPage
                 return;
             }
             SetLoading(false);
-            _vm.ErrorMessage = PlaybackError(e.ErrorMessage, canConvert: _vm.Stream?.TranscodeUrl is not null);
+            // Said in a pop-up, with the player's own words underneath (selectable, to pass on); closing it leaves the player.
+            var message = PlaybackError(e.ErrorMessage, canConvert: _vm.Stream?.TranscodeUrl is not null);
+            if (e.ErrorMessage is { Length: > 0 } raw && !raw.Contains('<'))
+                message += $"\n\nDetails{(_vm.IsTranscoding ? " (converted by the server)" : "")}: {(raw.Length > 300 ? raw[..300] + "…" : raw)}";
+            Guard(async () =>
+            {
+                await Dialog.ErrorAsync(message, "Can't play this");
+                await Shell.Current.GoToAsync("..");
+            });
         });
 
         // Material only has numbered skip icons for 5, 10 and 30 seconds; other lengths get the plain arrow.
@@ -616,11 +624,11 @@ public partial class PlayerPage : ContentPage
         var labels = _vm.SubtitleChoices.Select(c => c.Label).ToList();
         if (labels.Count <= 1)
         {
-            await DisplayAlertAsync("Subtitles", "This release has no subtitle files.", "OK");
+            await Dialog.AlertAsync("Subtitles", "This release has no subtitle files.");
             return;
         }
         var current = _vm.SelectedSubtitle?.Label ?? labels[0];
-        var choice = Unmarked(await DisplayActionSheetAsync($"Subtitles · {current} · text size {_vm.SubtitleSize:0}", "Cancel", null,
+        var choice = Unmarked(await Dialog.ChooseAsync($"Subtitles · {current} · text size {_vm.SubtitleSize:0}", null,
             [.. Marked(labels, current), "Larger text", "Smaller text"]));
         if (choice == "Larger text") _vm.SubtitleSize = Math.Min(40, _vm.SubtitleSize + 2);
         else if (choice == "Smaller text") _vm.SubtitleSize = Math.Max(12, _vm.SubtitleSize - 2);
@@ -630,13 +638,13 @@ public partial class PlayerPage : ContentPage
     private async void OnQuality(object? sender, EventArgs e)
     {
         var current = _vm.SelectedQuality.Name;
-        var choice = Unmarked(await DisplayActionSheetAsync($"Quality · {(string.IsNullOrEmpty(_vm.QualityLabel) ? current : _vm.QualityLabel)}", "Cancel", null,
+        var choice = Unmarked(await Dialog.ChooseAsync($"Quality · {(string.IsNullOrEmpty(_vm.QualityLabel) ? current : _vm.QualityLabel)}", null,
             Marked(_vm.Qualities.Select(q => q.Name), current)));
         if (_vm.Qualities.FirstOrDefault(q => q.Name == choice) is { } quality && quality != _vm.SelectedQuality)
         {
             if (!quality.Resolve().IsOriginal && _vm.Stream?.TranscodeUrl is null)
             {
-                await DisplayAlertAsync("Quality", "The server can't transcode (ffmpeg not installed), so only original quality is available.", "OK");
+                await Dialog.AlertAsync("Quality", "The server can't transcode (ffmpeg not installed), so only original quality is available.");
                 return;
             }
             _vm.ChangeQuality(quality, _vm.ActualPosition(Media.Position));
@@ -646,7 +654,7 @@ public partial class PlayerPage : ContentPage
     private async void OnSpeed(object? sender, EventArgs e)
     {
         var current = $"{_vm.Speed}x";
-        var choice = Unmarked(await DisplayActionSheetAsync($"Playback speed · {current}", "Cancel", null, Marked(_vm.Speeds.Select(s => $"{s}x"), current)));
+        var choice = Unmarked(await Dialog.ChooseAsync($"Playback speed · {current}", null, Marked(_vm.Speeds.Select(s => $"{s}x"), current)));
         if (choice is not null && double.TryParse(choice.TrimEnd('x'), System.Globalization.CultureInfo.InvariantCulture, out var speed))
         {
             _vm.Speed = speed;

@@ -11,7 +11,6 @@
     <RefreshView IsRefreshing="{Binding IsRefreshing}" Command="{Binding LoadCommand}">
         <ScrollView>
             <VerticalStackLayout Padding="16" Spacing="14">
-                <skeleton:CLabel Text="{Binding ErrorMessage}" TextColor="{StaticResource Danger}" IsVisible="{Binding ErrorMessage, Converter={StaticResource HasValue}}" />
                 <controls:TabStrip Tabs="{Binding Tabs}" SelectedIndex="{Binding SelectedTab}" Margin="-16,0" />
 
                 <VerticalStackLayout Spacing="14" IsVisible="{Binding SelectedTab, Converter={StaticResource Equals}, ConverterParameter=0}">

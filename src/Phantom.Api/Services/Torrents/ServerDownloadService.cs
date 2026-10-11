@@ -188,7 +188,7 @@ public class ServerDownloadService(IServiceScopeFactory scopes, TorrentEngine en
         string? error = null;
         try
         {
-            var manager = await engine.EnsureStartedAsync(release, keep: true, ct, choice);
+            var manager = await engine.EnsureStartedAsync(release, keep: true, ct, choice, play: false);
             if (TorrentEngine.Video(manager, choice, release.SeasonNumber) is null)
                 error = "This release hasn't got that episode.";
         }

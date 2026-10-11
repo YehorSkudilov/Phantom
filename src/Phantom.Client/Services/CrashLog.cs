@@ -1,3 +1,4 @@
+using Phantom.Controls;
 namespace Phantom.Services;
 
 /// <summary>
@@ -54,7 +55,7 @@ public static class CrashLog
         if (TakeLast() is not { } report) return;
         var summary = report.Split('\n').Skip(2).FirstOrDefault()?.Trim() ?? "";
         if (summary.Length > 300) summary = summary[..300] + "…";
-        if (await page.DisplayAlertAsync("Phantom closed unexpectedly",
+        if (await Dialog.ConfirmAsync("Phantom closed unexpectedly",
                 $"Sorry about that. If you're sending feedback, copy the details and paste them in.\n\n{summary}", "Copy details", "Close"))
             await Clipboard.Default.SetTextAsync(report);
     }

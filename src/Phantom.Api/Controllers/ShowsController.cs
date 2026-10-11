@@ -27,6 +27,15 @@ public class ShowsController(PhantomDbContext db, ShowLibraryService shows) : Co
     [HttpPost("{id:int}/unwatched")]
     public Task<IActionResult> MarkUnwatched(int id, CancellationToken ct) => SetWatchedAsync(db.Episodes.Where(e => e.ShowId == id), false, ct);
 
+    /// <summary>Marks every episode of one season watched (or none).</summary>
+    [HttpPost("{id:int}/seasons/{season:int}/watched")]
+    public Task<IActionResult> MarkSeasonWatched(int id, int season, CancellationToken ct) =>
+        SetWatchedAsync(db.Episodes.Where(e => e.ShowId == id && e.SeasonNumber == season), true, ct);
+
+    [HttpPost("{id:int}/seasons/{season:int}/unwatched")]
+    public Task<IActionResult> MarkSeasonUnwatched(int id, int season, CancellationToken ct) =>
+        SetWatchedAsync(db.Episodes.Where(e => e.ShowId == id && e.SeasonNumber == season), false, ct);
+
     [HttpPut("{id:int}/watchlist")]
     public async Task<IActionResult> AddToWatchlist(int id, CancellationToken ct)
     {

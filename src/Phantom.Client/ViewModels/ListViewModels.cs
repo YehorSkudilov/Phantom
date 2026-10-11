@@ -1,3 +1,4 @@
+using Phantom.Controls;
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -104,7 +105,7 @@ public partial class PlaylistsViewModel(PhantomApi api) : BaseViewModel
     [RelayCommand]
     private Task Create() => RunAsync(async () =>
     {
-        var name = await Shell.Current.DisplayPromptAsync("New playlist", "Name");
+        var name = await Dialog.PromptAsync("New playlist", "Name");
         if (string.IsNullOrWhiteSpace(name)) return;
         Playlists.Add(await api.CreatePlaylistAsync(name));
         IsEmpty = false;
@@ -113,7 +114,7 @@ public partial class PlaylistsViewModel(PhantomApi api) : BaseViewModel
     [RelayCommand]
     private Task Delete(PlaylistDto p) => RunAsync(async () =>
     {
-        if (!await Shell.Current.DisplayAlertAsync("Delete playlist", $"Delete \"{p.Name}\"?", "Delete", "Cancel")) return;
+        if (!await Dialog.ConfirmAsync("Delete playlist", $"Delete \"{p.Name}\"?", "Delete", destructive: true)) return;
         await api.DeletePlaylistAsync(p.Id);
         Playlists.Remove(p);
         IsEmpty = Playlists.Count == 0;
@@ -225,8 +226,8 @@ public partial class DownloadsViewModel(DownloadManager manager, SettingsService
     private async Task Delete(OfflineDownload item)
     {
         var confirmed = item.IsComplete
-            ? await Shell.Current.DisplayAlertAsync("Delete download", $"Delete {item.Title} from this device? You can still stream it.", "Delete", "Keep")
-            : await Shell.Current.DisplayAlertAsync("Cancel download", $"Stop downloading {item.Title} and remove what's downloaded so far?", "Cancel download", "Keep downloading");
+            ? await Dialog.ConfirmAsync("Delete download", $"Delete {item.Title} from this device? You can still stream it.", "Delete", "Keep", destructive: true)
+            : await Dialog.ConfirmAsync("Cancel download", $"Stop downloading {item.Title} and remove what's downloaded so far?", "Cancel download", "Keep downloading", destructive: true);
         if (!confirmed) return;
         await manager.DeleteAsync(item);
         Refresh();
