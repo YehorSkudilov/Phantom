@@ -273,7 +273,10 @@ public partial class SearchViewModel(PhantomApi api) : BaseViewModel
         }, TaskScheduler.Default);
     }
 
-    [RelayCommand]
+    // Concurrent: otherwise the command reports CanExecute=false while a search is in flight, which disables the SearchBar
+    // bound to it (dropping focus and the keyboard mid-typing) and drops the search for whatever was typed meanwhile.
+    // Stale results are discarded below instead.
+    [RelayCommand(AllowConcurrentExecutions = true)]
     private Task Search() => RunAsync(async () =>
     {
         var q = Query.Trim();
