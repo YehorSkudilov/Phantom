@@ -18,7 +18,7 @@ The **client** (.NET MAUI) gives you a Plex-like experience on Android, iOS, mac
 └────────────────────┘                               │  Source sync · TMDB metadata     │
                                                      └──────────────┬───────────────────┘
                                                                     │ BitTorrent / web seeds
-                                                      YTS · Knaben · The Pirate Bay · Internet Archive
+                                               YTS · EZTV · Knaben · The Pirate Bay · Internet Archive
 ```
 
 ## Projects
@@ -33,13 +33,15 @@ The **client** (.NET MAUI) gives you a Plex-like experience on Android, iOS, mac
 
 ## Content sources (read this)
 
-Phantom pulls movies automatically. The sources are built in and on out of the box; under *Manage server → Sources* an admin can switch each on or off
+Phantom pulls movies and TV shows automatically. The sources are built in and on out of the box; under *Manage server → Sources* an admin can switch each on or off
 and sync it now, but not add or remove sources.
 
 - **YTS**: small, well-seeded encodes with posters, genres and IMDb ids; works through its whole catalogue (~77,000 movies).
-- **Knaben**: one search over many torrent sites (The Pirate Bay, YTS, 1337x, RuTracker, ...); crawls every release
-  year and common release tags, most-seeded first.
-- **The Pirate Bay**: the all-time and last-48-hours top 100 of every movie category, plus the same keyword crawl.
+- **EZTV (TV)**: TV episodes and some season packs, newest first, with the show's IMDb id and the season and episode
+  numbers; works through its whole catalogue.
+- **Knaben**: one search over many torrent sites (The Pirate Bay, YTS, 1337x, RuTracker, ...), movies and TV; crawls
+  every release year and common release tags, most-seeded first.
+- **The Pirate Bay**: the all-time and last-48-hours top 100 of every movie and TV category, plus the same keyword crawl.
 - **Internet Archive - Feature Films**: public-domain films with HTTP web seeds, so playback starts even with no peers.
 
 The catalogue crawls run a batch per sync, a minute apart, until done, and start over weekly to pick up new releases;
@@ -53,7 +55,13 @@ with copyright law where you live.
 
 **Library and discovery**
 - Automatic, scheduled imports from every enabled source, plus "Sync now"
-- Release-name parsing (title, year, quality, codec) and de-duplication across sources
+- Release-name parsing (title, year, quality, codec, and for TV season and episode: `S02E05`, `1x05`, season packs,
+  complete series) and de-duplication across sources
+- TV shows alongside movies: a show page with its seasons and episodes, Play / Resume picking the next episode,
+  episodes played from their own torrent or from inside a season pack, and the next episode playing automatically.
+  Home has New On TV and Top Rated Shows, Continue Watching and the watchlist include shows, search finds them, and
+  the Library switches between Movies and TV shows. With a TMDB key, every season's episodes (titles, stills, air
+  dates) come in, and airing shows are refreshed every 3 days for new episodes
 - Optional TMDB metadata: posters, backdrops, cast and crew, trailers, US certification, studio,
   and automatic collections (`Phantom:TmdbApiKey`)
 - Home hubs: Continue Watching, Watchlist, Recently Added, Recommended For You, Recently
@@ -98,7 +106,7 @@ with copyright law where you live.
   (*More → Sign in a TV*), or with a username and password
 
 **Server admin**
-- Sources (built in: YTS, Knaben, The Pirate Bay, Internet Archive), sync status, on/off, sync now
+- Sources (built in: YTS, EZTV, Knaben, The Pirate Bay, Internet Archive), sync status, on/off, sync now
 - Low disk space: idle stream caches are cleared, oldest first, below `Phantom:MinFreeDiskGb` (5 GB) free
 - Settings: server name, preferred quality, download/upload limits, max active downloads,
   stream cache lifetime, seeding, minimum seeders, auto-download
@@ -200,12 +208,14 @@ dotnet test tests/Phantom.Api.Tests
 | --- | --- |
 | Auth & profiles | `POST /api/auth/register`, `POST /api/auth/login`, `GET /api/auth/me`, `GET/POST/DELETE /api/profiles`, `POST /api/profiles/switch`, `/api/users` (admin) |
 | Library | `GET /api/library/movies`, `/filters`, `/hubs`, `/search` |
-| Movies | `GET /api/movies/{id}`, `/related`, `POST /watched`, `/unwatched`, `PUT /rating`, `POST /refresh`, `DELETE` (admin) |
-| Streaming | `GET /api/stream/{id}/info`, `/direct` (ranges), `/transcode`, `/subtitles/{n}` |
+| Library | `GET /api/library/movies?kind=Show` lists shows; `/filters?kind=Show` their filters |
+| Movies | `GET /api/movies/{id}`, `/related`, `POST /watched`, `/unwatched`, `PUT /rating` |
+| Shows | `GET /api/shows/{id}`, `/seasons/{n}`, `POST /watched`, `/unwatched`, `PUT/DELETE /watchlist`; `GET /api/episodes/{id}`, `POST /watched`, `/unwatched` |
+| Streaming | `GET /api/stream/{id}/info` (movies) or `/api/stream/episode/{id}/info` (episodes), `/direct` (ranges), `/transcode`, `/status`, `/thumbnail`, `/subtitles/{n}` |
 | Playback | `POST /api/playback/timeline`, `GET /sessions` (admin), `GET /history` |
 | Lists | `/api/watchlist`, `/api/playlists`, `/api/collections` |
 | Server downloads | `GET/POST /api/downloads`, `POST /{id}/pause`, `/resume`, `DELETE /{id}` |
-| Sources (admin) | `GET/POST/PUT/DELETE /api/sources`, `POST /api/sources/{id}/sync` |
+| Sources (admin) | `GET /api/sources`, `PUT /api/sources/{id}/enabled`, `POST /api/sources/{id}/sync` |
 | Server | `GET /api/server/info`, `GET/PUT /api/server/settings` (admin) |
 
 Media endpoints also accept the JWT as an `access_token` query parameter because video players
@@ -213,8 +223,11 @@ can't send headers. Put the server behind HTTPS if you expose it beyond your LAN
 
 ## Known limitations
 
-- The database is created with `EnsureCreated`; add EF Core migrations before changing the
-  schema on an existing install (redeploys keep the `phantom_data` volume, so this matters).
+- Schema changes need an EF Core migration: change the entities, then run `dotnet ef migrations add <Name>` in
+  `src/Phantom.Api`. The server applies pending migrations at startup (redeploys keep the `phantom_data` volume, so
+  never edit a migration that has shipped). Databases from before migrations are upgraded in place.
+- Device downloads, playlists and collections are for movies only; episodes stream, or can be saved on the server.
 - Device downloads run while the app is alive; there is no Android foreground download service yet.
 - Seeking a transcoded stream restarts ffmpeg at the new position (direct play seeks instantly).
-- MonoTorrent streams one file per torrent at a time; several viewers of the same torrent share it.
+- MonoTorrent streams one file per torrent at a time; several viewers of the same torrent share it, and opening a
+  different episode of the same season pack cuts off whoever was watching another one from it.
