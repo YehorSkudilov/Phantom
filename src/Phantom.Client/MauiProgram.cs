@@ -78,6 +78,15 @@ public static class MauiProgram
         builder.Services.AddTransient<AccountPage>();
         builder.Services.AddTransient<AdminPage>();
 
+#if ANDROID
+        // Every sideways list scrolls sideways, rather than the drag swiping to the next tab (see KeepHorizontalSwipes).
+        Microsoft.Maui.Controls.Handlers.Items.CollectionViewHandler.Mapper.AppendToMapping("KeepHorizontalSwipes", (handler, view) =>
+        {
+            if (view is CollectionView { ItemsLayout: LinearItemsLayout { Orientation: ItemsLayoutOrientation.Horizontal } })
+                Phantom.Droid.KeepHorizontalSwipes.Attach(handler.PlatformView);
+        });
+#endif
+
 #if WINDOWS
         // Every sideways list: the mouse wheel scrolls the page, Shift+wheel scrolls the row (see ShiftWheelScrolling).
         Microsoft.Maui.Controls.Handlers.Items.CollectionViewHandler.Mapper.AppendToMapping("ShiftWheelScrolling", (handler, view) =>
