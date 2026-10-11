@@ -264,21 +264,9 @@
                                                 <FormattedString>
                                                     <Span Text="{Binding SizeBytes, Converter={StaticResource Bytes}}" />
                                                     <Span Text="  ·  " />
-                                                    <Span Text="Saved on the server" />
+                                                    <Span Text="{Binding KindText}" />
                                                 </FormattedString>
                                             </Label.FormattedText>
-                                            <Label.Triggers>
-                                                <DataTrigger TargetType="Label" Binding="{Binding SavedOnServer}" Value="False">
-                                                    <Setter Property="FormattedText">
-                                                        <Setter.Value>
-                                                            <FormattedString>
-                                                                <Span Text="{Binding SizeBytes, Converter={StaticResource Bytes}}" />
-                                                                <Span Text="  ·  Stream cache" />
-                                                            </FormattedString>
-                                                        </Setter.Value>
-                                                    </Setter>
-                                                </DataTrigger>
-                                            </Label.Triggers>
                                         </Label>
                                         <Label Text="Being watched" FontSize="12" TextColor="{StaticResource PrimaryLight}" IsVisible="{Binding InUse}" />
                                     </VerticalStackLayout>

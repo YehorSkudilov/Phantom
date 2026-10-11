@@ -414,4 +414,7 @@ public record StoredTorrentDto(
     long SizeBytes,
     DateTime? LastUsed,
     bool InUse,
-    int? DownloadId);
+    int? DownloadId)
+{
+    public string KindText => SavedOnServer ? "Saved on the server" : "Stream cache";
+}
