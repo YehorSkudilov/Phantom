@@ -5,5 +5,7 @@
       <stop offset="1" stop-color="#0B0B12"/>
     </radialGradient>
   </defs>
-  <rect width="456" height="456" fill="url(#bg)"/>
+  <!-- Rounded corners, so the icon reads as a tile where the system doesn't mask it (Windows, Android's legacy icon).
+       iOS and macOS mask it themselves and fill the corners with the brand colour (see Phantom.csproj). -->
+  <rect width="456" height="456" rx="96" ry="96" fill="url(#bg)"/>
 </svg>
