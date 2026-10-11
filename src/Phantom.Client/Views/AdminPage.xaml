@@ -118,20 +118,23 @@
 
                 <VerticalStackLayout Spacing="14" IsVisible="{Binding SelectedTab, Converter={StaticResource Equals}, ConverterParameter=2}">
                 <!-- Accounts -->
-                <Label Text="Everyone signs in with their own account, and each account has its own profiles."
+                <Label Text="Everyone signs in with their own account. Each account starts with a default profile named after it, and can add more."
                        Style="{StaticResource Muted}" FontSize="12" />
                 <Border Style="{StaticResource Card}" Padding="0">
                     <VerticalStackLayout BindableLayout.ItemsSource="{Binding Accounts}">
                         <BindableLayout.ItemTemplate>
-                            <DataTemplate x:DataType="dto:UserDto">
+                            <DataTemplate x:DataType="vm:AccountRow">
                                 <Grid ColumnDefinitions="Auto,*,Auto,Auto" ColumnSpacing="12" Padding="14,8">
-                                    <Border WidthRequest="36" HeightRequest="36" StrokeShape="RoundRectangle 10" BackgroundColor="{Binding AvatarColor}">
-                                        <Label Text="{Binding Username, Converter={StaticResource Initial}}" FontFamily="OpenSansSemibold"
+                                    <Border WidthRequest="36" HeightRequest="36" StrokeShape="RoundRectangle 10" BackgroundColor="{Binding Account.AvatarColor}">
+                                        <Label Text="{Binding Account.Username, Converter={StaticResource Initial}}" FontFamily="OpenSansSemibold"
                                                HorizontalOptions="Center" VerticalOptions="Center" />
                                     </Border>
                                     <VerticalStackLayout Grid.Column="1" VerticalOptions="Center">
-                                        <Label Text="{Binding Username}" FontFamily="OpenSansSemibold" />
-                                        <Label Text="Admin" Style="{StaticResource Muted}" FontSize="12" IsVisible="{Binding IsAdmin}" />
+                                        <HorizontalStackLayout Spacing="8">
+                                            <Label Text="{Binding Account.Username}" FontFamily="OpenSansSemibold" />
+                                            <Label Text="Admin" Style="{StaticResource Muted}" FontSize="12" VerticalOptions="Center" IsVisible="{Binding Account.IsAdmin}" />
+                                        </HorizontalStackLayout>
+                                        <Label Text="{Binding Profiles, StringFormat='Profiles: {0}'}" Style="{StaticResource Muted}" FontSize="12" />
                                     </VerticalStackLayout>
                                     <ImageButton Grid.Column="2" Style="{StaticResource IconButton}"
                                                  Source="{controls:Icon admin_panel_settings, Outlined=True}" SemanticProperties.Description="Admin on or off" ToolTipProperties.Text="Admin on or off"

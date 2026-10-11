@@ -23,6 +23,25 @@ public abstract partial class BaseViewModel : ObservableObject
     [ObservableProperty]
     private bool isRefreshing;
 
+    /// <summary>The spinner stays at least this long, so a quick refresh is still seen to happen.</summary>
+    private static readonly TimeSpan MinRefreshTime = TimeSpan.FromSeconds(1);
+
+    private DateTime _refreshStarted;
+
+    partial void OnIsRefreshingChanged(bool value)
+    {
+        if (value) _refreshStarted = DateTime.UtcNow;
+    }
+
+    /// <summary>Clears the spinner, once it has shown for <see cref="MinRefreshTime"/>.</summary>
+    protected async Task EndRefreshAsync()
+    {
+        if (!IsRefreshing) return;
+        var remaining = MinRefreshTime - (DateTime.UtcNow - _refreshStarted);
+        if (remaining > TimeSpan.Zero) await Task.Delay(remaining);
+        IsRefreshing = false;
+    }
+
     /// <summary>Runs an operation with busy/error handling so pages never crash on network errors.</summary>
     protected async Task RunAsync(Func<Task> action, bool showBusy = true)
     {
@@ -48,7 +67,7 @@ public abstract partial class BaseViewModel : ObservableObject
         finally
         {
             if (showBusy) IsBusy = false;
-            IsRefreshing = false;
+            await EndRefreshAsync();
         }
     }
 

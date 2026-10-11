@@ -132,12 +132,15 @@ public partial class SettingsViewModel(SettingsService settings) : BaseViewModel
     partial void OnSkipBackChanged(int value) => settings.SkipBackSeconds = value;
 }
 
+/// <summary>An account in Manage server's list, with the profiles under it (its default one first).</summary>
+public record AccountRow(UserDto Account, string Profiles);
+
 /// <summary>Server dashboard for admins: activity, sources and server settings.</summary>
 public partial class AdminViewModel(PhantomApi api) : BaseViewModel
 {
     public ObservableCollection<NowPlayingDto> Sessions { get; } = [];
     public ObservableCollection<SourceDto> Sources { get; } = [];
-    public ObservableCollection<UserDto> Accounts { get; } = [];
+    public ObservableCollection<AccountRow> Accounts { get; } = [];
 
     public IReadOnlyList<string> Tabs { get; } = ["Overview", "Sources", "Accounts", "Server settings"];
     [ObservableProperty] private int selectedTab;
@@ -193,8 +196,14 @@ public partial class AdminViewModel(PhantomApi api) : BaseViewModel
 
     private async Task LoadAccountsAsync()
     {
+        var users = await api.UsersAsync();
         Accounts.Clear();
-        foreach (var u in (await api.UsersAsync()).Where(u => !u.IsManaged)) Accounts.Add(u);
+        foreach (var account in users.Where(u => !u.IsManaged))
+        {
+            // The account's own profile (its default one) first, then the ones added under it.
+            var profiles = users.Where(u => u.IsManaged && u.AccountId == account.Id).Select(u => u.Username);
+            Accounts.Add(new AccountRow(account, string.Join(", ", [$"{account.Username} (default)", .. profiles])));
+        }
     }
 
     /// <summary>A new account with its own sign-in; its owner adds profiles under it after signing in.</summary>
@@ -212,8 +221,9 @@ public partial class AdminViewModel(PhantomApi api) : BaseViewModel
     }, showBusy: false);
 
     [RelayCommand]
-    private Task ToggleAdmin(UserDto user) => RunAsync(async () =>
+    private Task ToggleAdmin(AccountRow row) => RunAsync(async () =>
     {
+        var user = row.Account;
         var makeAdmin = !user.IsAdmin;
         var question = makeAdmin ? $"Let {user.Username} manage the server?" : $"Stop {user.Username} managing the server?";
         if (!await Shell.Current.DisplayAlertAsync("Server admin", question, makeAdmin ? "Make admin" : "Remove admin", "Cancel")) return;
@@ -222,11 +232,12 @@ public partial class AdminViewModel(PhantomApi api) : BaseViewModel
     }, showBusy: false);
 
     [RelayCommand]
-    private Task DeleteAccount(UserDto user) => RunAsync(async () =>
+    private Task DeleteAccount(AccountRow row) => RunAsync(async () =>
     {
+        var user = row.Account;
         if (!await Shell.Current.DisplayAlertAsync("Delete account", $"Delete {user.Username}, its profiles and their watch history?", "Delete", "Cancel")) return;
         await api.DeleteUserAsync(user.Id);
-        Accounts.Remove(user);
+        Accounts.Remove(row);
     }, showBusy: false);
 
     [RelayCommand]

@@ -200,7 +200,7 @@ public partial class LibraryViewModel(PhantomApi api, SettingsService settings, 
             _total = result.Total;
             Summary = $"{result.Total} movies" + (Actor is not null ? $" with {Actor}" : Director is not null ? $" by {Director}" : "");
         }, showBusy: false);
-        IsRefreshing = false;
+        _ = EndRefreshAsync();
     }
 
     [RelayCommand]

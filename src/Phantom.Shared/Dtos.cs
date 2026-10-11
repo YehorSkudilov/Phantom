@@ -15,7 +15,8 @@ public record UserDto(
     bool IsManaged,
     bool HasPin,
     string? AvatarColor,
-    string? MaxContentRating);
+    string? MaxContentRating,
+    int? AccountId = null);
 
 /// <summary>Plex Home style managed profile (child/guest accounts under the owner).</summary>
 public record CreateProfileRequest(string Username, string? Pin, string? MaxContentRating, string? AvatarColor);
