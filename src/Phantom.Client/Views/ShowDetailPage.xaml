@@ -76,7 +76,12 @@
                         <BindableLayout.ItemTemplate>
                             <DataTemplate x:DataType="dto:EpisodeDto">
                                 <!-- Not found yet: shown faded, and says so -->
-                                <Grid ColumnDefinitions="150,*,Auto" ColumnSpacing="12" Opacity="{Binding Available, Converter={StaticResource AllTrue}, ConverterParameter='1|0.45'}">
+                                <Grid ColumnDefinitions="150,*,Auto" ColumnSpacing="12">
+                                    <Grid.Triggers>
+                                        <DataTrigger TargetType="Grid" Binding="{Binding Available}" Value="False">
+                                            <Setter Property="Opacity" Value="0.45" />
+                                        </DataTrigger>
+                                    </Grid.Triggers>
                                     <Grid.GestureRecognizers>
                                         <TapGestureRecognizer Command="{Binding Source={RelativeSource AncestorType={x:Type vm:ShowDetailViewModel}}, Path=PlayEpisodeCommand, x:DataType=vm:ShowDetailViewModel}"
                                                               CommandParameter="{Binding .}" />
@@ -103,11 +108,18 @@
                                         <Label Text="{Binding Overview}" Style="{StaticResource Muted}" FontSize="12" MaxLines="2" LineBreakMode="TailTruncation"
                                                IsVisible="{Binding Overview, Converter={StaticResource HasValue}}" />
                                     </VerticalStackLayout>
-                                    <ImageButton Grid.Column="2" Style="{StaticResource IconButton}" VerticalOptions="Center"
-                                                 Source="{Binding Playback.Watched, Converter={StaticResource AllTrue}, ConverterParameter='check_circle|radio_button_unchecked'}"
-                                                 Command="{Binding Source={RelativeSource AncestorType={x:Type vm:ShowDetailViewModel}}, Path=ToggleEpisodeWatchedCommand, x:DataType=vm:ShowDetailViewModel}"
-                                                 CommandParameter="{Binding .}"
-                                                 SemanticProperties.Description="Watched" ToolTipProperties.Text="Mark watched / unwatched" />
+                                    <Grid Grid.Column="2" VerticalOptions="Center">
+                                        <ImageButton Style="{StaticResource IconButton}" Source="{controls:Icon check_circle, Color={StaticResource Primary}}"
+                                                     IsVisible="{Binding Playback.Watched}"
+                                                     Command="{Binding Source={RelativeSource AncestorType={x:Type vm:ShowDetailViewModel}}, Path=ToggleEpisodeWatchedCommand, x:DataType=vm:ShowDetailViewModel}"
+                                                     CommandParameter="{Binding .}"
+                                                     SemanticProperties.Description="Watched" ToolTipProperties.Text="Mark unwatched" />
+                                        <ImageButton Style="{StaticResource IconButton}" Source="{controls:Icon radio_button_unchecked, Color={StaticResource TextSecondary}}"
+                                                     IsVisible="{Binding Playback.Watched, Converter={StaticResource Not}}"
+                                                     Command="{Binding Source={RelativeSource AncestorType={x:Type vm:ShowDetailViewModel}}, Path=ToggleEpisodeWatchedCommand, x:DataType=vm:ShowDetailViewModel}"
+                                                     CommandParameter="{Binding .}"
+                                                     SemanticProperties.Description="Not watched" ToolTipProperties.Text="Mark watched" />
+                                    </Grid>
                                 </Grid>
                             </DataTemplate>
                         </BindableLayout.ItemTemplate>
