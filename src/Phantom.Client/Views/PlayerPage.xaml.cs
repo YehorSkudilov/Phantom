@@ -147,10 +147,10 @@ public partial class PlayerPage : ContentPage
         var labels = _vm.SubtitleChoices.Select(c => c.Label).ToList();
         if (labels.Count <= 1)
         {
-            await DisplayAlert("Subtitles", "This release has no subtitle files.", "OK");
+            await DisplayAlertAsync("Subtitles", "This release has no subtitle files.", "OK");
             return;
         }
-        var choice = await DisplayActionSheet("Subtitles", "Cancel", null, [.. labels, "Larger text", "Smaller text"]);
+        var choice = await DisplayActionSheetAsync("Subtitles", "Cancel", null, [.. labels, "Larger text", "Smaller text"]);
         if (choice == "Larger text") _vm.SubtitleSize = Math.Min(40, _vm.SubtitleSize + 2);
         else if (choice == "Smaller text") _vm.SubtitleSize = Math.Max(12, _vm.SubtitleSize - 2);
         else if (_vm.SubtitleChoices.FirstOrDefault(c => c.Label == choice) is { } picked) _vm.SelectedSubtitle = picked;
@@ -158,12 +158,12 @@ public partial class PlayerPage : ContentPage
 
     private async void OnQuality(object? sender, EventArgs e)
     {
-        var choice = await DisplayActionSheet("Quality", "Cancel", null, [.. _vm.Qualities.Select(q => q.Name)]);
+        var choice = await DisplayActionSheetAsync("Quality", "Cancel", null, [.. _vm.Qualities.Select(q => q.Name)]);
         if (_vm.Qualities.FirstOrDefault(q => q.Name == choice) is { } quality && quality != _vm.SelectedQuality)
         {
             if (!quality.IsOriginal && _vm.Stream?.TranscodeUrl is null)
             {
-                await DisplayAlert("Quality", "The server can't transcode (ffmpeg not installed), so only original quality is available.", "OK");
+                await DisplayAlertAsync("Quality", "The server can't transcode (ffmpeg not installed), so only original quality is available.", "OK");
                 return;
             }
             _vm.ChangeQuality(quality, _vm.ActualPosition(Media.Position));
@@ -172,7 +172,7 @@ public partial class PlayerPage : ContentPage
 
     private async void OnSpeed(object? sender, EventArgs e)
     {
-        var choice = await DisplayActionSheet("Playback speed", "Cancel", null, [.. _vm.Speeds.Select(s => $"{s}x")]);
+        var choice = await DisplayActionSheetAsync("Playback speed", "Cancel", null, [.. _vm.Speeds.Select(s => $"{s}x")]);
         if (choice is not null && double.TryParse(choice.TrimEnd('x'), System.Globalization.CultureInfo.InvariantCulture, out var speed))
         {
             _vm.Speed = speed;

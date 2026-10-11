@@ -90,40 +90,87 @@ Phantom pulls movies automatically, but **you decide where from**:
 
 ## Running the server
 
-Requirements: .NET 9 SDK. Optional: `ffmpeg` on `PATH` (transcoding), a TMDB API key (metadata).
+Requirements: .NET 10 SDK. Optional: `ffmpeg` on `PATH` (transcoding), a TMDB API key (metadata).
 
 ```bash
 cd src/Phantom.Api
-dotnet run                     # http://0.0.0.0:5180, Swagger UI at /swagger
+cp .env.example .env           # then set at least SwaggerAuth__Password
+dotnet run                     # http://0.0.0.0:5180, Swagger UI at /swagger (basic auth)
 ```
 
-Configuration lives in `appsettings.json` under `Phantom` (environment variables work too,
-e.g. `Phantom__TmdbApiKey=...`):
+Every setting lives in `src/Phantom.Api/.env` (there are no appsettings files). The API loads it itself under
+`dotnet run`, and `docker-compose.yml` passes it to the container. See `.env.example` for all keys; the main ones:
 
 | Key | Default | Meaning |
 | --- | --- | --- |
-| `DataDirectory` | `data` | Database, torrent cache, permanent media, JWT key |
-| `TmdbApiKey` | empty | Enables rich metadata and collections |
-| `AllowRegistration` | `false` | Open sign-up after the owner account exists |
-| `FfmpegPath` | `ffmpeg` | Transcoder binary |
-| `TorrentListenPort` | `55125` | BitTorrent/DHT port (forward it on your router for better speeds) |
-| `SeedDefaultSources` | `true` | Add the Internet Archive source on first run |
+| `Phantom__DataDirectory` | `data` | Database, torrent cache, permanent media, JWT key (`/data` volume in Docker) |
+| `Phantom__JwtSigningKey` | empty | Token signing key; empty generates one in the data directory |
+| `Phantom__TmdbApiKey` | empty | Enables rich metadata and collections |
+| `Phantom__AllowRegistration` | `false` | Open sign-up after the owner account exists |
+| `Phantom__TorrentListenPort` | `55125` | BitTorrent/DHT port (forward it on your router for better speeds) |
+| `SwaggerAuth__Username` / `__Password` | required | Basic auth in front of the Swagger UI |
+| `ReverseProxy__KnownNetworks` | empty | Proxies whose `X-Forwarded-*` headers are trusted |
+| `API_PORT`, `TORRENT_PORT` | `8080`, `55125` | Host ports published by `docker-compose.yml` |
 
-The first account created becomes the administrator.
+The first account created becomes the administrator. `GET /health` returns 200 once the API is up.
+
+### Docker
+
+```bash
+cd src/Phantom.Api
+docker compose up -d --build   # builds from the repo root, data in the phantom_data volume
+```
+
+The image includes ffmpeg and runs as a non-root user. Put a TLS-terminating reverse proxy in front of `API_PORT`.
 
 ## Running the client
 
-Requirements: .NET 9 SDK with the MAUI workload (`dotnet workload install maui`).
+Requirements: .NET 10 SDK with the MAUI workload (`dotnet workload install maui`).
 
 ```bash
 cd src/Phantom.Client
-dotnet build -t:Run -f net9.0-android        # Android device or emulator
-dotnet build -t:Run -f net9.0-ios            # macOS only
-dotnet build -t:Run -f net9.0-maccatalyst    # macOS only
-dotnet build -t:Run -f net9.0-windows10.0.19041.0  # Windows only
+cp .env.example .env           # optional: API_BASE_URL pre-fills the server address
+dotnet build -t:Run -f net10.0-android        # Android device or emulator
+dotnet build -t:Run -f net10.0-ios            # macOS only
+dotnet build -t:Run -f net10.0-maccatalyst    # macOS only
+dotnet build -t:Run -f net10.0-windows10.0.19041.0  # Windows only
 ```
 
 Launch the app, enter the server address (e.g. `http://192.168.1.10:5180`), and sign in.
+
+## Deployment
+
+Deployment works the same way as GymBook's: everything is started by hand from the **Actions → Publish** workflow
+(`.github/workflows/Publish.yml`), which calls two reusable workflows.
+
+**API (`PublishApi.yml`)**, from `main` only: SSH to the server, `git reset --hard origin/main` in `/opt/Phantom`,
+write `src/Phantom.Api/.env` from repository variables and secrets, `docker compose build --pull && up -d`, wait
+for `/health`, prune old images. One-time server setup: install Docker, `git clone` this repository to
+`/opt/Phantom`, and open `TORRENT_PORT` (TCP and UDP) in the firewall.
+
+**App (`PublishApp.yml`)**: bumps `ApplicationDisplayVersion`/`ApplicationVersion` in `Phantom.Client.csproj` and
+commits it, builds each selected platform with `API_BASE_URL` baked in, uploads it, then creates a GitHub Release
+`vX.Y.Z` with the Android `.aab` and `.apk`.
+
+| Platform | Runner | Output | Uploaded to |
+| --- | --- | --- | --- |
+| Android | windows-latest | signed `.aab` + `.apk` | Google Play (chosen track) |
+| Windows | windows-latest | `.msix` | Microsoft Store (new submission) |
+| iOS | xcode-27 | `.ipa` | TestFlight |
+| macOS | xcode-27 | signed `.pkg` | App Store Connect |
+
+Repository **variables**: `API_BASE_URL`, `API_PORT`, `TORRENT_PORT`, `SWAGGER_AUTH_USERNAME`,
+`ALLOW_REGISTRATION`, `TOKEN_LIFETIME_DAYS`, `IOS_XCODE_VERSION`, `MSSTORE_PACKAGE_NAME`, `MSSTORE_PUBLISHER`,
+`MSSTORE_PUBLISHER_DISPLAY_NAME`, `MSSTORE_PRODUCT_ID`.
+
+Repository **secrets**:
+- Server: `SERVER_HOST`, `SERVER_USER`, `SERVER_SSH_KEY`, `JWT_SIGNING_KEY`, `SWAGGER_AUTH_PASSWORD`, `TMDB_API_KEY`
+- Android: `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASS`, `ANDROID_KEYALIAS_NAME`, `ANDROID_KEYALIAS_PASS`,
+  `SERVICE_ACCOUNT_JSON`
+- Windows: `AZURE_AD_TENANT_ID`, `AZURE_AD_CLIENT_ID`, `AZURE_AD_CLIENT_SECRET`, `MSSTORE_SELLER_ID`
+- Apple: `IOS_P12_BASE64`, `IOS_P12_PASSWORD`, `IOS_PROFILE_BASE64`, `APPSTORE_KEY_ID`, `APPSTORE_ISSUER_ID`,
+  `APPSTORE_PRIVATE_KEY`, and for macOS `MACOS_INSTALLER_P12_BASE64`, `MACOS_INSTALLER_P12_PASSWORD`,
+  `MACOS_PROFILE_BASE64`
 
 ## Tests
 
@@ -151,7 +198,7 @@ can't send headers. Put the server behind HTTPS if you expose it beyond your LAN
 ## Known limitations
 
 - The database is created with `EnsureCreated`; add EF Core migrations before changing the
-  schema on an existing install.
+  schema on an existing install (redeploys keep the `phantom_data` volume, so this matters).
 - Device downloads run while the app is alive; there is no Android foreground download service yet.
 - Seeking a transcoded stream restarts ffmpeg at the new position (direct play seeks instantly).
 - MonoTorrent streams one file per torrent at a time; several viewers of the same torrent share it.

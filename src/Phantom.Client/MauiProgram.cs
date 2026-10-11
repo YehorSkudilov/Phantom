@@ -14,7 +14,8 @@ public static class MauiProgram
         builder
             .UseMauiApp<App>()
             .UseMauiCommunityToolkit()
-            .UseMauiCommunityToolkitMediaElement(_ => { })
+            // Foreground service keeps audio going with the screen off and shows media controls in the notification shade.
+            .UseMauiCommunityToolkitMediaElement(isAndroidForegroundServiceEnabled: true)
             .ConfigureFonts(fonts =>
             {
                 fonts.AddFont("OpenSans-Regular.ttf", "OpenSansRegular");

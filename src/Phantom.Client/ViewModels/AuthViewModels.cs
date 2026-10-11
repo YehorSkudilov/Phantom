@@ -8,7 +8,7 @@ namespace Phantom.Client.ViewModels;
 
 public partial class ConnectViewModel(PhantomApi api, SettingsService settings) : BaseViewModel
 {
-    [ObservableProperty] private string serverUrl = settings.ServerUrl ?? "http://192.168.1.10:5180";
+    [ObservableProperty] private string serverUrl = settings.ServerUrl ?? ApiConfig.DefaultServerUrl ?? "http://192.168.1.10:5180";
     [ObservableProperty] private string username = "";
     [ObservableProperty] private string password = "";
     [ObservableProperty] private bool isConnected;
@@ -100,7 +100,7 @@ public partial class ProfilesViewModel(PhantomApi api, SettingsService settings)
         var name = await Shell.Current.DisplayPromptAsync("New profile", "Name");
         if (string.IsNullOrWhiteSpace(name)) return;
         var pin = await Shell.Current.DisplayPromptAsync("New profile", "Optional PIN (leave empty for none)", keyboard: Keyboard.Numeric, maxLength: 8);
-        var rating = await Shell.Current.DisplayActionSheet("Content restriction", "Cancel", null, "No restriction", "G", "PG", "PG-13", "R");
+        var rating = await Shell.Current.DisplayActionSheetAsync("Content restriction", "Cancel", null, "No restriction", "G", "PG", "PG-13", "R");
         if (rating is null or "Cancel") return;
 
         var colors = new[] { "#8B5CF6", "#22D3EE", "#F472B6", "#34D399", "#FBBF24", "#60A5FA" };
@@ -114,7 +114,7 @@ public partial class ProfilesViewModel(PhantomApi api, SettingsService settings)
     private Task DeleteProfile(UserDto profile) => RunAsync(async () =>
     {
         if (!profile.IsManaged) return;
-        if (!await Shell.Current.DisplayAlert("Delete profile", $"Delete {profile.Username} and its watch history?", "Delete", "Cancel")) return;
+        if (!await Shell.Current.DisplayAlertAsync("Delete profile", $"Delete {profile.Username} and its watch history?", "Delete", "Cancel")) return;
         await api.DeleteProfileAsync(profile.Id);
         Profiles.Remove(profile);
     });

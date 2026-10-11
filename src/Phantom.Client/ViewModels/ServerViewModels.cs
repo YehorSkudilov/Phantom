@@ -42,7 +42,7 @@ public partial class ServerDownloadsViewModel(PhantomApi api, SettingsService se
     [RelayCommand]
     private Task Remove(ServerDownloadDto d) => RunAsync(async () =>
     {
-        var choice = await Shell.Current.DisplayActionSheet(d.MovieTitle, "Cancel", "Remove and delete files", "Remove from list (keep files)");
+        var choice = await Shell.Current.DisplayActionSheetAsync(d.MovieTitle, "Cancel", "Remove and delete files", "Remove from list (keep files)");
         if (choice is null or "Cancel") return;
         await api.DeleteServerDownloadAsync(d.Id, deleteFiles: choice.Contains("delete"));
         await Refresh();
@@ -81,7 +81,7 @@ public partial class MoreViewModel(PhantomApi api, SettingsService settings) : B
     [RelayCommand]
     private async Task SignOut()
     {
-        if (!await Shell.Current.DisplayAlert("Sign out", "Sign out of this server?", "Sign out", "Cancel")) return;
+        if (!await Shell.Current.DisplayAlertAsync("Sign out", "Sign out of this server?", "Sign out", "Cancel")) return;
         settings.SignOut();
         await GoToAsync("//connect");
     }
@@ -195,7 +195,7 @@ public partial class AdminViewModel(PhantomApi api) : BaseViewModel
     [RelayCommand]
     private Task DeleteSource(SourceDto s) => RunAsync(async () =>
     {
-        if (!await Shell.Current.DisplayAlert("Remove source", $"Remove {s.Name}? Movies already imported stay in the library.", "Remove", "Cancel")) return;
+        if (!await Shell.Current.DisplayAlertAsync("Remove source", $"Remove {s.Name}? Movies already imported stay in the library.", "Remove", "Cancel")) return;
         await api.DeleteSourceAsync(s.Id);
         Sources.Remove(s);
     }, showBusy: false);

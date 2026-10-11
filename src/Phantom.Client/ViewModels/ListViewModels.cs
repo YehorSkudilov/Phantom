@@ -100,7 +100,7 @@ public partial class PlaylistsViewModel(PhantomApi api) : BaseViewModel
     [RelayCommand]
     private Task Delete(PlaylistDto p) => RunAsync(async () =>
     {
-        if (!await Shell.Current.DisplayAlert("Delete playlist", $"Delete \"{p.Name}\"?", "Delete", "Cancel")) return;
+        if (!await Shell.Current.DisplayAlertAsync("Delete playlist", $"Delete \"{p.Name}\"?", "Delete", "Cancel")) return;
         await api.DeletePlaylistAsync(p.Id);
         Playlists.Remove(p);
         IsEmpty = Playlists.Count == 0;
@@ -199,7 +199,7 @@ public partial class DownloadsViewModel(DownloadManager manager, SettingsService
     [RelayCommand]
     private async Task Delete(OfflineDownload item)
     {
-        if (!await Shell.Current.DisplayAlert("Remove download", $"Delete {item.Title} from this device?", "Delete", "Cancel")) return;
+        if (!await Shell.Current.DisplayAlertAsync("Remove download", $"Delete {item.Title} from this device?", "Delete", "Cancel")) return;
         await manager.DeleteAsync(item);
         Refresh();
     }

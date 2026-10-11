@@ -1,16 +1,21 @@
 using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
-using Microsoft.OpenApi.Models;
 using Phantom.Api;
 using Phantom.Api.Data;
 using Phantom.Api.Services;
 using Phantom.Api.Services.Metadata;
 using Phantom.Api.Services.Sources;
 using Phantom.Api.Services.Torrents;
+using Phantom.Api.Swagger;
 using Phantom.Shared;
+
+// Settings from .env next to the project, the same file docker-compose uses (see .env.example). Must run before the
+// builder reads environment variables.
+DotEnv.Load(Path.Combine(Directory.GetCurrentDirectory(), ".env"));
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -18,7 +23,8 @@ builder.Services.Configure<PhantomOptions>(builder.Configuration.GetSection(Phan
 var phantom = builder.Configuration.GetSection(PhantomOptions.Section).Get<PhantomOptions>() ?? new PhantomOptions();
 Directory.CreateDirectory(phantom.DataDirectory);
 
-builder.Services.AddDbContext<PhantomDbContext>(o => o.UseSqlite($"Data Source={phantom.DatabasePath}", s => s.UseQuerySplittingBehavior(QuerySplittingBehavior.SplitQuery)));
+builder.Services.AddDbContext<PhantomDbContext>(o =>
+    o.UseSqlite($"Data Source={phantom.DatabasePath}", s => s.UseQuerySplittingBehavior(QuerySplittingBehavior.SplitQuery)));
 
 // Core services
 builder.Services.AddSingleton<TokenService>();
@@ -67,36 +73,36 @@ builder.Services.AddOptions<JwtBearerOptions>(JwtBearerDefaults.AuthenticationSc
     });
 builder.Services.AddAuthorization();
 
+builder.Services.AddProblemDetails();
 builder.Services.AddControllers()
     .AddJsonOptions(o => o.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter()));
-builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen(c =>
-{
-    c.SwaggerDoc("v1", new OpenApiInfo { Title = "Phantom API", Version = "v1" });
-    c.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
-    {
-        Type = SecuritySchemeType.Http,
-        Scheme = "bearer",
-        BearerFormat = "JWT",
-    });
-    c.AddSecurityRequirement(new OpenApiSecurityRequirement
-    {
-        { new OpenApiSecurityScheme { Reference = new OpenApiReference { Type = ReferenceType.SecurityScheme, Id = "Bearer" } }, [] },
-    });
-});
+builder.Services.AddSwagger(builder.Configuration);
 builder.Services.AddCors(o => o.AddDefaultPolicy(p => p.AllowAnyOrigin().AllowAnyHeader().AllowAnyMethod()));
 
 var app = builder.Build();
 
+// Only trusts X-Forwarded-* from loopback, plus any networks in ReverseProxy:KnownNetworks (comma-separated
+// CIDRs) - otherwise behind a proxy every request looks like it came from the proxy over plain HTTP, and the
+// stream URLs handed to players would point at the wrong scheme and host.
+var forwarded = new ForwardedHeadersOptions
+{
+    ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto | ForwardedHeaders.XForwardedHost,
+};
+foreach (var network in (app.Configuration["ReverseProxy:KnownNetworks"] ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+    forwarded.KnownIPNetworks.Add(System.Net.IPNetwork.Parse(network));
+app.UseForwardedHeaders(forwarded);
+
 await SeedAsync(app.Services);
 
-app.UseSwagger();
-app.UseSwaggerUI();
+if (!app.Environment.IsDevelopment())
+    app.UseExceptionHandler();
+
+app.UseSwaggerWithAuth();
 app.UseCors();
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
-app.MapGet("/", () => Results.Redirect("/swagger")).ExcludeFromDescription();
+app.MapGet("/health", () => Results.Ok()).AllowAnonymous();
 
 app.Run();
 
@@ -107,6 +113,7 @@ static async Task SeedAsync(IServiceProvider services)
     await db.Database.EnsureCreatedAsync();
 
     if (!await db.Settings.AnyAsync()) db.Settings.Add(new ServerSettings());
+
     var options = scope.ServiceProvider.GetRequiredService<IOptions<PhantomOptions>>().Value;
     if (options.SeedDefaultSources && !await db.Sources.AnyAsync())
     {

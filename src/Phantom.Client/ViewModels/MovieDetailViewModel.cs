@@ -87,7 +87,7 @@ public partial class MovieDetailViewModel(PhantomApi api, SettingsService settin
         var resume = CanResume;
         if (resume && !settings.ResumeAutomatically)
         {
-            var choice = await Shell.Current.DisplayActionSheet(Movie.Title, "Cancel", null, PlayLabel.TrimStart('▶', ' '), "Play from beginning");
+            var choice = await Shell.Current.DisplayActionSheetAsync(Movie.Title, "Cancel", null, PlayLabel.TrimStart('▶', ' '), "Play from beginning");
             if (choice is null or "Cancel") return;
             resume = choice != "Play from beginning";
         }
@@ -124,7 +124,7 @@ public partial class MovieDetailViewModel(PhantomApi api, SettingsService settin
     private Task Rate() => RunAsync(async () =>
     {
         string[] options = ["★★★★★  10", "★★★★½  9", "★★★★  8", "★★★½  7", "★★★  6", "★★½  5", "★★  4", "★½  3", "★  2", "½  1", "Clear rating"];
-        var choice = await Shell.Current.DisplayActionSheet("Rate this movie", "Cancel", null, options);
+        var choice = await Shell.Current.DisplayActionSheetAsync("Rate this movie", "Cancel", null, options);
         if (choice is null or "Cancel") return;
         double? rating = choice == "Clear rating" ? null : double.Parse(choice.Split(' ', StringSplitOptions.RemoveEmptyEntries)[^1]);
         await api.RateAsync(_id, rating);
@@ -136,7 +136,7 @@ public partial class MovieDetailViewModel(PhantomApi api, SettingsService settin
     {
         var playlists = await api.PlaylistsAsync();
         const string newPlaylist = "+ New playlist";
-        var choice = await Shell.Current.DisplayActionSheet("Add to playlist", "Cancel", null, [.. playlists.Select(p => p.Name), newPlaylist]);
+        var choice = await Shell.Current.DisplayActionSheetAsync("Add to playlist", "Cancel", null, [.. playlists.Select(p => p.Name), newPlaylist]);
         if (choice is null or "Cancel") return;
         PlaylistDto? target = playlists.FirstOrDefault(p => p.Name == choice);
         if (choice == newPlaylist)
@@ -156,7 +156,7 @@ public partial class MovieDetailViewModel(PhantomApi api, SettingsService settin
         if (Movie is null) return;
         if (OfflineItem is { } existing)
         {
-            var action = await Shell.Current.DisplayActionSheet(Movie.Title, "Cancel", "Delete download",
+            var action = await Shell.Current.DisplayActionSheetAsync(Movie.Title, "Cancel", "Delete download",
                 existing.Status is OfflineStatus.Paused or OfflineStatus.Failed ? "Resume download" : "Go to Downloads");
             if (action == "Delete download") await downloads.DeleteAsync(existing);
             else if (action == "Resume download") downloads.Resume(existing);
@@ -196,7 +196,7 @@ public partial class MovieDetailViewModel(PhantomApi api, SettingsService settin
     {
         var options = new List<string> { "Add to playlist", "Rate", "Download on server" };
         if (IsAdmin) options.AddRange(["Refresh metadata", "Delete from library"]);
-        var choice = await Shell.Current.DisplayActionSheet(Movie?.Title, "Cancel", null, [.. options]);
+        var choice = await Shell.Current.DisplayActionSheetAsync(Movie?.Title, "Cancel", null, [.. options]);
         switch (choice)
         {
             case "Add to playlist": await AddToPlaylist(); break;
@@ -207,7 +207,7 @@ public partial class MovieDetailViewModel(PhantomApi api, SettingsService settin
                 Movie = await api.MovieAsync(_id);
                 break;
             case "Delete from library":
-                if (await Shell.Current.DisplayAlert("Delete", $"Remove {Movie?.Title} and its torrents from the server?", "Delete", "Cancel"))
+                if (await Shell.Current.DisplayAlertAsync("Delete", $"Remove {Movie?.Title} and its torrents from the server?", "Delete", "Cancel"))
                 {
                     await api.DeleteMovieAsync(_id);
                     await Shell.Current.GoToAsync("..");

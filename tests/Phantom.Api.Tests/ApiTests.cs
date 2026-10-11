@@ -21,6 +21,8 @@ public sealed class PhantomFactory : WebApplicationFactory<Program>
         builder.UseSetting("Phantom:SeedDefaultSources", "false");
         builder.UseSetting("Phantom:TorrentListenPort", Random.Shared.Next(40000, 50000).ToString());
         builder.UseSetting("Phantom:FfmpegPath", "/nonexistent/ffmpeg");
+        builder.UseSetting("SwaggerAuth:Username", "test");
+        builder.UseSetting("SwaggerAuth:Password", "test");
     }
 
     protected override void Dispose(bool disposing)
@@ -74,6 +76,23 @@ public class ApiTests : IClassFixture<PhantomFactory>
         var auth = await res.Content.ReadFromJsonAsync<AuthResponse>(Json);
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", auth!.Token);
         return client;
+    }
+
+    [Fact]
+    public async Task Health_is_public()
+    {
+        var res = await _factory.CreateClient().GetAsync("/health");
+        Assert.Equal(HttpStatusCode.OK, res.StatusCode);
+    }
+
+    [Fact]
+    public async Task Swagger_requires_basic_auth()
+    {
+        var client = _factory.CreateClient();
+        Assert.Equal(HttpStatusCode.Unauthorized, (await client.GetAsync("/swagger/v1/swagger.json")).StatusCode);
+
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Basic", Convert.ToBase64String("test:test"u8.ToArray()));
+        Assert.Equal(HttpStatusCode.OK, (await client.GetAsync("/swagger/v1/swagger.json")).StatusCode);
     }
 
     [Fact]
