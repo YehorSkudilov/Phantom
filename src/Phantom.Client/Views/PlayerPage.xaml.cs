@@ -448,13 +448,51 @@ public partial class PlayerPage : ContentPage
         Flash(_vm.SelectedSubtitle.Track is null ? "Subtitles off" : $"Subtitles: {_vm.SelectedSubtitle.Label}");
     }
 
+    protected override void OnAppearing()
+    {
+        base.OnAppearing();
+        SetSystemBarsHidden(true);
+#if WINDOWS
+        HookKeys();
+#endif
+    }
+
+    // The phone's status bar (clock, battery) and navigation bar are hidden while the player is open; a swipe from the
+    // edge brings them back for a moment, as in other video players. Windows has its own full screen (F).
+    private void SetSystemBarsHidden(bool hidden)
+    {
+#if ANDROID
+        if (Platform.CurrentActivity?.Window is not { } window) return;
+        var bars = AndroidX.Core.View.WindowCompat.GetInsetsController(window, window.DecorView);
+        if (hidden)
+        {
+            bars.SystemBarsBehavior = AndroidX.Core.View.WindowInsetsControllerCompat.BehaviorShowTransientBarsBySwipe;
+            bars.Hide(AndroidX.Core.View.WindowInsetsCompat.Type.SystemBars());
+        }
+        else bars.Show(AndroidX.Core.View.WindowInsetsCompat.Type.SystemBars());
+        // In landscape the video also uses the strip beside a camera cutout, instead of leaving it black.
+        if (OperatingSystem.IsAndroidVersionAtLeast(28) && window.Attributes is { } attributes)
+        {
+            attributes.LayoutInDisplayCutoutMode = hidden ? Android.Views.LayoutInDisplayCutoutMode.ShortEdges : Android.Views.LayoutInDisplayCutoutMode.Default;
+            window.Attributes = attributes;
+        }
+#elif IOS
+        // The page asks for it (PrefersStatusBarHidden / PrefersHomeIndicatorAutoHidden in the XAML); iOS only rereads
+        // that when told to.
+        if (Window?.Handler?.PlatformView is UIKit.UIWindow { RootViewController: { } root })
+        {
+            root.SetNeedsStatusBarAppearanceUpdate();
+            root.SetNeedsUpdateOfHomeIndicatorAutoHidden();
+        }
+#endif
+    }
+
 #if WINDOWS
     private Microsoft.UI.Xaml.UIElement? _keyRoot;
     private Microsoft.UI.Xaml.Input.KeyEventHandler? _keyHandler;
 
-    protected override void OnAppearing()
+    private void HookKeys()
     {
-        base.OnAppearing();
         if ((Handler?.PlatformView as Microsoft.UI.Xaml.FrameworkElement)?.XamlRoot?.Content is not { } root) return;
         _keyRoot = root;
         _keyHandler = (_, e) =>
@@ -627,6 +665,7 @@ public partial class PlayerPage : ContentPage
         _vm.StopLoadingStatus();
         _vm.StopPreviewFrames();
         SetFullscreen(false);
+        SetSystemBarsHidden(false);
 #if WINDOWS
         if (_keyRoot is not null && _keyHandler is not null) _keyRoot.RemoveHandler(Microsoft.UI.Xaml.UIElement.KeyDownEvent, _keyHandler);
 #endif

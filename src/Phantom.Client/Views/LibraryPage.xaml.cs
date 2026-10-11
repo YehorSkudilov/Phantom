@@ -29,11 +29,11 @@ public partial class LibraryPage : TabView
         _vm.LoadSelectedTab();
     }
 
-    // Loads the next page once the list is within a few rows of its end. The list's own "remaining items" event
+    // Loads the next page once the list is halfway into the last one, so it's in before the user gets there. The list's own "remaining items" event
     // doesn't always fire (grids on Windows and iOS), which left the library stuck at its first page.
     private void OnListScrolled(object? sender, ItemsViewScrolledEventArgs e)
     {
-        if (e.VerticalDelta > 0 && e.LastVisibleItemIndex >= _vm.Movies.Count - 24 && _vm.HasMore)
+        if (e.VerticalDelta > 0 && e.LastVisibleItemIndex >= _vm.Movies.Count - LibraryViewModel.LoadAhead && _vm.HasMore)
             _vm.LoadMoreCommand.Execute(null);
     }
 

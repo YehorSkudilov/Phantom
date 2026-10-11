@@ -109,6 +109,9 @@ public partial class LibraryViewModel(PhantomApi api, SettingsService settings, 
     }
 
     private const int PageSize = 90;
+
+    /// <summary>The next page is fetched once the list is scrolled halfway into the last one, so it's there before the end is.</summary>
+    public const int LoadAhead = PageSize / 2;
     private int _page;
     private int _total;
     private CancellationTokenSource? _loadCts;
@@ -268,13 +271,13 @@ public partial class LibraryViewModel(PhantomApi api, SettingsService settings, 
         _ = EndRefreshAsync();
     }
 
-    /// <summary>More of the library to load, for the "Load more" button at the end of the list.</summary>
+    /// <summary>More of the library to load as the list is scrolled.</summary>
     [ObservableProperty] private bool hasMore;
     [ObservableProperty] private bool isLoadingMore;
 
     /// <summary>
     /// The next page, when the list nears its end (the page watches the scroll position, as the list's own "nearly at
-    /// the end" event doesn't always fire) or "Load more" is tapped.
+    /// the end" event doesn't always fire).
     /// </summary>
     [RelayCommand]
     private async Task LoadMore()

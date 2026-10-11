@@ -108,21 +108,13 @@
                 <CollectionView x:Name="Grid" ItemsSource="{Binding Movies}" Scrolled="OnListScrolled"
                                 ItemTemplate="{StaticResource PosterCard}" SelectionMode="Single"
                                 SelectionChanged="OnSelected"
-                                RemainingItemsThreshold="12" RemainingItemsThresholdReachedCommand="{Binding LoadMoreCommand}">
+                                RemainingItemsThreshold="45" RemainingItemsThresholdReachedCommand="{Binding LoadMoreCommand}">
                     <CollectionView.ItemsLayout>
                         <GridItemsLayout x:Name="GridLayout" Orientation="Vertical" Span="3" HorizontalItemSpacing="10" VerticalItemSpacing="6" />
                     </CollectionView.ItemsLayout>
                     <CollectionView.Footer>
                         <VerticalStackLayout Padding="0,8,0,0">
                             <ActivityIndicator IsRunning="{Binding IsLoadingMore}" IsVisible="{Binding IsLoadingMore}" HorizontalOptions="Center" />
-                            <Button Text="Load more" Style="{StaticResource SecondaryButton}" Command="{Binding LoadMoreCommand}" HorizontalOptions="Center">
-                                <Button.IsVisible>
-                                    <MultiBinding Converter="{StaticResource AllTrue}">
-                                        <Binding Path="HasMore" />
-                                        <Binding Path="IsLoadingMore" Converter="{StaticResource Not}" />
-                                    </MultiBinding>
-                                </Button.IsVisible>
-                            </Button>
                             <BoxView HeightRequest="{x:Static views:TabView.NavBarInset}" Color="Transparent" />
                         </VerticalStackLayout>
                     </CollectionView.Footer>
@@ -134,18 +126,10 @@
             <RefreshView IsRefreshing="{Binding IsRefreshing}" Command="{Binding ReloadCommand}" IsVisible="{Binding IsGrid, Converter={StaticResource Not}}">
                 <CollectionView ItemsSource="{Binding Movies}" Scrolled="OnListScrolled"
                                 ItemTemplate="{StaticResource MovieRow}" SelectionMode="Single" SelectionChanged="OnSelected"
-                                RemainingItemsThreshold="12" RemainingItemsThresholdReachedCommand="{Binding LoadMoreCommand}">
+                                RemainingItemsThreshold="45" RemainingItemsThresholdReachedCommand="{Binding LoadMoreCommand}">
                     <CollectionView.Footer>
                         <VerticalStackLayout Padding="0,8,0,0">
                             <ActivityIndicator IsRunning="{Binding IsLoadingMore}" IsVisible="{Binding IsLoadingMore}" HorizontalOptions="Center" />
-                            <Button Text="Load more" Style="{StaticResource SecondaryButton}" Command="{Binding LoadMoreCommand}" HorizontalOptions="Center">
-                                <Button.IsVisible>
-                                    <MultiBinding Converter="{StaticResource AllTrue}">
-                                        <Binding Path="HasMore" />
-                                        <Binding Path="IsLoadingMore" Converter="{StaticResource Not}" />
-                                    </MultiBinding>
-                                </Button.IsVisible>
-                            </Button>
                             <BoxView HeightRequest="{x:Static views:TabView.NavBarInset}" Color="Transparent" />
                         </VerticalStackLayout>
                     </CollectionView.Footer>
