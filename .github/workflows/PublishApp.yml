@@ -554,8 +554,17 @@ jobs:
 
       # All of MAUI, not just iOS: restore evaluates every target framework in the csproj (android, ios, maccatalyst),
       # even when publishing only net10.0-ios, and fails if any of their workloads is missing.
+      # Skip the install (several minutes) when the runner image already has everything restore needs.
       - name: Install MAUI workloads
-        run: dotnet workload install maui
+        run: |
+          workloads=$(dotnet workload list)
+          echo "$workloads"
+          has() { echo "$workloads" | grep -qE "^\s*$1\s"; }
+          if has 'maui(-\w+)?' && has android && has ios && has maccatalyst; then
+            echo "MAUI workloads already installed"
+          else
+            dotnet workload install maui
+          fi
 
       # =========================
       # SIGNING
@@ -741,8 +750,17 @@ jobs:
           dotnet-version: 10.0.x
 
       # All of MAUI: restore evaluates every target framework in the csproj, even when publishing only Mac Catalyst.
+      # Skip the install (several minutes) when the runner image already has everything restore needs.
       - name: Install MAUI workloads
-        run: dotnet workload install maui
+        run: |
+          workloads=$(dotnet workload list)
+          echo "$workloads"
+          has() { echo "$workloads" | grep -qE "^\s*$1\s"; }
+          if has 'maui(-\w+)?' && has android && has ios && has maccatalyst; then
+            echo "MAUI workloads already installed"
+          else
+            dotnet workload install maui
+          fi
 
       # =========================
       # SIGNING
