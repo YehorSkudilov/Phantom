@@ -1,0 +1,158 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:vm="clr-namespace:Phantom.ViewModels"
+             xmlns:controls="clr-namespace:Phantom.Controls"
+             xmlns:dto="clr-namespace:Phantom.Shared;assembly=Phantom.Shared"
+             x:Class="Phantom.Views.ShowDetailPage"
+             x:DataType="vm:ShowDetailViewModel">
+
+    <RefreshView IsRefreshing="{Binding IsRefreshing}" Command="{Binding LoadCommand}">
+        <ScrollView>
+            <VerticalStackLayout Padding="0,0,0,32" Spacing="16">
+                <!-- Backdrop + poster header, as on a movie's page -->
+                <Grid HeightRequest="300">
+                    <Image Source="{Binding Show.BackdropUrl, Converter={StaticResource Poster}}" Aspect="AspectFill" Opacity="0.7"
+                           IsVisible="{Binding Show.BackdropUrl, Converter={StaticResource HasValue}}" />
+                    <Image Source="{Binding Show.PosterUrl, Converter={StaticResource Poster}}" Aspect="AspectFill" Opacity="0.35"
+                           IsVisible="{Binding Show.BackdropUrl, Converter={StaticResource HasValue}, ConverterParameter=invert}" />
+                    <Grid Background="{StaticResource BackdropFade}" />
+                    <Grid ColumnDefinitions="120,*" ColumnSpacing="16" Padding="16" VerticalOptions="End">
+                        <Border StrokeShape="RoundRectangle 10" HeightRequest="180">
+                            <Image Source="{Binding Show.PosterUrl, Converter={StaticResource Poster}}" Aspect="AspectFill" />
+                        </Border>
+                        <VerticalStackLayout Grid.Column="1" VerticalOptions="End" Spacing="6">
+                            <Label Text="{Binding Show.Title}" Style="{StaticResource H1}" MaxLines="3" />
+                            <Label Text="{Binding Meta}" Style="{StaticResource Muted}" />
+                            <Label Text="{Binding GenreText}" Style="{StaticResource Muted}" />
+                            <Label Text="{Binding Show.Network}" Style="{StaticResource Muted}" IsVisible="{Binding Show.Network, Converter={StaticResource HasValue}}" />
+                        </VerticalStackLayout>
+                    </Grid>
+                </Grid>
+
+                <ActivityIndicator IsRunning="{Binding IsBusy}" IsVisible="{Binding IsBusy}" />
+                <Label Text="{Binding ErrorMessage}" TextColor="{StaticResource Danger}" Margin="16,0"
+                       IsVisible="{Binding ErrorMessage, Converter={StaticResource HasValue}}" />
+
+                <!-- Play the next episode; trailer, watchlist, watched -->
+                <VerticalStackLayout Padding="16,0" Spacing="10">
+                    <Grid ColumnDefinitions="Auto,*">
+                        <Button Text="Trailer" Style="{StaticResource SecondaryButton}" HeightRequest="52" Margin="0,0,10,0"
+                                ImageSource="{controls:Icon smart_display, Size=20}" ContentLayout="Left,8"
+                                Command="{Binding PlayTrailerCommand}" IsVisible="{Binding Show.TrailerUrl, Converter={StaticResource HasValue}}" />
+                        <Button Grid.Column="1" Text="{Binding PlayLabel}" Command="{Binding PlayCommand}" IsEnabled="{Binding CanPlay}" FontSize="16" HeightRequest="52"
+                                ImageSource="{controls:Icon play_arrow, Color=White, Size=20}" ContentLayout="Left,8" />
+                    </Grid>
+                    <ProgressBar Progress="{Binding NextProgress}" IsVisible="{Binding NextProgress, Converter={StaticResource HasValue}}" />
+                    <Grid ColumnDefinitions="*,*" ColumnSpacing="8">
+                        <controls:ActionTile Glyph="{Binding WatchlistGlyph}" Text="{Binding WatchlistLabel}" IsActive="{Binding IsOnWatchlist}"
+                                             Command="{Binding ToggleWatchlistCommand}" />
+                        <controls:ActionTile Grid.Column="1" Glyph="check_circle" Text="{Binding WatchedLabel}" IsActive="{Binding IsWatched}"
+                                             Command="{Binding ToggleWatchedCommand}" />
+                    </Grid>
+                </VerticalStackLayout>
+
+                <!-- Overview -->
+                <VerticalStackLayout Padding="16,0" Spacing="8">
+                    <Label Text="{Binding Show.Overview}" LineHeight="1.3" />
+                    <Label IsVisible="{Binding Creators, Converter={StaticResource HasValue}}">
+                        <Label.FormattedText>
+                            <FormattedString>
+                                <Span Text="Created by " TextColor="{StaticResource TextSecondary}" />
+                                <Span Text="{Binding Creators}" />
+                            </FormattedString>
+                        </Label.FormattedText>
+                    </Label>
+                </VerticalStackLayout>
+
+                <!-- Seasons and their episodes -->
+                <VerticalStackLayout Padding="16,0" Spacing="10" IsVisible="{Binding Seasons.Count, Converter={StaticResource HasValue}}">
+                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
+                        <Label Text="Episodes" Style="{StaticResource H2}" VerticalOptions="Center" />
+                        <Picker Grid.Column="1" ItemsSource="{Binding Seasons}" SelectedItem="{Binding SelectedSeason}" MinimumWidthRequest="140"
+                                ItemDisplayBinding="{Binding Title, x:DataType=dto:SeasonDto}" SemanticProperties.Description="Season" />
+                    </Grid>
+                    <VerticalStackLayout BindableLayout.ItemsSource="{Binding Episodes}" Spacing="12">
+                        <BindableLayout.ItemTemplate>
+                            <DataTemplate x:DataType="dto:EpisodeDto">
+                                <!-- Not found yet: shown faded, and says so -->
+                                <Grid ColumnDefinitions="150,*,Auto" ColumnSpacing="12" Opacity="{Binding Available, Converter={StaticResource AllTrue}, ConverterParameter='1|0.45'}">
+                                    <Grid.GestureRecognizers>
+                                        <TapGestureRecognizer Command="{Binding Source={RelativeSource AncestorType={x:Type vm:ShowDetailViewModel}}, Path=PlayEpisodeCommand, x:DataType=vm:ShowDetailViewModel}"
+                                                              CommandParameter="{Binding .}" />
+                                    </Grid.GestureRecognizers>
+                                    <Border StrokeShape="RoundRectangle 8" HeightRequest="84" VerticalOptions="Start" BackgroundColor="{StaticResource SurfaceRaised}">
+                                        <Grid>
+                                            <Image Source="{Binding StillUrl, Converter={StaticResource Poster}}" Aspect="AspectFill" />
+                                            <ProgressBar Progress="{Binding Playback.ProgressPercent, Converter={StaticResource Percent}}" VerticalOptions="End"
+                                                         IsVisible="{Binding Playback.PositionMs, Converter={StaticResource HasValue}}" />
+                                        </Grid>
+                                    </Border>
+                                    <VerticalStackLayout Grid.Column="1" Spacing="3" VerticalOptions="Center">
+                                        <Label Text="{Binding DisplayTitle}" FontFamily="OpenSansSemibold" MaxLines="2" LineBreakMode="TailTruncation" />
+                                        <Label Style="{StaticResource Muted}" FontSize="12">
+                                            <Label.FormattedText>
+                                                <FormattedString>
+                                                    <Span Text="{Binding RuntimeMinutes, Converter={StaticResource Minutes}}" />
+                                                    <Span Text="{Binding AirDate, StringFormat='   {0:d MMM yyyy}'}" />
+                                                </FormattedString>
+                                            </Label.FormattedText>
+                                        </Label>
+                                        <Label Text="Not found yet" Style="{StaticResource Muted}" FontSize="12"
+                                               IsVisible="{Binding Available, Converter={StaticResource Not}}" />
+                                        <Label Text="{Binding Overview}" Style="{StaticResource Muted}" FontSize="12" MaxLines="2" LineBreakMode="TailTruncation"
+                                               IsVisible="{Binding Overview, Converter={StaticResource HasValue}}" />
+                                    </VerticalStackLayout>
+                                    <ImageButton Grid.Column="2" Style="{StaticResource IconButton}" VerticalOptions="Center"
+                                                 Source="{Binding Playback.Watched, Converter={StaticResource AllTrue}, ConverterParameter='check_circle|radio_button_unchecked'}"
+                                                 Command="{Binding Source={RelativeSource AncestorType={x:Type vm:ShowDetailViewModel}}, Path=ToggleEpisodeWatchedCommand, x:DataType=vm:ShowDetailViewModel}"
+                                                 CommandParameter="{Binding .}"
+                                                 SemanticProperties.Description="Watched" ToolTipProperties.Text="Mark watched / unwatched" />
+                                </Grid>
+                            </DataTemplate>
+                        </BindableLayout.ItemTemplate>
+                    </VerticalStackLayout>
+                </VerticalStackLayout>
+
+                <!-- Cast -->
+                <VerticalStackLayout Spacing="8" IsVisible="{Binding Show.Cast.Count, Converter={StaticResource HasValue}}">
+                    <Label Text="Cast" Style="{StaticResource H2}" Margin="16,0" />
+                    <CollectionView ItemsSource="{Binding Show.Cast}" HeightRequest="170" SelectionMode="None">
+                        <CollectionView.ItemsLayout>
+                            <LinearItemsLayout Orientation="Horizontal" ItemSpacing="12" />
+                        </CollectionView.ItemsLayout>
+                        <CollectionView.Header>
+                            <BoxView WidthRequest="4" Color="Transparent" />
+                        </CollectionView.Header>
+                        <CollectionView.ItemTemplate>
+                            <DataTemplate x:DataType="dto:CastMemberDto">
+                                <VerticalStackLayout WidthRequest="92" Spacing="4">
+                                    <VerticalStackLayout.GestureRecognizers>
+                                        <TapGestureRecognizer Command="{Binding Source={RelativeSource AncestorType={x:Type vm:ShowDetailViewModel}}, Path=OpenPersonCommand, x:DataType=vm:ShowDetailViewModel}"
+                                                              CommandParameter="{Binding Name}" />
+                                    </VerticalStackLayout.GestureRecognizers>
+                                    <Border WidthRequest="84" HeightRequest="84" StrokeShape="RoundRectangle 42" BackgroundColor="{StaticResource SurfaceRaised}">
+                                        <Image Source="{Binding ProfileUrl, Converter={StaticResource Poster}}" Aspect="AspectFill" />
+                                    </Border>
+                                    <Label Text="{Binding Name}" FontSize="12" HorizontalTextAlignment="Center" MaxLines="2" />
+                                    <Label Text="{Binding Character}" FontSize="11" Style="{StaticResource Muted}" HorizontalTextAlignment="Center" MaxLines="1" LineBreakMode="TailTruncation" />
+                                </VerticalStackLayout>
+                            </DataTemplate>
+                        </CollectionView.ItemTemplate>
+                    </CollectionView>
+                </VerticalStackLayout>
+
+                <!-- Genres as chips -->
+                <FlexLayout BindableLayout.ItemsSource="{Binding Show.Genres}" Wrap="Wrap" Margin="12,0">
+                    <BindableLayout.ItemTemplate>
+                        <DataTemplate x:DataType="x:String">
+                            <Button Text="{Binding .}" Style="{StaticResource SecondaryButton}" Margin="4" FontSize="12" Padding="12,4"
+                                    Command="{Binding Source={RelativeSource AncestorType={x:Type vm:ShowDetailViewModel}}, Path=OpenGenreCommand, x:DataType=vm:ShowDetailViewModel}"
+                                    CommandParameter="{Binding .}" />
+                        </DataTemplate>
+                    </BindableLayout.ItemTemplate>
+                </FlexLayout>
+            </VerticalStackLayout>
+        </ScrollView>
+    </RefreshView>
+</ContentPage>
