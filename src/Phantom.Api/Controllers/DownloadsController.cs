@@ -21,7 +21,7 @@ public class DownloadsController(PhantomDbContext db, TorrentEngine engine) : Co
     public async Task<List<ServerDownloadDto>> List(CancellationToken ct)
     {
         var rows = await db.ServerDownloads.AsNoTracking()
-            .Include(d => d.Movie).Include(d => d.Release)
+            .Include(d => d.Movie).Include(d => d.Release).Include(d => d.Episode).ThenInclude(e => e!.Show)
             .OrderByDescending(d => d.CreatedAt)
             .ToListAsync(ct);
         _keepDays = (await db.Settings.AsNoTracking().FirstAsync(ct)).KeepServerDownloadsDays;
@@ -31,16 +31,33 @@ public class DownloadsController(PhantomDbContext db, TorrentEngine engine) : Co
     [HttpPost]
     public async Task<ActionResult<ServerDownloadDto>> Create(CreateServerDownloadRequest req, CancellationToken ct)
     {
-        var releases = await db.Releases.Include(r => r.Movie).Where(r => r.MovieId == req.MovieId).ToListAsync(ct);
         var settings = await db.Settings.AsNoTracking().FirstAsync(ct);
-        var release = req.ReleaseId is { } rid ? releases.FirstOrDefault(r => r.Id == rid) : LibraryService.PickRelease(releases, settings.PreferredQuality);
+        Release? release;
+        Episode? episode = null;
+        if (req.EpisodeId is { } episodeId)
+        {
+            // The release that has the episode, which may be its whole season.
+            episode = await db.Episodes.Include(e => e.Show).FirstOrDefaultAsync(e => e.Id == episodeId, ct);
+            if (episode is null) return NotFound();
+            var candidates = ShowLibraryService.OrderForPlayback(await db.Releases.Where(r => r.ShowId == episode.ShowId).ToListAsync(ct), episode, settings.PreferredQuality).ToList();
+            release = req.ReleaseId is { } rid ? candidates.FirstOrDefault(r => r.Id == rid) : candidates.FirstOrDefault();
+        }
+        else
+        {
+            var releases = await db.Releases.Include(r => r.Movie).Where(r => r.MovieId == req.MovieId).ToListAsync(ct);
+            release = req.ReleaseId is { } rid ? releases.FirstOrDefault(r => r.Id == rid) : LibraryService.PickRelease(releases, settings.PreferredQuality);
+        }
         if (release is null) return NotFound();
 
-        var existing = await db.ServerDownloads.Include(d => d.Movie).Include(d => d.Release)
+        var existing = await db.ServerDownloads.Include(d => d.Movie).Include(d => d.Release).Include(d => d.Episode).ThenInclude(e => e!.Show)
             .FirstOrDefaultAsync(d => d.ReleaseId == release.Id && d.Status != DownloadStatus.Cancelled && d.Status != DownloadStatus.Failed, ct);
         if (existing is not null) return ToDto(existing);
 
-        var download = new ServerDownload { MovieId = req.MovieId, ReleaseId = release.Id, RequestedByUserId = User.UserId(), Movie = release.Movie, Release = release };
+        var download = new ServerDownload
+        {
+            MovieId = release.MovieId, EpisodeId = episode?.Id, ReleaseId = release.Id, RequestedByUserId = User.UserId(),
+            Movie = release.Movie, Episode = episode, Release = release,
+        };
         db.ServerDownloads.Add(download);
         await db.SaveChangesAsync(ct);
         return CreatedAtAction(nameof(List), ToDto(download));
@@ -107,11 +124,17 @@ public class DownloadsController(PhantomDbContext db, TorrentEngine engine) : Co
         var stats = d.Status is DownloadStatus.Downloading or DownloadStatus.FetchingMetadata or DownloadStatus.Completed
             ? engine.Stats(d.Release!.InfoHash)
             : null;
+        var title = d.Episode is { } e
+            ? d.Release is { EpisodeNumber: null, SeasonNumber: { } season }
+                ? $"{e.Show?.Title} · Season {season}"
+                : d.Release is { SeasonNumber: null } ? $"{e.Show?.Title} · Several seasons" : $"{e.Show?.Title} · S{e.SeasonNumber:00}E{e.EpisodeNumber:00}"
+            : d.Movie?.Title ?? "";
         return new ServerDownloadDto(
-            d.Id, d.MovieId, d.Movie?.Title ?? "", d.ReleaseId, d.Release?.Name ?? "", d.Status, d.Progress,
+            d.Id, d.MovieId ?? 0, title, d.ReleaseId, d.Release?.Name ?? "", d.Status, d.Progress,
             stats?.DownloadRate ?? 0, stats?.UploadRate ?? 0, stats?.Peers ?? 0,
             stats?.Size is > 0 ? stats.Size : d.Release?.SizeBytes ?? 0,
             d.Error, d.CreatedAt, d.CompletedAt,
-            d.CompletedAt is { } done && _keepDays > 0 ? done.AddDays(_keepDays) : null);
+            d.CompletedAt is { } done && _keepDays > 0 ? done.AddDays(_keepDays) : null,
+            d.EpisodeId, d.Episode?.ShowId);
     }
 }

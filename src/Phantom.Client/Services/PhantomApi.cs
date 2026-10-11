@@ -198,6 +198,13 @@ public class PhantomApi(HttpClient http, SettingsService settings)
         return await res.Content.ReadAsStringAsync(ct);
     }
 
+    /// <summary>A seek-bar preview frame, or null when the server has none for that point.</summary>
+    public async Task<byte[]?> ThumbnailAsync(string url, CancellationToken ct)
+    {
+        using var res = await http.GetAsync(url, ct);
+        return res.IsSuccessStatusCode ? await res.Content.ReadAsByteArrayAsync(ct) : null;
+    }
+
     // ---------- Lists ----------
 
     public Task<List<MovieSummaryDto>> WatchlistAsync() => GetAsync<List<MovieSummaryDto>>("/api/watchlist");

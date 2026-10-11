@@ -110,6 +110,8 @@ public class ServerDownloadService(IServiceScopeFactory scopes, TorrentEngine en
             await engine.RemoveAsync(release.InfoHash, deleteData: true);
             if (release.LocalFilePath is { } path && Path.GetDirectoryName(path) is { } dir && Directory.Exists(dir))
                 Directory.Delete(dir, recursive: true);
+            // A pack's episodes can sit in subfolders of the release's folder.
+            if (Directory.Exists(engine.MediaFolder(release.InfoHash))) Directory.Delete(engine.MediaFolder(release.InfoHash), recursive: true);
             release.LocalFilePath = null;
             db.ServerDownloads.Remove(d);
         }

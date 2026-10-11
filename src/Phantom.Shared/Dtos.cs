@@ -37,6 +37,14 @@ public record PairingApprovedResponse(string DeviceName);
 
 // ---------- Movies ----------
 
+/// <summary>What a library item is. Rows, search results and lists mix movies and shows.</summary>
+public enum MediaKind { Movie, Show }
+
+/// <summary>
+/// A movie or a show (<see cref="Kind"/>) on a row, in a grid or in search results. For a show, <see cref="Watched"/>
+/// means every episode is, <see cref="ProgressPercent"/> is how many are, and <see cref="Caption"/> says which episode
+/// is next ("S2 · E5") or how many seasons there are.
+/// </summary>
 public record MovieSummaryDto(
     int Id,
     string Title,
@@ -49,7 +57,9 @@ public record MovieSummaryDto(
     double ProgressPercent,
     DateTime AddedAt,
     string? BestQuality,
-    string? BackdropUrl = null);
+    string? BackdropUrl = null,
+    MediaKind Kind = MediaKind.Movie,
+    string? Caption = null);
 
 public record MovieDetailDto(
     int Id,
@@ -81,7 +91,10 @@ public record CastMemberDto(string Name, string? Character, string? ProfileUrl);
 
 public record CrewMemberDto(string Name, string Job);
 
-/// <summary>A torrent release of a movie ("version" in Plex terms).</summary>
+/// <summary>
+/// A torrent release of a movie or an episode ("version" in Plex terms). For an episode, <see cref="Covers"/> says when
+/// it's a pack ("Season 2", "Several seasons") rather than just that episode.
+/// </summary>
 public record ReleaseDto(
     int Id,
     string Name,
@@ -91,7 +104,8 @@ public record ReleaseDto(
     long SizeBytes,
     int Seeders,
     int Leechers,
-    bool AvailableOffline);
+    bool AvailableOffline,
+    string? Covers = null);
 
 public record PlaybackStateDto(long PositionMs, long DurationMs, bool Watched, int ViewCount, DateTime? LastViewedAt)
 {
@@ -99,6 +113,65 @@ public record PlaybackStateDto(long PositionMs, long DurationMs, bool Watched, i
 }
 
 public record PagedResult<T>(IReadOnlyList<T> Items, int Total, int Page, int PageSize);
+
+// ---------- Shows ----------
+
+public record ShowDetailDto(
+    int Id,
+    string Title,
+    string? OriginalTitle,
+    int? Year,
+    string? Overview,
+    string? PosterUrl,
+    string? BackdropUrl,
+    double? Rating,
+    string? ContentRating,
+    string? Network,
+    string? Status,
+    int? EpisodeRuntimeMinutes,
+    string? TrailerUrl,
+    string? ImdbId,
+    int? TmdbId,
+    IReadOnlyList<string> Genres,
+    IReadOnlyList<CastMemberDto> Cast,
+    IReadOnlyList<CrewMemberDto> Crew,
+    IReadOnlyList<SeasonDto> Seasons,
+    // What Play / Resume plays: the episode in progress, else the one after the last watched, else the first.
+    EpisodeDto? NextEpisode,
+    bool OnWatchlist,
+    DateTime AddedAt);
+
+/// <summary>A season, with how many of its episodes can be played (have a release) and have been watched.</summary>
+public record SeasonDto(int Number, string Title, int EpisodeCount, int AvailableCount, int WatchedCount);
+
+public record EpisodeDto(
+    int Id,
+    int ShowId,
+    int SeasonNumber,
+    int EpisodeNumber,
+    string? Title,
+    string? Overview,
+    string? StillUrl,
+    DateOnly? AirDate,
+    int? RuntimeMinutes,
+    bool Available,
+    PlaybackStateDto Playback)
+{
+    /// <summary>"S02E05".</summary>
+    public string Code => $"S{SeasonNumber:00}E{EpisodeNumber:00}";
+
+    /// <summary>"5. The Title", or "Episode 5" when it has no title yet.</summary>
+    public string DisplayTitle => string.IsNullOrWhiteSpace(Title) ? $"Episode {EpisodeNumber}" : $"{EpisodeNumber}. {Title}";
+}
+
+/// <summary>An episode with what the player needs: its show, its releases and the episode after it.</summary>
+public record EpisodeDetailDto(
+    EpisodeDto Episode,
+    string ShowTitle,
+    string? ShowPosterUrl,
+    string? ShowBackdropUrl,
+    IReadOnlyList<ReleaseDto> Releases,
+    EpisodeDto? Next);
 
 public enum MovieSort { Title, Year, AddedAt, Rating, Runtime, LastViewed, Random }
 
@@ -116,6 +189,9 @@ public record MovieQuery
     public string? Actor { get; init; }
     public string? Director { get; init; }
     public MovieSort Sort { get; init; } = MovieSort.AddedAt;
+
+    /// <summary>Movies, or shows (which ignore Quality, Director and the Runtime sort).</summary>
+    public MediaKind Kind { get; init; } = MediaKind.Movie;
     public bool Descending { get; init; } = true;
     public int Page { get; init; } = 1;
     public int PageSize { get; init; } = 50;
@@ -134,7 +210,8 @@ public record SearchResultDto(IReadOnlyList<MovieSummaryDto> Movies, IReadOnlyLi
 
 // ---------- Playback ----------
 
-public record TimelineUpdate(int MovieId, int? ReleaseId, long PositionMs, long DurationMs, PlayerState State, string? ClientName);
+/// <summary>Where playback is; for an episode <see cref="EpisodeId"/> is set and MovieId is 0.</summary>
+public record TimelineUpdate(int MovieId, int? ReleaseId, long PositionMs, long DurationMs, PlayerState State, string? ClientName, int? EpisodeId = null);
 
 public enum PlayerState { Playing, Paused, Buffering, Stopped }
 
@@ -149,7 +226,8 @@ public record StreamInfoDto(
     string? TranscodeUrl,
     IReadOnlyList<SubtitleTrackDto> Subtitles,
     long ResumePositionMs,
-    string? ThumbnailUrl = null);
+    string? ThumbnailUrl = null,
+    int? EpisodeId = null);
 
 /// <summary>
 /// What the server is doing to get a movie playing, for the player's loading screen: <see cref="Message"/> in words,
@@ -182,7 +260,8 @@ public record NowPlayingDto(
     PlayerState State,
     string? ClientName,
     bool Transcoding,
-    DateTime UpdatedAt);
+    DateTime UpdatedAt,
+    int? EpisodeId = null);
 
 // ---------- Lists ----------
 
@@ -221,15 +300,19 @@ public record ServerDownloadDto(
     string? Error,
     DateTime CreatedAt,
     DateTime? CompletedAt,
-    DateTime? ExpiresAt = null);
+    DateTime? ExpiresAt = null,
+    // For an episode MovieId is 0 and MovieTitle reads "Show · S02E05".
+    int? EpisodeId = null,
+    int? ShowId = null);
 
-public record CreateServerDownloadRequest(int MovieId, int? ReleaseId);
+/// <summary>Saves a movie, or with <see cref="EpisodeId"/> an episode (MovieId 0), on the server.</summary>
+public record CreateServerDownloadRequest(int MovieId, int? ReleaseId, int? EpisodeId = null);
 
 // ---------- Sources ----------
 
 // Stored as integers: append new types, never reorder. Torznab is no longer used (sources are built in) but keeps its
 // number so the others don't shift.
-public enum SourceType { InternetArchive, Torznab, Yts, PirateBay, Knaben }
+public enum SourceType { InternetArchive, Torznab, Yts, PirateBay, Knaben, Eztv }
 
 public record SourceDto(
     int Id,
@@ -258,7 +341,8 @@ public record ServerInfoDto(
     long UploadRate,
     long FreeDiskBytes,
     bool TranscoderAvailable,
-    bool MetadataProviderConfigured);
+    bool MetadataProviderConfigured,
+    int ShowCount = 0);
 
 /// <summary>The library-wide metadata refresh: whether it can run (a TMDB key is set) and how many movies are waiting.</summary>
 public record MetadataStatusDto(bool Configured, int Pending, int Total);

@@ -39,20 +39,24 @@ public class ServerController(PhantomDbContext db, TorrentEngine engine, Transco
             engine.TotalUploadRate,
             free,
             transcoder.IsAvailable,
-            metadata.IsConfigured);
+            metadata.IsConfigured,
+            await db.Shows.CountAsync(s => s.Releases.Any(), ct));
     }
 
     [Authorize(Roles = "Admin")]
     [HttpGet("metadata")]
     public async Task<MetadataStatusDto> MetadataStatus([FromServices] Phantom.Api.Services.Metadata.IMetadataProvider metadata, CancellationToken ct) =>
-        new(metadata.IsConfigured, await Phantom.Api.Services.Metadata.MetadataRefreshService.Due(db).CountAsync(ct), await db.Movies.CountAsync(ct));
+        new(metadata.IsConfigured,
+            await Phantom.Api.Services.Metadata.MetadataRefreshService.Due(db).CountAsync(ct) + await Phantom.Api.Services.Metadata.MetadataRefreshService.DueShows(db).CountAsync(ct),
+            await db.Movies.CountAsync(ct) + await db.Shows.CountAsync(ct));
 
-    /// <summary>Queues every movie for a metadata refresh; MetadataRefreshService works through them in the background.</summary>
+    /// <summary>Queues every movie and show for a metadata refresh; MetadataRefreshService works through them in the background.</summary>
     [Authorize(Roles = "Admin")]
     [HttpPost("metadata/refresh")]
     public async Task<MetadataStatusDto> RefreshAllMetadata([FromServices] Phantom.Api.Services.Metadata.IMetadataProvider metadata, CancellationToken ct)
     {
         await db.Movies.ExecuteUpdateAsync(m => m.SetProperty(x => x.MetadataRefreshedAt, (DateTime?)null), ct);
+        await db.Shows.ExecuteUpdateAsync(s => s.SetProperty(x => x.MetadataRefreshedAt, (DateTime?)null), ct);
         return await MetadataStatus(metadata, ct);
     }
 

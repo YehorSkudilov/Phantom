@@ -105,10 +105,37 @@ public partial class PlayerPage : ContentPage
         else if (at.X > surface.Width * 2 / 3) await SkipAsync(_vm.SkipForward);
     }
 
+    // Taps in quick succession add up ("+10s", "+20s", ...) and seek once at the end: every seek makes the server fetch
+    // a new part of the torrent (or restart a transcode), so seeking on each tap made skipping crawl.
+    private TimeSpan? _skipFrom, _skipTarget;
+    private CancellationTokenSource? _skipDelay;
+
     private async Task SkipAsync(int seconds)
     {
-        Flash(seconds < 0 ? $"−{-seconds}s" : $"+{seconds}s", left: seconds < 0);
-        await SeekToAsync(_vm.ActualPosition(Media.Position) + TimeSpan.FromSeconds(seconds));
+        var from = _skipFrom ??= _vm.ActualPosition(Media.Position);
+        var total = _vm.TotalDuration(Media.Duration);
+        var target = (_skipTarget ?? from) + TimeSpan.FromSeconds(seconds);
+        if (total > TimeSpan.Zero && target > total) target = total - TimeSpan.FromSeconds(1);
+        if (target < TimeSpan.Zero) target = TimeSpan.Zero;
+        _skipTarget = target;
+
+        var moved = (int)Math.Round((target - from).TotalSeconds);
+        Flash(moved < 0 ? $"−{-moved}s" : $"+{moved}s", left: moved < 0);
+        PositionLabel.Text = TimeSpanConverter.Format(target);
+        if (total > TimeSpan.Zero) Seek.Value = Math.Clamp(target / total, 0, 1);
+
+        _skipDelay?.Cancel();
+        var cts = _skipDelay = new CancellationTokenSource();
+        try
+        {
+            await Task.Delay(350, cts.Token);
+        }
+        catch (TaskCanceledException)
+        {
+            return; // another tap; that one seeks
+        }
+        _skipFrom = _skipTarget = null;
+        await SeekToAsync(target);
     }
 
     private CancellationTokenSource? _flash;
@@ -196,6 +223,7 @@ public partial class PlayerPage : ContentPage
         if (_vm.SourceUrl is not { } url) return;
         _upNextCancelled = false;
         _started = false;
+        _previewFrames.Clear();
         UpNextCard.IsVisible = false;
         _pendingResume = _vm.ResumePosition > TimeSpan.Zero;
         SetLoading(true);
@@ -240,8 +268,11 @@ public partial class PlayerPage : ContentPage
     {
         var total = _vm.TotalDuration(Media.Duration);
         var position = _vm.ActualPosition(elementPosition);
-        if (!_seeking && total > TimeSpan.Zero) Seek.Value = Math.Clamp(position / total, 0, 1);
-        PositionLabel.Text = TimeSpanConverter.Format(position);
+        if (!_seeking && _skipTarget is null)
+        {
+            if (total > TimeSpan.Zero) Seek.Value = Math.Clamp(position / total, 0, 1);
+            PositionLabel.Text = TimeSpanConverter.Format(position);
+        }
         DurationLabel.Text = total > TimeSpan.Zero ? $"-{TimeSpanConverter.Format(total - position)}" : "";
         // When it'll finish at this speed, as Plex shows.
         EndsAtLabel.Text = total > position ? $"Ends at {DateTime.Now + (total - position) / Math.Max(0.25, _vm.Speed):t}" : "";
@@ -408,10 +439,13 @@ public partial class PlayerPage : ContentPage
         ShowControls();
     }
 
-    private CancellationTokenSource? _previewDelay;
+    private CancellationTokenSource? _preview;
+    private string? _previewUrl;
+    private readonly Dictionary<string, byte[]> _previewFrames = [];
 
     // While dragging: show where the drag would land, and (after a short pause, so a fast drag doesn't ask the server
-    // for every frame on the way) a preview frame from there.
+    // for every frame on the way) a preview frame from there. Only one frame is ever being fetched: moving on cancels
+    // the request, so the server stops pulling that part of the torrent and playback isn't kept waiting behind it.
     private async void OnSeekValueChanged(object? sender, ValueChangedEventArgs e)
     {
         if (!_seeking) return;
@@ -429,15 +463,28 @@ public partial class PlayerPage : ContentPage
             SeekPreviewImage.IsVisible = false;
             return;
         }
-        _previewDelay?.Cancel();
-        _previewDelay = new CancellationTokenSource();
+        if (url == _previewUrl) return; // same frame (they're 10 s apart), already shown or on its way
+        _previewUrl = url;
+        _preview?.Cancel();
+        var cts = _preview = new CancellationTokenSource();
         try
         {
-            await Task.Delay(200, _previewDelay.Token);
-            SeekPreviewImage.IsVisible = true;
-            SeekPreviewImage.Source = new UriImageSource { Uri = new Uri(url), CachingEnabled = true, CacheValidity = TimeSpan.FromDays(1) };
+            if (!_previewFrames.TryGetValue(url, out byte[]? jpeg))
+            {
+                await Task.Delay(150, cts.Token);
+                jpeg = await _vm.ThumbnailAsync(url, cts.Token);
+                if (jpeg is not null) _previewFrames[url] = jpeg; // a miss may be a timeout, so it's asked again next time
+            }
+            if (cts.IsCancellationRequested) return;
+            // The last frame stays up while the next one loads; only hide it when there's none to show.
+            if (jpeg is null) SeekPreviewImage.IsVisible = false;
+            else
+            {
+                SeekPreviewImage.Source = ImageSource.FromStream(() => new MemoryStream(jpeg));
+                SeekPreviewImage.IsVisible = true;
+            }
         }
-        catch (TaskCanceledException)
+        catch (OperationCanceledException)
         {
             // A newer position replaced this one.
         }
@@ -446,7 +493,8 @@ public partial class PlayerPage : ContentPage
     private async void OnSeekCompleted(object? sender, EventArgs e)
     {
         _seeking = false;
-        _previewDelay?.Cancel();
+        _preview?.Cancel();
+        _previewUrl = null;
         SeekPreview.IsVisible = false;
         await SeekToAsync(_vm.TotalDuration(Media.Duration) * Seek.Value);
     }

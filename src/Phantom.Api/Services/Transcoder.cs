@@ -60,10 +60,13 @@ public class Transcoder(IOptions<PhantomOptions> options, ILogger<Transcoder> lo
             RedirectStandardError = true,
             UseShellExecute = false,
         };
-        // -ss before -i seeks by keyframes without decoding everything up to that point.
+        // -ss before -i seeks by keyframes without decoding everything up to that point. -noaccurate_seek and decoding
+        // keyframes only take the keyframe at the seek point as it is, rather than decoding on to the exact second: a
+        // preview doesn't need to be exact, and from a torrent every extra frame is more data to wait for.
         foreach (var a in new[]
                  {
-                     "-hide_banner", "-loglevel", "error", "-ss", seconds.ToString("0.###", CultureInfo.InvariantCulture), "-i", input,
+                     "-hide_banner", "-loglevel", "error", "-skip_frame", "nokey", "-noaccurate_seek",
+                     "-ss", seconds.ToString("0.###", CultureInfo.InvariantCulture), "-i", input,
                      "-frames:v", "1", "-vf", $"scale={width}:-2", "-q:v", "6", "-f", "image2", "-c:v", "mjpeg", "pipe:1",
                  })
             psi.ArgumentList.Add(a);

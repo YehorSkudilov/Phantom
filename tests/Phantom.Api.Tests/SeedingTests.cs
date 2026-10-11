@@ -27,14 +27,14 @@ public class SeedingTests : IDisposable
     [Fact]
     public void New_server_gets_every_built_in_source()
     {
-        Assert.Equal([SourceType.InternetArchive, SourceType.Yts, SourceType.PirateBay, SourceType.Knaben], StartAndListSources());
+        Assert.Equal([SourceType.InternetArchive, SourceType.Yts, SourceType.PirateBay, SourceType.Knaben, SourceType.Eztv], StartAndListSources());
     }
 
     [Fact]
     public void A_missing_built_in_source_comes_back_on_restart_without_duplicates()
     {
         StartAndListSources(db => db.Sources.RemoveRange(db.Sources.Where(s => s.Type == SourceType.PirateBay)));
-        Assert.Equal([SourceType.InternetArchive, SourceType.Yts, SourceType.PirateBay, SourceType.Knaben], StartAndListSources());
+        Assert.Equal([SourceType.InternetArchive, SourceType.Yts, SourceType.PirateBay, SourceType.Knaben, SourceType.Eztv], StartAndListSources());
     }
 
     public void Dispose()

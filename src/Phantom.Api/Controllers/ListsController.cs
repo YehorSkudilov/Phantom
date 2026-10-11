@@ -10,16 +10,22 @@ namespace Phantom.Api.Controllers;
 [ApiController]
 [Authorize]
 [Route("api/watchlist")]
-public class WatchlistController(PhantomDbContext db, LibraryService library) : ControllerBase
+public class WatchlistController(PhantomDbContext db, LibraryService library, ShowLibraryService shows) : ControllerBase
 {
+    /// <summary>Movies and shows on the watchlist, most recently added first (shows are added at api/shows/{id}/watchlist).</summary>
     [HttpGet]
     public async Task<List<MovieSummaryDto>> Get(CancellationToken ct)
     {
         var userId = User.UserId();
-        var q = library.Visible(User)
-            .Where(m => db.Watchlist.Any(w => w.UserId == userId && w.MovieId == m.Id))
-            .OrderByDescending(m => db.Watchlist.Where(w => w.UserId == userId && w.MovieId == m.Id).Select(w => w.AddedAt).FirstOrDefault());
-        return await library.SummariesAsync(q, userId, ct);
+        var movieAdded = await db.Watchlist.Where(w => w.UserId == userId).ToDictionaryAsync(w => w.MovieId, w => w.AddedAt, ct);
+        var showAdded = await db.ShowWatchlist.Where(w => w.UserId == userId).ToDictionaryAsync(w => w.ShowId, w => w.AddedAt, ct);
+        var movieIds = movieAdded.Keys.ToList();
+        var showIds = showAdded.Keys.ToList();
+        var movies = await library.SummariesAsync(library.Visible(User).Where(m => movieIds.Contains(m.Id)), userId, ct);
+        var showItems = await shows.SummariesAsync(shows.Visible(User).Where(s => showIds.Contains(s.Id)), userId, ct);
+        return movies.Select(m => (Item: m, Added: movieAdded[m.Id]))
+            .Concat(showItems.Select(s => (Item: s, Added: showAdded[s.Id])))
+            .OrderByDescending(x => x.Added).Select(x => x.Item).ToList();
     }
 
     [HttpPut("{movieId:int}")]

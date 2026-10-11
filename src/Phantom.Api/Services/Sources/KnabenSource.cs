@@ -8,14 +8,15 @@ using Phantom.Shared;
 namespace Phantom.Api.Services.Sources;
 
 /// <summary>
-/// Knaben (knaben.org): one search API over many torrent sites (The Pirate Bay, YTS, 1337x, RuTracker, ...). Each sync
-/// takes this year's newest movies, then works through <see cref="CrawlTerms"/> a few pages at a time, most-seeded
-/// first, until the whole movie catalogue is in.
+/// Knaben (knaben.org): one search API over many torrent sites (The Pirate Bay, YTS, 1337x, RuTracker, ...), for movies
+/// and TV. Each sync takes this year's newest movies and the newest TV, then works through <see cref="CrawlTerms"/> a
+/// few pages at a time, most-seeded first, until the whole catalogue is in.
 /// </summary>
 public partial class KnabenSource(HttpClient http, IOptions<PhantomOptions> options, ILogger<KnabenSource> log) : IMovieSource, IBackfillingSource
 {
     public const string DefaultBaseUrl = "https://api.knaben.org/v1";
     private const int MoviesCategory = 3000000;
+    private const int TvCategory = 2000000;
     private const int PageSize = 300;
     private const int MaxPagesPerTerm = 10;
     private const int RequestsPerSync = 12;
@@ -35,6 +36,9 @@ public partial class KnabenSource(HttpClient http, IOptions<PhantomOptions> opti
 
         // The newest first, every time.
         results.AddRange((await SearchAsync(url, DateTime.UtcNow.Year.ToString(), 0, "date", ct)).Releases);
+        // Episode names rarely carry a year, so the newest TV is found by its usual quality tags instead.
+        foreach (var tag in new[] { "1080p", "720p" })
+            results.AddRange((await SearchAsync(url, tag, 0, "date", ct, TvCategory)).Releases);
 
         // Then the next stretch of the catalogue.
         var crawl = Crawl(source);
@@ -60,12 +64,14 @@ public partial class KnabenSource(HttpClient http, IOptions<PhantomOptions> opti
         return results.DistinctBy(r => r.InfoHash).ToList();
     }
 
-    private async Task<(IReadOnlyList<SourceRelease> Releases, int Hits, int Total)> SearchAsync(string url, string query, int from, string orderBy, CancellationToken ct)
+    private async Task<(IReadOnlyList<SourceRelease> Releases, int Hits, int Total)> SearchAsync(
+        string url, string query, int from, string orderBy, CancellationToken ct, params int[] categories)
     {
         var body = new
         {
             search_type = "100%", search_field = "title", query, order_by = orderBy, order_direction = "desc",
-            categories = new[] { MoviesCategory }, from, size = PageSize, hide_unsafe = true, hide_xxx = true,
+            categories = categories.Length > 0 ? categories : new[] { MoviesCategory, TvCategory },
+            from, size = PageSize, hide_unsafe = true, hide_xxx = true,
         };
         using var res = await http.PostAsJsonAsync(url, body, ct);
         res.EnsureSuccessStatusCode();
@@ -85,11 +91,35 @@ public partial class KnabenSource(HttpClient http, IOptions<PhantomOptions> opti
             var hash = Str(hit, "hash");
             var name = Str(hit, "title")?.TrimEnd('.', ' ');
             if (string.IsNullOrWhiteSpace(hash) || string.IsNullOrWhiteSpace(name) || hash.Length != 40) continue;
+            var seeders = Int(hit, "seeders");
+
+            if (InCategory(hit, TvCategory))
+            {
+                if (ReleaseNameParser.ParseEpisode(name) is not { Title.Length: > 0 } show) continue; // not recognisably a show
+                results.Add(new SourceRelease
+                {
+                    Title = show.Title,
+                    Year = show.Year,
+                    ReleaseName = name,
+                    InfoHash = hash.ToLowerInvariant(),
+                    MagnetUri = Str(hit, "magnetUrl") ?? Magnets.Build(hash, name),
+                    Quality = show.Quality,
+                    Codec = show.Codec,
+                    SizeBytes = hit.TryGetProperty("bytes", out var tvBytes) && tvBytes.TryGetInt64(out var tvSize) ? tvSize : 0,
+                    Seeders = seeders,
+                    Leechers = Math.Max(0, Int(hit, "peers") - seeders),
+                    IsShow = true,
+                    Season = show.Season,
+                    Episode = show.Episode,
+                });
+                continue;
+            }
+
+            // Episodes and seasons filed under Movies are left out: they're picked up from the TV category.
             if (!InCategory(hit, MoviesCategory) || TvRegex().IsMatch(name)) continue;
 
             var parsed = ReleaseNameParser.Parse(name);
             if (parsed.Year is null || parsed.Title.Length == 0) continue; // not recognisably a movie
-            var seeders = Int(hit, "seeders");
             results.Add(new SourceRelease
             {
                 Title = parsed.Title,

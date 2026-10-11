@@ -4,8 +4,9 @@
 <dict>
     <!-- The Mac App Store requires you specify if the app uses encryption. -->
     <!-- Please consult https://developer.apple.com/documentation/bundleresources/information_property_list/itsappusesnonexemptencryption -->
-    <!-- <key>ITSAppUsesNonExemptEncryption</key> -->
-    <!-- Please indicate <true/> or <false/> here. -->
+    <!-- Only the encryption macOS itself provides (HTTPS), which is exempt. -->
+    <key>ITSAppUsesNonExemptEncryption</key>
+    <false/>
 
     <!-- Specify the category for your app here. -->
     <!-- Please consult https://developer.apple.com/documentation/bundleresources/information_property_list/lsapplicationcategorytype -->

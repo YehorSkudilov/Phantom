@@ -7,6 +7,15 @@ namespace Phantom.Api.Services;
 public record ParsedRelease(string Title, int? Year, string? Quality, string? Codec);
 
 /// <summary>
+/// Which part of a show a release or file holds: one episode (<see cref="Episode"/> set, possibly up to
+/// <see cref="LastEpisode"/>), a season pack (no episode), or several seasons / the complete series (no season).
+/// </summary>
+public record ParsedEpisode(string Title, int? Year, int? Season, int? Episode, int? LastEpisode, string? Quality, string? Codec)
+{
+    public bool IsPack => Episode is null;
+}
+
+/// <summary>
 /// Extracts title / year / quality / codec from scene-style release names such as
 /// "The.Movie.Title.2010.1080p.BluRay.x264-GROUP".
 /// </summary>
@@ -29,6 +38,93 @@ public static partial class ReleaseNameParser
 
     [GeneratedRegex(@"\s{2,}")]
     private static partial Regex MultiSpaceRegex();
+
+    // S01E02, S01E02E03, S01E02-E03, S01 E02, s1e2
+    [GeneratedRegex(@"\bS(?<s>\d{1,2})[ ._-]?E(?<e>\d{1,3})(?:(?:[ ._-]?-?[ ._-]?E|-)(?<last>\d{1,3}))?(?!\d)", RegexOptions.IgnoreCase)]
+    private static partial Regex SeasonEpisodeRegex();
+
+    // 1x02, 01x02-03
+    [GeneratedRegex(@"(?<![\dx])(?<s>\d{1,2})x(?<e>\d{2,3})(?:-(?<last>\d{2,3}))?(?![\dp])", RegexOptions.IgnoreCase)]
+    private static partial Regex CrossEpisodeRegex();
+
+    // S01 / S01-S03 / Season 1 / Season 1-3 / Seasons 1 to 3
+    [GeneratedRegex(@"\b(?:S(?<s>\d{1,2})(?:[ ._-]*-[ ._-]*S?(?<last>\d{1,2}))?|Seasons?[ ._-]*(?<s>\d{1,2})(?:[ ._-]*(?:-|to|&)[ ._-]*(?<last>\d{1,2}))?)\b", RegexOptions.IgnoreCase)]
+    private static partial Regex SeasonRegex();
+
+    [GeneratedRegex(@"\b(complete[ ._-]*series|the[ ._-]*complete|all[ ._-]*seasons|complete)\b", RegexOptions.IgnoreCase)]
+    private static partial Regex CompleteRegex();
+
+    // A bare episode number in a pack's file name: "E05", "Episode 5", "Ep.05", or a leading "05 - Title".
+    [GeneratedRegex(@"(?:\b(?:E|Ep|Episode)[ ._-]?(?<e>\d{1,3})\b|^(?<e>\d{1,3})(?=[ ._-]))", RegexOptions.IgnoreCase)]
+    private static partial Regex BareEpisodeRegex();
+
+    /// <summary>
+    /// Reads a TV release name ("Show.Name.S02E05.1080p.WEB.h264-GRP", "Show Name Season 2 Complete 720p",
+    /// "Show.Name.2019.S01-S03"), or null when it isn't one.
+    /// </summary>
+    public static ParsedEpisode? ParseEpisode(string releaseName)
+    {
+        var name = Regex.Replace(releaseName.Trim(), @"\.(mkv|mp4|avi|m4v|mov|wmv|webm|ts)$", "", RegexOptions.IgnoreCase);
+        var spaced = name.Replace('.', ' ').Replace('_', ' ');
+
+        int? season = null, episode = null, last = null;
+        var marker = SeasonEpisodeRegex().Match(spaced);
+        if (!marker.Success) marker = CrossEpisodeRegex().Match(spaced);
+        if (marker.Success)
+        {
+            season = int.Parse(marker.Groups["s"].Value, CultureInfo.InvariantCulture);
+            episode = int.Parse(marker.Groups["e"].Value, CultureInfo.InvariantCulture);
+            if (marker.Groups["last"].Success && int.Parse(marker.Groups["last"].Value, CultureInfo.InvariantCulture) is var l && l > episode) last = l;
+        }
+        else
+        {
+            marker = SeasonRegex().Match(spaced);
+            if (marker.Success)
+            {
+                var first = int.Parse(marker.Groups["s"].Value, CultureInfo.InvariantCulture);
+                // A span of seasons is one torrent of several, like a complete series.
+                season = marker.Groups["last"].Success && int.Parse(marker.Groups["last"].Value, CultureInfo.InvariantCulture) > first ? null : first;
+            }
+            else
+            {
+                marker = CompleteRegex().Match(spaced);
+                if (!marker.Success) return null;
+            }
+        }
+        if (marker.Index == 0) return null; // no show name in front of it
+
+        var parsed = Parse(spaced[..marker.Index]);
+        var tags = Parse(spaced);
+        return new ParsedEpisode(parsed.Title, parsed.Year, season, episode, last, tags.Quality, tags.Codec);
+    }
+
+    /// <summary>
+    /// Season and episode of a video file inside a show's torrent, from its path ("Season 2/Show.S02E05.mkv",
+    /// "S02/05 - Title.mkv"). <paramref name="packSeason"/> is the season the whole torrent is for, if it's one season.
+    /// </summary>
+    public static (int? Season, int? Episode) EpisodeOfFile(string path, int? packSeason)
+    {
+        var file = Path.GetFileNameWithoutExtension(path).Replace('.', ' ').Replace('_', ' ');
+        var m = SeasonEpisodeRegex().Match(file);
+        if (!m.Success) m = CrossEpisodeRegex().Match(file);
+        if (m.Success)
+            return (int.Parse(m.Groups["s"].Value, CultureInfo.InvariantCulture), int.Parse(m.Groups["e"].Value, CultureInfo.InvariantCulture));
+
+        // Only an episode number in the name: the season is the folder's, or the pack's.
+        var bare = BareEpisodeRegex().Match(file);
+        if (!bare.Success) return (null, null);
+        int? season = packSeason;
+        foreach (var folder in (Path.GetDirectoryName(path) ?? "").Split('/', '\\').Reverse())
+        {
+            var s = SeasonRegex().Match(folder.Replace('.', ' ').Replace('_', ' '));
+            if (s.Success && !s.Groups["last"].Success)
+            {
+                season = int.Parse(s.Groups["s"].Value, CultureInfo.InvariantCulture);
+                break;
+            }
+        }
+        return (season, int.Parse(bare.Groups["e"].Value, CultureInfo.InvariantCulture));
+    }
 
     public static ParsedRelease Parse(string releaseName)
     {

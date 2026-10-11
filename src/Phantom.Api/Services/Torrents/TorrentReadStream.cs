@@ -6,9 +6,12 @@ namespace Phantom.Api.Services.Torrents;
 /// gets one of these lightweight views with its own position; reads are serialised onto the
 /// shared torrent stream, and each seek re-points the streaming piece picker.
 /// </summary>
-public sealed class SharedTorrentStream(Stream inner) : IDisposable
+public sealed class SharedTorrentStream(Stream inner, string filePath) : IDisposable
 {
     private readonly SemaphoreSlim _lock = new(1, 1);
+
+    /// <summary>The file in the torrent this streams.</summary>
+    public string FilePath => filePath;
 
     public long Length => inner.Length;
 

@@ -14,6 +14,16 @@ public record TorrentMedia(string FileName, string? LocalPath, Stream? Stream);
 public record TorrentStats(string InfoHash, string Name, TorrentState State, double Progress, long DownloadRate, long UploadRate, int Peers, long Size, bool Complete);
 
 /// <summary>
+/// Which video in a torrent to play: its main (largest) one, as for a movie, or one episode of a show, found in a season
+/// pack by its file name.
+/// </summary>
+public readonly record struct VideoChoice(int? Season, int? Episode)
+{
+    public static VideoChoice Main => default;
+    public bool IsEpisode => Episode is not null;
+}
+
+/// <summary>
 /// Wraps a single MonoTorrent engine. Every release gets one TorrentManager, added in streaming
 /// mode so pieces are fetched around the current playback position first. Torrents a client only
 /// streams live in the cache directory and are evicted when idle; server downloads are kept.
@@ -28,6 +38,9 @@ public sealed class TorrentEngine : IHostedService, IAsyncDisposable
     private readonly ConcurrentDictionary<string, bool> _pinned = new();
     private readonly ConcurrentDictionary<string, DateTime> _addedAt = new();
     private readonly ConcurrentDictionary<string, SharedTorrentStream> _streams = new();
+
+    // The video each torrent is being played from, when it isn't the main one (an episode in a pack).
+    private readonly ConcurrentDictionary<string, string> _chosen = new();
     private ClientEngine? _engine;
 
     public TorrentEngine(IOptions<PhantomOptions> options, IHttpClientFactory httpFactory, ILogger<TorrentEngine> log)
@@ -93,8 +106,11 @@ public sealed class TorrentEngine : IHostedService, IAsyncDisposable
     public TorrentManager? Find(string infoHash) =>
         _engine?.Torrents.FirstOrDefault(t => t.InfoHashes.V1OrV2.ToHex().Equals(infoHash, StringComparison.OrdinalIgnoreCase));
 
-    /// <summary>Adds (or returns) the torrent for a release and makes sure it is running.</summary>
-    public async Task<TorrentManager> EnsureStartedAsync(Release release, bool keep, CancellationToken ct)
+    /// <summary>
+    /// Adds (or returns) the torrent for a release and makes sure it is running. With an episode <paramref name="choice"/>
+    /// that episode's file is the one downloaded from now on; otherwise it carries on with whichever it was.
+    /// </summary>
+    public async Task<TorrentManager> EnsureStartedAsync(Release release, bool keep, CancellationToken ct, VideoChoice choice = default)
     {
         Touch(release.InfoHash);
         if (keep) _pinned[release.InfoHash] = true;
@@ -124,7 +140,9 @@ public sealed class TorrentEngine : IHostedService, IAsyncDisposable
             await manager.WaitForMetadataAsync(timeout.Token);
         }
 
-        await PrioritiseAsync(manager);
+        var hash = release.InfoHash.ToLowerInvariant();
+        if (choice.IsEpisode && Video(manager, choice, release.SeasonNumber) is { } chosen) _chosen[hash] = chosen.Path;
+        await PrioritiseAsync(manager, CurrentVideo(manager, hash), keepAll: _pinned.ContainsKey(release.InfoHash) && IsPack(manager));
         return manager;
     }
 
@@ -173,14 +191,17 @@ public sealed class TorrentEngine : IHostedService, IAsyncDisposable
         return null;
     }
 
-    /// <summary>Only download the main video and subtitles; skip samples, artwork, extras.</summary>
-    private static async Task PrioritiseAsync(TorrentManager manager)
+    /// <summary>
+    /// Only download the video being played and subtitles; skip samples, artwork, extras. A season pack the server keeps
+    /// (<paramref name="keepAll"/>) gets its other episodes too, after the one being played.
+    /// </summary>
+    private static async Task PrioritiseAsync(TorrentManager manager, ITorrentManagerFile? video, bool keepAll)
     {
-        var video = MainVideo(manager);
         foreach (var file in manager.Files)
         {
             var wanted = file == video ? Priority.Normal
                 : VideoFiles.IsSubtitle(file.Path) ? Priority.Highest
+                : keepAll && VideoFiles.IsVideo(file.Path) ? Priority.Low
                 : Priority.DoNotDownload;
             if (file.Priority != wanted) await manager.SetFilePriorityAsync(file, wanted);
         }
@@ -190,31 +211,69 @@ public sealed class TorrentEngine : IHostedService, IAsyncDisposable
         manager.Files.Where(f => VideoFiles.IsVideo(f.Path)).OrderByDescending(f => f.Length).FirstOrDefault()
         ?? manager.Files.OrderByDescending(f => f.Length).FirstOrDefault();
 
-    public static IReadOnlyList<ITorrentManagerFile> Subtitles(TorrentManager manager) =>
-        manager.Files.Where(f => VideoFiles.IsSubtitle(f.Path)).OrderBy(f => f.Path).ToList();
+    /// <summary>The video for <paramref name="choice"/>: the main one, or the episode's file (null if the torrent hasn't got it).</summary>
+    public static ITorrentManagerFile? Video(TorrentManager manager, VideoChoice choice, int? packSeason)
+    {
+        if (!choice.IsEpisode) return MainVideo(manager);
+        var videos = manager.Files.Where(f => VideoFiles.IsVideo(f.Path)).ToList();
+        // The largest match, so a sample of the same episode loses to the real thing.
+        return videos.Where(f => ReleaseNameParser.EpisodeOfFile(f.Path, packSeason) == (choice.Season, choice.Episode))
+                   .OrderByDescending(f => f.Length).FirstOrDefault()
+               // A single episode's torrent whose file is named some other way.
+               ?? (IsPack(manager) ? null : MainVideo(manager));
+    }
+
+    /// <summary>A torrent of several episodes, rather than one movie or episode (with perhaps a sample).</summary>
+    public static bool IsPack(TorrentManager manager) =>
+        manager.Files.Where(f => VideoFiles.IsVideo(f.Path)).Select(f => ReleaseNameParser.EpisodeOfFile(f.Path, null).Episode)
+            .OfType<int>().Distinct().Skip(1).Any();
+
+    private ITorrentManagerFile? CurrentVideo(TorrentManager manager, string hash) =>
+        _chosen.TryGetValue(hash, out var path) && manager.Files.FirstOrDefault(f => f.Path == path) is { } chosen ? chosen : MainVideo(manager);
+
+    /// <summary>
+    /// Subtitle files for <paramref name="video"/>: all of them for a movie, and for an episode in a pack the ones named
+    /// for that episode (or after its file).
+    /// </summary>
+    public static IReadOnlyList<ITorrentManagerFile> Subtitles(TorrentManager manager, ITorrentManagerFile? video = null)
+    {
+        var all = manager.Files.Where(f => VideoFiles.IsSubtitle(f.Path)).OrderBy(f => f.Path).ToList();
+        if (video is null || !IsPack(manager)) return all;
+        var episode = ReleaseNameParser.EpisodeOfFile(video.Path, null);
+        var stem = Path.GetFileNameWithoutExtension(video.Path);
+        return all.Where(s => Path.GetFileName(s.Path).StartsWith(stem, StringComparison.OrdinalIgnoreCase)
+                              || episode.Episode is not null && ReleaseNameParser.EpisodeOfFile(s.Path, episode.Season) == episode).ToList();
+    }
 
     public static bool IsFileComplete(ITorrentManagerFile file) => file.BitField.AllTrue;
 
     /// <summary>
-    /// Opens the main video for playback. A finished file is returned as a path so it can be served
-    /// straight from disk; otherwise a seekable stream whose reads wait for the needed pieces.
+    /// Opens the video for <paramref name="choice"/> for playback. A finished file is returned as a path so it can be
+    /// served straight from disk; otherwise a seekable stream whose reads wait for the needed pieces. Null when the
+    /// torrent hasn't got that episode.
     /// </summary>
-    public async Task<TorrentMedia> OpenAsync(Release release, CancellationToken ct)
+    /// <remarks>
+    /// A torrent can only stream one file at a time, so opening another episode of a pack ends the stream of the one
+    /// before (someone else watching it from the same pack is cut off).
+    /// </remarks>
+    public async Task<TorrentMedia?> OpenAsync(Release release, CancellationToken ct, VideoChoice choice = default)
     {
-        var manager = await EnsureStartedAsync(release, keep: _pinned.ContainsKey(release.InfoHash), ct);
-        var file = MainVideo(manager) ?? throw new InvalidOperationException("Torrent has no files.");
+        var manager = await EnsureStartedAsync(release, keep: _pinned.ContainsKey(release.InfoHash), ct, choice);
+        var file = Video(manager, choice, release.SeasonNumber);
+        if (file is null) return null;
         if (IsFileComplete(file) && File.Exists(file.FullPath)) return new TorrentMedia(file.Path, file.FullPath, null);
 
         var key = release.InfoHash.ToLowerInvariant();
-        if (!_streams.TryGetValue(key, out var shared))
+        if (!_streams.TryGetValue(key, out var shared) || shared.FilePath != file.Path)
         {
             await _addLock.WaitAsync(ct);
             try
             {
-                if (!_streams.TryGetValue(key, out shared))
+                if (!_streams.TryGetValue(key, out shared) || shared.FilePath != file.Path)
                 {
+                    DropStream(key);
                     var inner = await manager.StreamProvider!.CreateStreamAsync(file, prebuffer: true, ct);
-                    shared = _streams[key] = new SharedTorrentStream(inner);
+                    shared = _streams[key] = new SharedTorrentStream(inner, file.Path);
                 }
             }
             finally
@@ -244,6 +303,7 @@ public sealed class TorrentEngine : IHostedService, IAsyncDisposable
         _addedAt.TryRemove(infoHash.ToLowerInvariant(), out _);
         _pinned.TryRemove(infoHash, out _);
         _lastAccess.TryRemove(infoHash, out _);
+        _chosen.TryRemove(infoHash.ToLowerInvariant(), out _);
         DropStream(infoHash);
         if (Find(infoHash) is not { } m) return;
         if (m.State != TorrentState.Stopped) await m.StopAsync(TimeSpan.FromSeconds(5));
@@ -269,13 +329,48 @@ public sealed class TorrentEngine : IHostedService, IAsyncDisposable
         return video.FullPath;
     }
 
+    /// <summary>
+    /// Progress of the video being played; for a season pack the server keeps (pinned), of all its episodes, so the
+    /// download only counts as complete once every one is in.
+    /// </summary>
     public TorrentStats? Stats(string infoHash)
     {
         if (Find(infoHash) is not { } m) return null;
-        var video = m.HasMetadata ? MainVideo(m) : null;
+        var peers = m.Peers.Available + m.OpenConnections;
+        if (m.HasMetadata && _pinned.ContainsKey(infoHash) && IsPack(m))
+        {
+            var videos = m.Files.Where(f => VideoFiles.IsVideo(f.Path)).ToList();
+            var length = videos.Sum(f => f.Length);
+            var done = videos.Sum(f => f.Length * f.BitField.PercentComplete / 100);
+            return new TorrentStats(infoHash, m.Name, m.State, length > 0 ? done * 100 / length : 0, m.Monitor.DownloadRate,
+                m.Monitor.UploadRate, peers, length, videos.All(IsFileComplete));
+        }
+        var video = m.HasMetadata ? CurrentVideo(m, infoHash.ToLowerInvariant()) : null;
         var progress = video is null ? m.PartialProgress : video.BitField.PercentComplete;
         return new TorrentStats(infoHash, m.Name, m.State, progress, m.Monitor.DownloadRate, m.Monitor.UploadRate,
-            m.Peers.Available + m.OpenConnections, video?.Length ?? 0, video is not null && IsFileComplete(video));
+            peers, video?.Length ?? 0, video is not null && IsFileComplete(video));
+    }
+
+    /// <summary>Where a release the server keeps has its files.</summary>
+    public string MediaFolder(string infoHash) => Path.Combine(_options.MediaDirectory, infoHash.ToLowerInvariant());
+
+    /// <summary>
+    /// The file to play for <paramref name="choice"/> from a release the server has finished downloading, or null when
+    /// it hasn't (or the pack hasn't got that episode).
+    /// </summary>
+    public string? LocalVideo(Release release, VideoChoice choice)
+    {
+        if (release.LocalFilePath is not { } main || !File.Exists(main)) return null;
+        if (!choice.IsEpisode) return main;
+        var root = MediaFolder(release.InfoHash);
+        if (!Directory.Exists(root)) root = Path.GetDirectoryName(main)!;
+        var videos = Directory.EnumerateFiles(root, "*", SearchOption.AllDirectories).Where(VideoFiles.IsVideo)
+            .Select(f => (Path: f, Episode: ReleaseNameParser.EpisodeOfFile(Path.GetRelativePath(root, f), release.SeasonNumber)))
+            .ToList();
+        var match = videos.Where(v => v.Episode == (choice.Season, choice.Episode)).OrderByDescending(v => new FileInfo(v.Path).Length)
+            .Select(v => v.Path).FirstOrDefault();
+        // A single episode's release whose file is named some other way.
+        return match ?? (videos.Select(v => v.Episode.Episode).OfType<int>().Distinct().Skip(1).Any() ? null : main);
     }
 
     /// <summary>How long the torrent has been downloading in this run of the server.</summary>
@@ -283,12 +378,13 @@ public sealed class TorrentEngine : IHostedService, IAsyncDisposable
         _addedAt.TryGetValue(infoHash.ToLowerInvariant(), out var at) ? DateTime.UtcNow - at : TimeSpan.Zero;
 
     /// <summary>
-    /// How much of the main video is downloaded unbroken from <paramref name="fraction"/> of the way in (where playback
-    /// will start), and the video's size. Null until the torrent's metadata is in.
+    /// How much of the video being played is downloaded unbroken from <paramref name="fraction"/> of the way in (where
+    /// playback will start), and the video's size. Null until the torrent's metadata is in.
     /// </summary>
     public (long Buffered, long Length)? BufferedFrom(string infoHash, double fraction)
     {
-        if (Find(infoHash) is not { HasMetadata: true } manager || MainVideo(manager) is not { } file || manager.Torrent is not { } torrent) return null;
+        if (Find(infoHash) is not { HasMetadata: true } manager || CurrentVideo(manager, infoHash.ToLowerInvariant()) is not { } file
+            || manager.Torrent is not { } torrent) return null;
         var pieceLength = (long)torrent.PieceLength;
         var offset = (long)(file.Length * Math.Clamp(fraction, 0, 1));
         var first = (int)((file.OffsetInTorrent + offset) / pieceLength) - file.StartPieceIndex;

@@ -46,19 +46,72 @@ public class Movie
     public List<Release> Releases { get; set; } = [];
 }
 
+/// <summary>A TV show. Its episodes come from TMDB (or, without a key, from the releases found for it).</summary>
+public class Show
+{
+    public int Id { get; set; }
+    public required string Title { get; set; }
+    public string SortTitle { get; set; } = "";
+    public string? OriginalTitle { get; set; }
+
+    /// <summary>The year it first aired.</summary>
+    public int? Year { get; set; }
+    public string? Overview { get; set; }
+    public string? PosterUrl { get; set; }
+    public string? BackdropUrl { get; set; }
+    public double? Rating { get; set; }
+    public string? ContentRating { get; set; }
+    public string? Network { get; set; }
+
+    /// <summary>"Returning Series", "Ended", ... as TMDB has it.</summary>
+    public string? Status { get; set; }
+    public int? EpisodeRuntimeMinutes { get; set; }
+    public string? TrailerUrl { get; set; }
+    public string? ImdbId { get; set; }
+    public int? TmdbId { get; set; }
+    public string? ExternalKey { get; set; }
+    public DateTime AddedAt { get; set; } = DateTime.UtcNow;
+    public DateTime? MetadataRefreshedAt { get; set; }
+
+    public List<Genre> Genres { get; set; } = [];
+    public List<Credit> Credits { get; set; } = [];
+    public List<Episode> Episodes { get; set; } = [];
+    public List<Release> Releases { get; set; } = [];
+}
+
+public class Episode
+{
+    public int Id { get; set; }
+    public int ShowId { get; set; }
+    public Show? Show { get; set; }
+
+    /// <summary>0 for specials.</summary>
+    public int SeasonNumber { get; set; }
+    public int EpisodeNumber { get; set; }
+    public string? Title { get; set; }
+    public string? Overview { get; set; }
+    public string? StillUrl { get; set; }
+    public DateOnly? AirDate { get; set; }
+    public int? RuntimeMinutes { get; set; }
+    public int? TmdbId { get; set; }
+}
+
 public class Genre
 {
     public int Id { get; set; }
     public required string Name { get; set; }
     public List<Movie> Movies { get; set; } = [];
+    public List<Show> Shows { get; set; } = [];
 }
 
 public enum CreditKind { Cast, Director, Writer, Producer }
 
+/// <summary>Someone in a movie's or a show's cast or crew (exactly one of MovieId and ShowId is set).</summary>
 public class Credit
 {
     public int Id { get; set; }
-    public int MovieId { get; set; }
+    public int? MovieId { get; set; }
+    public int? ShowId { get; set; }
     public required string Name { get; set; }
     public CreditKind Kind { get; set; }
     public string? Character { get; set; }
@@ -66,12 +119,20 @@ public class Credit
     public int Order { get; set; }
 }
 
-/// <summary>One torrent that contains the movie.</summary>
+/// <summary>
+/// One torrent: a movie, or part of a show (exactly one of MovieId and ShowId is set). For a show it's a single
+/// episode, a season pack (no EpisodeNumber) or several seasons (no SeasonNumber); which file in a pack is which
+/// episode is worked out from the file names when it's played (see TorrentEngine.EpisodeFile).
+/// </summary>
 public class Release
 {
     public int Id { get; set; }
-    public int MovieId { get; set; }
+    public int? MovieId { get; set; }
     public Movie? Movie { get; set; }
+    public int? ShowId { get; set; }
+    public Show? Show { get; set; }
+    public int? SeasonNumber { get; set; }
+    public int? EpisodeNumber { get; set; }
     public int? SourceId { get; set; }
     public required string Name { get; set; }
     public string SourceName { get; set; } = "";
@@ -100,6 +161,27 @@ public class WatchState
     public int ViewCount { get; set; }
     public double? UserRating { get; set; }
     public DateTime? LastViewedAt { get; set; }
+}
+
+/// <summary>How far a profile has got with an episode (WatchState's counterpart for shows).</summary>
+public class EpisodeWatchState
+{
+    public int UserId { get; set; }
+    public int EpisodeId { get; set; }
+    public Episode? Episode { get; set; }
+    public long PositionMs { get; set; }
+    public long DurationMs { get; set; }
+    public bool Watched { get; set; }
+    public int ViewCount { get; set; }
+    public DateTime? LastViewedAt { get; set; }
+}
+
+public class ShowWatchlistItem
+{
+    public int UserId { get; set; }
+    public int ShowId { get; set; }
+    public Show? Show { get; set; }
+    public DateTime AddedAt { get; set; } = DateTime.UtcNow;
 }
 
 public class WatchlistItem
@@ -138,11 +220,14 @@ public class PlaylistItem
     public int Order { get; set; }
 }
 
+/// <summary>A release the server keeps a copy of: a movie's, or one with the episode it was saved for.</summary>
 public class ServerDownload
 {
     public int Id { get; set; }
-    public int MovieId { get; set; }
+    public int? MovieId { get; set; }
     public Movie? Movie { get; set; }
+    public int? EpisodeId { get; set; }
+    public Episode? Episode { get; set; }
     public int ReleaseId { get; set; }
     public Release? Release { get; set; }
     public int? RequestedByUserId { get; set; }

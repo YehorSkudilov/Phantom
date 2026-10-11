@@ -9,13 +9,17 @@ namespace Phantom.Api.Services.Sources;
 /// <summary>
 /// Reads The Pirate Bay through its JSON API (apibay.org), which has no full listing: each sync takes the all-time and
 /// last-48-hours top 100 of every movie category, then searches the next <see cref="SearchesPerSync"/> of
-/// <see cref="CrawlTerms"/> (100 results each) until the walk is done. <see cref="Source.Categories"/> lists the movie
-/// categories: 201 Movies, 202 DVDR, 207 HD, 209 3D, 211 UHD/4K.
+/// <see cref="CrawlTerms"/> (100 results each) until the walk is done. <see cref="Source.Categories"/> lists the
+/// categories: 201 Movies, 202 DVDR, 207 HD, 209 3D, 211 UHD/4K, and for TV (see <see cref="TvCategories"/>) 205 TV
+/// shows, 208 HD TV shows.
 /// </summary>
 public class PirateBaySource(HttpClient http, IOptions<PhantomOptions> options, ILogger<PirateBaySource> log) : IMovieSource, IBackfillingSource
 {
     public const string DefaultBaseUrl = "https://apibay.org";
-    public const string DefaultCategories = "201,202,207,209,211";
+    public const string DefaultCategories = "201,202,207,209,211,205,208";
+
+    /// <summary>The categories whose torrents are shows.</summary>
+    public static readonly IReadOnlySet<string> TvCategories = new HashSet<string> { "205", "208" };
     private const int SearchesPerSync = 25;
 
     private CatalogueCrawl Crawl(Source source) => new(options.Value.DataDirectory, $"tpb-{source.Id}");
@@ -90,10 +94,34 @@ public class PirateBaySource(HttpClient http, IOptions<PhantomOptions> options, 
             var name = Str(item, "name");
             // An empty search returns one placeholder row with a zero hash.
             if (string.IsNullOrWhiteSpace(hash) || hash.Trim('0').Length == 0 || string.IsNullOrWhiteSpace(name)) continue;
-            if (categories is not null && !categories.Contains(Str(item, "category") ?? "")) continue;
+            var category = Str(item, "category") ?? "";
+            if (categories is not null && !categories.Contains(category)) continue;
+            var imdb = Str(item, "imdb");
+
+            if (TvCategories.Contains(category))
+            {
+                if (ReleaseNameParser.ParseEpisode(name) is not { Title.Length: > 0 } show) continue; // not recognisably a show
+                results.Add(new SourceRelease
+                {
+                    Title = show.Title,
+                    Year = show.Year,
+                    ReleaseName = name,
+                    InfoHash = hash.ToLowerInvariant(),
+                    MagnetUri = Magnets.Build(hash, name),
+                    Quality = show.Quality,
+                    Codec = show.Codec,
+                    SizeBytes = Long(item, "size"),
+                    Seeders = (int)Long(item, "seeders"),
+                    Leechers = (int)Long(item, "leechers"),
+                    ImdbId = string.IsNullOrWhiteSpace(imdb) || !imdb.StartsWith("tt") ? null : imdb,
+                    IsShow = true,
+                    Season = show.Season,
+                    Episode = show.Episode,
+                });
+                continue;
+            }
 
             var parsed = ReleaseNameParser.Parse(name);
-            var imdb = Str(item, "imdb");
             results.Add(new SourceRelease
             {
                 Title = parsed.Title,

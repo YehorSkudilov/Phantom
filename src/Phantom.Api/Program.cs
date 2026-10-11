@@ -2,6 +2,7 @@ using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 using Phantom.Api;
@@ -32,6 +33,7 @@ builder.Services.AddSingleton<PasswordService>();
 builder.Services.AddSingleton<SessionTracker>();
 builder.Services.AddSingleton<Transcoder>();
 builder.Services.AddScoped<LibraryService>();
+builder.Services.AddScoped<ShowLibraryService>();
 builder.Services.AddScoped<LibraryImporter>();
 
 // Torrent engine + background workers
@@ -48,6 +50,7 @@ builder.Services.AddHttpClient<IMovieSource, InternetArchiveSource>(c => c.Timeo
 builder.Services.AddHttpClient<IMovieSource, YtsSource>(SourceClient);
 builder.Services.AddHttpClient<IMovieSource, PirateBaySource>(SourceClient);
 builder.Services.AddHttpClient<IMovieSource, KnabenSource>(SourceClient);
+builder.Services.AddHttpClient<IMovieSource, EztvSource>(SourceClient);
 builder.Services.AddHttpClient<IMetadataProvider, TmdbMetadataProvider>(c => c.Timeout = TimeSpan.FromSeconds(15));
 
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme).AddJwtBearer();
@@ -120,8 +123,7 @@ static async Task SeedAsync(IServiceProvider services)
 {
     using var scope = services.CreateScope();
     var db = scope.ServiceProvider.GetRequiredService<PhantomDbContext>();
-    await db.Database.EnsureCreatedAsync();
-    await UpgradeSchemaAsync(db);
+    await MigrateAsync(db);
 
     if (!await db.Settings.AnyAsync()) db.Settings.Add(new ServerSettings());
 
@@ -130,8 +132,26 @@ static async Task SeedAsync(IServiceProvider services)
     await db.SaveChangesAsync();
 }
 
-// The database is made by EnsureCreated, with no migrations, so changes an existing database needs are applied here.
-static async Task UpgradeSchemaAsync(PhantomDbContext db)
+// The schema is kept by EF Core migrations (Data/Migrations; add one with `dotnet ef migrations add <Name>` in
+// src/Phantom.Api). Databases from before migrations were made by EnsureCreated: they're brought up to the first
+// migration by the patches below and marked as having it, so only the later migrations run on them.
+static async Task MigrateAsync(PhantomDbContext db)
+{
+    var tables = await db.Database.SqlQueryRaw<string>("SELECT name AS Value FROM sqlite_master WHERE type = 'table'").ToListAsync();
+    if (tables.Contains("Movies") && !tables.Contains("__EFMigrationsHistory"))
+    {
+        await UpgradeLegacySchemaAsync(db);
+        var history = db.GetService<Microsoft.EntityFrameworkCore.Migrations.IHistoryRepository>();
+        var baseline = db.Database.GetMigrations().First();
+        await db.Database.ExecuteSqlRawAsync(history.GetCreateIfNotExistsScript());
+        await db.Database.ExecuteSqlRawAsync(history.GetInsertScript(new Microsoft.EntityFrameworkCore.Migrations.HistoryRow(
+            baseline, ProductInfo.GetVersion())));
+    }
+    await db.Database.MigrateAsync();
+}
+
+// Changes made to EnsureCreated databases before there were migrations; they match the first migration afterwards.
+static async Task UpgradeLegacySchemaAsync(PhantomDbContext db)
 {
     // Settings added since the database was made.
     var settingsColumns = await db.Database.SqlQueryRaw<string>("SELECT name AS Value FROM pragma_table_info('Settings')").ToListAsync();
@@ -160,6 +180,7 @@ static async Task SeedSourcesAsync(PhantomDbContext db, PhantomOptions options)
         new() { Name = "YTS", Type = SourceType.Yts, Categories = "4", SyncIntervalMinutes = 180 },
         new() { Name = "Knaben (many sites)", Type = SourceType.Knaben, SyncIntervalMinutes = 180 },
         new() { Name = "The Pirate Bay", Type = SourceType.PirateBay, Categories = PirateBaySource.DefaultCategories, SyncIntervalMinutes = 180 },
+        new() { Name = "EZTV (TV)", Type = SourceType.Eztv, SyncIntervalMinutes = 120 },
         new()
         {
             Name = "Internet Archive - Feature Films", Type = SourceType.InternetArchive,

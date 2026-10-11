@@ -129,6 +129,22 @@ public partial class PlayerViewModel(PhantomApi api, SettingsService settings, D
     public string? ThumbnailUrl(TimeSpan at) =>
         Stream?.ThumbnailUrl is { } url && !_offline ? $"{url}&t={(int)at.TotalSeconds / 10 * 10}" : null;
 
+    /// <summary>
+    /// Fetches the preview frame. Cancelling it (the drag moved on) closes the request, which stops the server's ffmpeg
+    /// so it no longer pulls that part of the torrent ahead of playback. Null when there's no frame.
+    /// </summary>
+    public async Task<byte[]?> ThumbnailAsync(string url, CancellationToken ct)
+    {
+        try
+        {
+            return await api.ThumbnailAsync(url, ct);
+        }
+        catch (HttpRequestException)
+        {
+            return null;
+        }
+    }
+
     /// <summary>When transcoding, the stream restarts at this offset on every seek.</summary>
     public TimeSpan TranscodeOffset { get; private set; }
 

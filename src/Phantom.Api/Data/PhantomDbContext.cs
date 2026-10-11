@@ -6,6 +6,10 @@ public class PhantomDbContext(DbContextOptions<PhantomDbContext> options) : DbCo
 {
     public DbSet<User> Users => Set<User>();
     public DbSet<Movie> Movies => Set<Movie>();
+    public DbSet<Show> Shows => Set<Show>();
+    public DbSet<Episode> Episodes => Set<Episode>();
+    public DbSet<EpisodeWatchState> EpisodeWatchStates => Set<EpisodeWatchState>();
+    public DbSet<ShowWatchlistItem> ShowWatchlist => Set<ShowWatchlistItem>();
     public DbSet<Genre> Genres => Set<Genre>();
     public DbSet<Credit> Credits => Set<Credit>();
     public DbSet<Release> Releases => Set<Release>();
@@ -30,14 +34,27 @@ public class PhantomDbContext(DbContextOptions<PhantomDbContext> options) : DbCo
         b.Entity<Movie>().HasMany(m => m.Genres).WithMany(g => g.Movies);
         b.Entity<Movie>().HasMany(m => m.Credits).WithOne().HasForeignKey(c => c.MovieId);
 
+        b.Entity<Show>().HasIndex(s => s.SortTitle);
+        b.Entity<Show>().HasIndex(s => s.TmdbId);
+        b.Entity<Show>().HasIndex(s => s.ImdbId);
+        b.Entity<Show>().HasIndex(s => s.ExternalKey).IsUnique();
+        b.Entity<Show>().HasMany(s => s.Genres).WithMany(g => g.Shows).UsingEntity("GenreShow");
+        b.Entity<Show>().HasMany(s => s.Credits).WithOne().HasForeignKey(c => c.ShowId);
+        b.Entity<Show>().HasMany(s => s.Episodes).WithOne(e => e.Show).HasForeignKey(e => e.ShowId).OnDelete(DeleteBehavior.Cascade);
+        b.Entity<Episode>().HasIndex(e => new { e.ShowId, e.SeasonNumber, e.EpisodeNumber }).IsUnique();
+
         b.Entity<Genre>().HasIndex(g => g.Name).IsUnique();
         b.Entity<Credit>().HasIndex(c => c.Name);
 
         b.Entity<Release>().HasIndex(r => r.InfoHash).IsUnique();
         b.Entity<Release>().HasOne(r => r.Movie).WithMany(m => m.Releases).HasForeignKey(r => r.MovieId);
+        b.Entity<Release>().HasOne(r => r.Show).WithMany(s => s.Releases).HasForeignKey(r => r.ShowId);
+        b.Entity<Release>().HasIndex(r => new { r.ShowId, r.SeasonNumber, r.EpisodeNumber });
 
         b.Entity<WatchState>().HasKey(w => new { w.UserId, w.MovieId });
         b.Entity<WatchlistItem>().HasKey(w => new { w.UserId, w.MovieId });
+        b.Entity<EpisodeWatchState>().HasKey(w => new { w.UserId, w.EpisodeId });
+        b.Entity<ShowWatchlistItem>().HasKey(w => new { w.UserId, w.ShowId });
 
         b.Entity<Collection>().HasMany(c => c.Movies).WithMany();
         b.Entity<Playlist>().HasMany(p => p.Items).WithOne().HasForeignKey(i => i.PlaylistId).OnDelete(DeleteBehavior.Cascade);
