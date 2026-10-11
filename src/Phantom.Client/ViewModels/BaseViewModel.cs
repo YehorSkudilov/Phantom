@@ -45,7 +45,12 @@ public abstract partial class BaseViewModel : ObservableObject
     /// <summary>Runs an operation with busy/error handling so pages never crash on network errors.</summary>
     protected async Task RunAsync(Func<Task> action, bool showBusy = true)
     {
-        if (showBusy && IsBusy) return;
+        if (showBusy && IsBusy)
+        {
+            // Already loading: that load will do. A pull-to-refresh spinner mustn't be left spinning, though.
+            await EndRefreshAsync();
+            return;
+        }
         try
         {
             if (showBusy) IsBusy = true;

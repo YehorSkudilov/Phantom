@@ -54,6 +54,12 @@ public partial class PlayerPage : ContentPage
         Media.Volume = _vm.Volume;
         UpdateMuteIcon();
         FullscreenButton.IsVisible = DeviceInfo.Platform == DevicePlatform.WinUI;
+#if IOS || MACCATALYST
+        // Apple's slider only moves by dragging its thumb; a tap on the bar jumps there, as it does on Android and Windows.
+        var seekTap = new TapGestureRecognizer();
+        seekTap.Tapped += OnSeekTapped;
+        Seek.GestureRecognizers.Add(seekTap);
+#endif
     }
 
     // ---------- Volume, aspect, full screen ----------
@@ -365,9 +371,14 @@ public partial class PlayerPage : ContentPage
         _hideTimer.Start();
     }
 
+    private DateTime _lastToggle;
+
     private void OnSurfaceTapped(object? sender, TappedEventArgs e)
     {
-        if (Controls.IsVisible) Controls.IsVisible = false;
+        // The controls and the surface under them both listen; where a platform hands one tap to both, it counts once.
+        if (DateTime.UtcNow - _lastToggle < TimeSpan.FromMilliseconds(250)) return;
+        _lastToggle = DateTime.UtcNow;
+        if (Controls.IsVisible && !Buffering.IsVisible) Controls.IsVisible = false; // while loading, Close stays reachable
         else ShowControls();
     }
 
@@ -465,6 +476,17 @@ public partial class PlayerPage : ContentPage
         root.AddHandler(Microsoft.UI.Xaml.UIElement.KeyDownEvent, _keyHandler, handledEventsToo: true);
     }
 #endif
+
+    private void OnSeekTapped(object? sender, TappedEventArgs e)
+    {
+        var total = _vm.TotalDuration(Media.Duration);
+        if (_seeking || total <= TimeSpan.Zero || Seek.Width <= 0 || e.GetPosition(Seek) is not { } at) return;
+        var fraction = Math.Clamp(at.X / Seek.Width, 0, 1);
+        Seek.Value = fraction;
+        PositionLabel.Text = TimeSpanConverter.Format(total * fraction);
+        ShowControls();
+        Guard(() => SeekToAsync(total * fraction));
+    }
 
     private void OnSeekStarted(object? sender, EventArgs e)
     {

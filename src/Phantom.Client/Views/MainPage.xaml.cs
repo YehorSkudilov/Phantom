@@ -34,6 +34,11 @@ public partial class MainPage : ContentPage
 
         TabContent.CNavIconItems = _tabs;
         TabContent.PropertyChanged += OnTabContentChanged;
+        // Android: the CView takes the downward pull itself (as it does the sideways swipe between tabs), so the tabs'
+        // RefreshViews never see it. It's handed on to the visible tab's RefreshView here. Other platforms never raise these.
+        TabContent.PullProgressChanged += (_, progress) => OnPull(progress);
+        TabContent.PullCommitted += (_, _) => OnPullEnd(refresh: true);
+        TabContent.PullCancelled += (_, _) => OnPullEnd(refresh: false);
         NavBar.LoadPageCommand = new Command<CNavItem>(Show);
         NavBar.CNavIconItems = _tabs;
         // On a wide window the bar would stretch edge to edge; there it sits centred, only as wide as its items.
@@ -88,6 +93,43 @@ public partial class MainPage : ContentPage
         if (e.PropertyName != nameof(CView.IsNavigating) || TabContent.IsNavigating || _loadAfterSlide is not { } item) return;
         _loadAfterSlide = null;
         if (_visible && item == _current) item.Page.Load();
+    }
+
+    // ---------- Pull to refresh (Android) ----------
+
+    /// <summary>How far the tab follows the finger: a little, with resistance, so the pull is felt.</summary>
+    private const double PullTravel = 56;
+
+    private void OnPull(double progress)
+    {
+        if (_current?.Page is { } page) page.TranslationY = PullTravel * Math.Min(progress, 1.5) / 1.5;
+    }
+
+    private async void OnPullEnd(bool refresh)
+    {
+        if (_current?.Page is not { } page) return;
+        if (refresh && ActiveRefreshView(page) is { IsRefreshing: false } refreshView)
+            refreshView.IsRefreshing = true; // shows its spinner and runs its Command, as a native pull would
+        try
+        {
+            await page.TranslateToAsync(0, 0, 160, Easing.CubicOut);
+        }
+        catch (Exception)
+        {
+            page.TranslationY = 0;
+        }
+    }
+
+    /// <summary>The RefreshView showing on a tab (the Library has one per sub-tab, only one of them visible).</summary>
+    private static RefreshView? ActiveRefreshView(IVisualTreeElement element)
+    {
+        foreach (var child in element.GetVisualChildren())
+        {
+            if (child is VisualElement { IsVisible: false }) continue;
+            if (child is RefreshView { IsEnabled: true } refresh) return refresh;
+            if (ActiveRefreshView(child) is { } found) return found;
+        }
+        return null;
     }
 
     // Tabs only count as visible while this page is on top, as they did when each tab was its own Shell page:

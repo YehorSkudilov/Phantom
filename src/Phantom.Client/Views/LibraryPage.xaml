@@ -92,9 +92,11 @@
             </CollectionView.ItemTemplate>
         </CollectionView>
 
-        <RefreshView Grid.Row="3" IsRefreshing="{Binding IsRefreshing}" Command="{Binding ReloadCommand}">
-            <Grid>
-                <CollectionView x:Name="Grid" ItemsSource="{Binding Movies}" IsVisible="{Binding IsGrid}"
+        <!-- One RefreshView per view: on iOS a RefreshView only hooks onto the first list inside it, which left the list
+             view (the second) without pull-to-refresh. -->
+        <Grid Grid.Row="3">
+            <RefreshView IsRefreshing="{Binding IsRefreshing}" Command="{Binding ReloadCommand}" IsVisible="{Binding IsGrid}">
+                <CollectionView x:Name="Grid" ItemsSource="{Binding Movies}"
                                 ItemTemplate="{StaticResource PosterCard}" SelectionMode="Single"
                                 SelectionChanged="OnSelected"
                                 RemainingItemsThreshold="12" RemainingItemsThresholdReachedCommand="{Binding LoadMoreCommand}">
@@ -105,18 +107,23 @@
                         <BoxView HeightRequest="{x:Static views:TabView.NavBarInset}" Color="Transparent" />
                     </CollectionView.Footer>
                     <CollectionView.EmptyView>
-                        <Label Text="No movies match these filters." Style="{StaticResource Muted}" HorizontalOptions="Center" Margin="0,40" />
+                        <Label Text="Nothing matches these filters." Style="{StaticResource Muted}" HorizontalOptions="Center" Margin="0,40" />
                     </CollectionView.EmptyView>
                 </CollectionView>
-                <CollectionView ItemsSource="{Binding Movies}" IsVisible="{Binding IsGrid, Converter={StaticResource Not}}"
+            </RefreshView>
+            <RefreshView IsRefreshing="{Binding IsRefreshing}" Command="{Binding ReloadCommand}" IsVisible="{Binding IsGrid, Converter={StaticResource Not}}">
+                <CollectionView ItemsSource="{Binding Movies}"
                                 ItemTemplate="{StaticResource MovieRow}" SelectionMode="Single" SelectionChanged="OnSelected"
                                 RemainingItemsThreshold="12" RemainingItemsThresholdReachedCommand="{Binding LoadMoreCommand}">
                     <CollectionView.Footer>
                         <BoxView HeightRequest="{x:Static views:TabView.NavBarInset}" Color="Transparent" />
                     </CollectionView.Footer>
+                    <CollectionView.EmptyView>
+                        <Label Text="Nothing matches these filters." Style="{StaticResource Muted}" HorizontalOptions="Center" Margin="0,40" />
+                    </CollectionView.EmptyView>
                 </CollectionView>
-            </Grid>
-        </RefreshView>
+            </RefreshView>
+        </Grid>
         </Grid>
 
         <!-- Search results -->

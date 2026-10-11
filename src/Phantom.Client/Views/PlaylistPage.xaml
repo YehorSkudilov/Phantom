@@ -15,7 +15,8 @@
                 <Button Grid.Column="1" Text="⤨  Shuffle" Style="{StaticResource SecondaryButton}" Command="{Binding ShuffleCommand}" />
             </Grid>
         </VerticalStackLayout>
-        <CollectionView Grid.Row="1" ItemsSource="{Binding Items}" SelectionMode="None">
+        <RefreshView Grid.Row="1" IsRefreshing="{Binding IsRefreshing}" Command="{Binding LoadCommand}">
+        <CollectionView ItemsSource="{Binding Items}" SelectionMode="None">
             <CollectionView.ItemTemplate>
                 <DataTemplate x:DataType="dto:MovieSummaryDto">
                     <SwipeView>
@@ -46,5 +47,6 @@
                 </DataTemplate>
             </CollectionView.ItemTemplate>
         </CollectionView>
+        </RefreshView>
     </Grid>
 </ContentPage>

@@ -58,7 +58,10 @@
 
         <!-- Controls overlay -->
         <Grid x:Name="Controls" RowDefinitions="Auto,*,Auto" BackgroundColor="#66000000" Padding="12">
+            <!-- Its own single tap too: on Android a view with any tap recognizer keeps the touch, so a tap on the
+                 controls never reached the surface's (and couldn't hide them). -->
             <Grid.GestureRecognizers>
+                <TapGestureRecognizer Tapped="OnSurfaceTapped" />
                 <TapGestureRecognizer NumberOfTapsRequired="2" Tapped="OnSurfaceDoubleTapped" />
             </Grid.GestureRecognizers>
             <Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto,Auto,Auto" ColumnSpacing="6">
