@@ -77,10 +77,30 @@ public class PhantomApi(HttpClient http, SettingsService settings)
     public Task<AuthResponse> RegisterAsync(string user, string password) => SendAsync<AuthResponse>(HttpMethod.Post, "/api/auth/register", new RegisterRequest(user, password));
     public Task<UserDto> MeAsync() => GetAsync<UserDto>("/api/auth/me");
 
+    // Pairing: a TV shows a code, a signed-in device approves it (see PairingController on the server).
+    public Task<PairingStartResponse> StartPairingAsync(string deviceName, CancellationToken ct = default) =>
+        SendAsync<PairingStartResponse>(HttpMethod.Post, "/api/auth/pair/start", new PairingStartRequest(deviceName), ct);
+
+    /// <summary>The sign-in once the code is approved; null while still waiting. Throws (404) once the code expired.</summary>
+    public async Task<AuthResponse?> PollPairingAsync(string pairingId, CancellationToken ct = default)
+    {
+        using var res = await SendAsync(HttpMethod.Get, $"/api/auth/pair/{pairingId}", null, ct);
+        return res.StatusCode == HttpStatusCode.Accepted ? null : await res.Content.ReadFromJsonAsync<AuthResponse>(Json, ct);
+    }
+
+    public Task<PairingApprovedResponse> ApprovePairingAsync(string code) =>
+        SendAsync<PairingApprovedResponse>(HttpMethod.Post, "/api/auth/pair/approve", new PairingApproveRequest(code));
+
     public Task<List<UserDto>> ProfilesAsync() => GetAsync<List<UserDto>>("/api/profiles");
     public Task<UserDto> CreateProfileAsync(CreateProfileRequest req) => SendAsync<UserDto>(HttpMethod.Post, "/api/profiles", req);
     public Task<AuthResponse> SwitchProfileAsync(int id, string? pin) => SendAsync<AuthResponse>(HttpMethod.Post, "/api/profiles/switch", new SwitchProfileRequest(id, pin));
     public Task DeleteProfileAsync(int id) => SendNoContentAsync(HttpMethod.Delete, $"/api/profiles/{id}");
+
+    // Accounts (admin): every account signs in with its own username and password, and has its own profiles.
+    public Task<List<UserDto>> UsersAsync() => GetAsync<List<UserDto>>("/api/users");
+    public Task CreateAccountAsync(string user, string password) => SendAsync<AuthResponse>(HttpMethod.Post, "/api/auth/register", new RegisterRequest(user, password));
+    public Task SetAdminAsync(int id, bool value) => SendNoContentAsync(HttpMethod.Put, $"/api/users/{id}/admin?value={value}");
+    public Task DeleteUserAsync(int id) => SendNoContentAsync(HttpMethod.Delete, $"/api/users/{id}");
 
     // ---------- Library ----------
 

@@ -17,4 +17,10 @@ public partial class ConnectPage : ContentPage
         base.OnAppearing();
         if (!_vm.IsConnected) _vm.ConnectCommand.Execute(null);
     }
+
+    protected override void OnDisappearing()
+    {
+        base.OnDisappearing();
+        _vm.StopPairing();
+    }
 }

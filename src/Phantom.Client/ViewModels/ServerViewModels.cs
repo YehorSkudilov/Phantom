@@ -78,6 +78,24 @@ public partial class MoreViewModel(PhantomApi api, SettingsService settings) : B
     [RelayCommand]
     private Task SwitchProfile() => GoToAsync("//profiles");
 
+    /// <summary>Signs a TV in to this account with the code it shows.</summary>
+    [RelayCommand]
+    private Task SignInTv() => RunAsync(async () =>
+    {
+        var code = await Shell.Current.DisplayPromptAsync("Sign in a TV", "Enter the code shown on the TV", "Sign in", "Cancel",
+            maxLength: 7, keyboard: Keyboard.Create(KeyboardFlags.CapitalizeCharacter));
+        if (string.IsNullOrWhiteSpace(code)) return;
+        try
+        {
+            var approved = await api.ApprovePairingAsync(code);
+            await Shell.Current.DisplayAlertAsync("Sign in a TV", $"{approved.DeviceName} is now signed in to your account.", "OK");
+        }
+        catch (ApiException ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound)
+        {
+            await Shell.Current.DisplayAlertAsync("Sign in a TV", ex.Message, "OK");
+        }
+    }, showBusy: false);
+
     [RelayCommand]
     private async Task SignOut()
     {
@@ -122,6 +140,7 @@ public partial class AdminViewModel(PhantomApi api) : BaseViewModel
 {
     public ObservableCollection<NowPlayingDto> Sessions { get; } = [];
     public ObservableCollection<SourceDto> Sources { get; } = [];
+    public ObservableCollection<UserDto> Accounts { get; } = [];
     public IReadOnlyList<string> QualityChoices { get; } = ["2160p", "1080p", "720p", "SD"];
 
     [ObservableProperty]
@@ -149,6 +168,7 @@ public partial class AdminViewModel(PhantomApi api) : BaseViewModel
         await RefreshActivity();
         Sources.Clear();
         foreach (var s in await api.SourcesAsync()) Sources.Add(s);
+        await LoadAccountsAsync();
 
         var s2 = await api.ServerSettingsAsync();
         ServerName = s2.ServerName;
@@ -169,6 +189,44 @@ public partial class AdminViewModel(PhantomApi api) : BaseViewModel
         var sessions = await api.SessionsAsync();
         Sessions.Clear();
         foreach (var s in sessions) Sessions.Add(s);
+    }, showBusy: false);
+
+    private async Task LoadAccountsAsync()
+    {
+        Accounts.Clear();
+        foreach (var u in (await api.UsersAsync()).Where(u => !u.IsManaged)) Accounts.Add(u);
+    }
+
+    /// <summary>A new account with its own sign-in; its owner adds profiles under it after signing in.</summary>
+    [RelayCommand]
+    private Task AddAccount() => RunAsync(async () =>
+    {
+        var page = Shell.Current;
+        var name = await page.DisplayPromptAsync("New account", "Username (what they sign in with)");
+        if (string.IsNullOrWhiteSpace(name)) return;
+        var password = await page.DisplayPromptAsync("New account", "Password (at least 6 characters)");
+        if (string.IsNullOrEmpty(password)) return;
+        await api.CreateAccountAsync(name.Trim(), password);
+        await LoadAccountsAsync();
+        await ToastAsync($"{name.Trim()} can now sign in");
+    }, showBusy: false);
+
+    [RelayCommand]
+    private Task ToggleAdmin(UserDto user) => RunAsync(async () =>
+    {
+        var makeAdmin = !user.IsAdmin;
+        var question = makeAdmin ? $"Let {user.Username} manage the server?" : $"Stop {user.Username} managing the server?";
+        if (!await Shell.Current.DisplayAlertAsync("Server admin", question, makeAdmin ? "Make admin" : "Remove admin", "Cancel")) return;
+        await api.SetAdminAsync(user.Id, makeAdmin);
+        await LoadAccountsAsync();
+    }, showBusy: false);
+
+    [RelayCommand]
+    private Task DeleteAccount(UserDto user) => RunAsync(async () =>
+    {
+        if (!await Shell.Current.DisplayAlertAsync("Delete account", $"Delete {user.Username}, its profiles and their watch history?", "Delete", "Cancel")) return;
+        await api.DeleteUserAsync(user.Id);
+        Accounts.Remove(user);
     }, showBusy: false);
 
     [RelayCommand]

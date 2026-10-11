@@ -164,6 +164,49 @@ public class ApiTests : IClassFixture<PhantomFactory>
     }
 
     [Fact]
+    public async Task Each_account_has_its_own_sign_in_and_profile_names()
+    {
+        // The admin creates a second account; it signs in with its own credentials.
+        var admin = await AdminClientAsync();
+        var name = "family" + Guid.NewGuid().ToString("N")[..6];
+        Assert.Equal(HttpStatusCode.OK, (await admin.PostAsJsonAsync("/api/auth/register", new RegisterRequest(name, "secret12"), Json)).StatusCode);
+        var login = await _factory.CreateClient().PostAsJsonAsync("/api/auth/login", new LoginRequest(name, "secret12"), Json);
+        var auth = await login.Content.ReadFromJsonAsync<AuthResponse>(Json);
+        var family = _factory.CreateClient();
+        family.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", auth!.Token);
+
+        // Both accounts can have a "Kids" profile; one account can't have two.
+        var profile = "Kids" + Guid.NewGuid().ToString("N")[..4];
+        Assert.Equal(HttpStatusCode.OK, (await admin.PostAsJsonAsync("/api/profiles", new CreateProfileRequest(profile, null, null, null), Json)).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await family.PostAsJsonAsync("/api/profiles", new CreateProfileRequest(profile, null, null, null), Json)).StatusCode);
+        Assert.Equal(HttpStatusCode.Conflict, (await family.PostAsJsonAsync("/api/profiles", new CreateProfileRequest(profile, null, null, null), Json)).StatusCode);
+
+        // Each account only sees its own profiles.
+        var familyProfiles = await family.GetFromJsonAsync<List<UserDto>>("/api/profiles", Json);
+        Assert.Equal([name, profile], familyProfiles!.Select(p => p.Username));
+    }
+
+    [Fact]
+    public async Task A_tv_signs_in_with_a_code_approved_on_another_device()
+    {
+        var tv = _factory.CreateClient();
+        var start = await (await tv.PostAsJsonAsync("/api/auth/pair/start", new PairingStartRequest("Living room TV"), Json))
+            .Content.ReadFromJsonAsync<PairingStartResponse>(Json);
+        Assert.Equal(6, start!.Code.Length);
+        Assert.Equal(HttpStatusCode.Accepted, (await tv.GetAsync($"/api/auth/pair/{start.PairingId}")).StatusCode);
+
+        var phone = await AdminClientAsync();
+        Assert.Equal(HttpStatusCode.NotFound, (await phone.PostAsJsonAsync("/api/auth/pair/approve", new PairingApproveRequest("ZZZZZZ"), Json)).StatusCode);
+        var approved = await phone.PostAsJsonAsync("/api/auth/pair/approve", new PairingApproveRequest(start.Code.ToLowerInvariant()), Json);
+        Assert.Equal("Living room TV", (await approved.Content.ReadFromJsonAsync<PairingApprovedResponse>(Json))!.DeviceName);
+
+        var auth = await (await tv.GetAsync($"/api/auth/pair/{start.PairingId}")).Content.ReadFromJsonAsync<AuthResponse>(Json);
+        Assert.Equal("owner", auth!.User.Username);
+        // Handed out once.
+        Assert.Equal(HttpStatusCode.NotFound, (await tv.GetAsync($"/api/auth/pair/{start.PairingId}")).StatusCode);
+    }
+
+    [Fact]
     public async Task Playlists_keep_order_and_watchlist_round_trips()
     {
         var client = await AdminClientAsync();

@@ -33,3 +33,10 @@ public interface IMovieSource
     SourceType Type { get; }
     Task<IReadOnlyList<SourceRelease>> FetchAsync(Source source, CancellationToken ct);
 }
+
+/// <summary>A source that works through its whole catalogue a batch per sync.</summary>
+public interface IBackfillingSource
+{
+    /// <summary>True while there's catalogue left; the sync service then runs it again shortly.</summary>
+    bool HasMore(Source source);
+}

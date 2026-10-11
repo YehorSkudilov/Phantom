@@ -23,6 +23,7 @@
             <local:InitialConverter x:Key="Initial" />
             <local:SourceTypeConverter x:Key="SourceType" />
             <local:IntervalConverter x:Key="Interval" />
+            <local:AllTrueConverter x:Key="AllTrue" />
 
             <!-- Poster card used by every movie row/grid: artwork, watched tick, resume bar. -->
             <DataTemplate x:Key="PosterCard" x:DataType="dto:MovieSummaryDto">

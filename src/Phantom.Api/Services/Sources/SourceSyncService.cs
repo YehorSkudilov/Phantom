@@ -58,6 +58,14 @@ public class SourceSyncService(IServiceScopeFactory scopes, ILogger<SourceSyncSe
                 var importer = scope.ServiceProvider.GetRequiredService<LibraryImporter>();
                 var result = await importer.ImportAsync(source, releases, ct);
                 source.LastSyncResult = $"OK: {result.Releases} found, {result.NewMovies} new movies, {result.NewReleases} new releases";
+                if (provider is IBackfillingSource backfill && backfill.HasMore(source))
+                {
+                    source.LastSyncResult += " · still importing the catalogue";
+                    // Due again in a minute rather than after the whole interval.
+                    source.LastSyncAt = DateTime.UtcNow.AddMinutes(1 - source.SyncIntervalMinutes);
+                    await db.SaveChangesAsync(ct);
+                    continue;
+                }
             }
             catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
             {

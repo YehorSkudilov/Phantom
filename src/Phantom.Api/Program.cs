@@ -120,12 +120,29 @@ static async Task SeedAsync(IServiceProvider services)
     using var scope = services.CreateScope();
     var db = scope.ServiceProvider.GetRequiredService<PhantomDbContext>();
     await db.Database.EnsureCreatedAsync();
+    await UpgradeSchemaAsync(db);
 
     if (!await db.Settings.AnyAsync()) db.Settings.Add(new ServerSettings());
 
     var options = scope.ServiceProvider.GetRequiredService<IOptions<PhantomOptions>>().Value;
     if (options.SeedDefaultSources) await SeedSourcesAsync(db, options);
     await db.SaveChangesAsync();
+}
+
+// The database is made by EnsureCreated, with no migrations, so changes an existing database needs are applied here.
+static async Task UpgradeSchemaAsync(PhantomDbContext db)
+{
+    // Profile names used to be unique across the whole server; now only within their account.
+    var usernameIndex = await db.Database.SqlQueryRaw<string>(
+        "SELECT sql AS Value FROM sqlite_master WHERE type = 'index' AND name = 'IX_Users_Username'").ToListAsync();
+    if (usernameIndex.FirstOrDefault() is { } sql && !sql.Contains("WHERE", StringComparison.OrdinalIgnoreCase))
+    {
+        await db.Database.ExecuteSqlRawAsync("""
+            DROP INDEX "IX_Users_Username";
+            CREATE UNIQUE INDEX "IX_Users_Username" ON "Users" ("Username") WHERE "ParentUserId" IS NULL;
+            CREATE UNIQUE INDEX IF NOT EXISTS "IX_Users_ParentUserId_Username" ON "Users" ("ParentUserId", "Username") WHERE "ParentUserId" IS NOT NULL;
+            """);
+    }
 }
 
 // Every built-in source is added once, on new and existing servers alike. A file in the data folder remembers which

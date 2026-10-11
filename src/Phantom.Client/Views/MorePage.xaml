@@ -48,6 +48,8 @@
                     <BoxView Style="{StaticResource Divider}" />
                     <controls:MenuRow Glyph="switch_account" Text="Switch profile" Command="{Binding SwitchProfileCommand}" />
                     <BoxView Style="{StaticResource Divider}" />
+                    <controls:MenuRow Glyph="tv" Text="Sign in a TV" Command="{Binding SignInTvCommand}" />
+                    <BoxView Style="{StaticResource Divider}" />
                     <controls:MenuRow Glyph="logout" Text="Sign out" Command="{Binding SignOutCommand}" ShowChevron="False" TextColor="{StaticResource Danger}" />
                 </VerticalStackLayout>
             </Border>

@@ -22,6 +22,15 @@ public record CreateProfileRequest(string Username, string? Pin, string? MaxCont
 
 public record SwitchProfileRequest(int ProfileId, string? Pin);
 
+/// <summary>A TV asking to be signed in with a code (see PairingController).</summary>
+public record PairingStartRequest(string? DeviceName);
+
+public record PairingStartResponse(string PairingId, string Code, DateTime ExpiresAt);
+
+public record PairingApproveRequest(string Code);
+
+public record PairingApprovedResponse(string DeviceName);
+
 // ---------- Movies ----------
 
 public record MovieSummaryDto(

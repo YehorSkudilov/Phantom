@@ -23,8 +23,32 @@
                                     IsVisible="{Binding ErrorMessage, Converter={StaticResource HasValue}}" />
                         </VerticalStackLayout>
 
+                        <!-- Step 2 on a TV: a code to approve from a phone -->
+                        <VerticalStackLayout Spacing="14">
+                            <VerticalStackLayout.IsVisible>
+                                <MultiBinding Converter="{StaticResource AllTrue}">
+                                    <Binding Path="IsConnected" />
+                                    <Binding Path="UsePairing" />
+                                    <Binding Path="IsFirstRun" Converter="{StaticResource Not}" />
+                                </MultiBinding>
+                            </VerticalStackLayout.IsVisible>
+                            <Label Text="{Binding ServerName}" Style="{StaticResource Muted}" />
+                            <Label Text="Sign in with a code" Style="{StaticResource H2}" />
+                            <Label Text="On your phone or computer, open Phantom, go to More → Sign in a TV and enter:" Style="{StaticResource Muted}" />
+                            <Label Text="{Binding PairingCode}" FontFamily="OpenSansSemibold" FontSize="44" CharacterSpacing="6"
+                                   HorizontalOptions="Center" TextColor="{StaticResource PrimaryLight}" />
+                            <Label Text="The code refreshes on its own if it expires." Style="{StaticResource Muted}" FontSize="12" HorizontalOptions="Center" />
+                            <Button Text="Use username and password instead" Style="{StaticResource SecondaryButton}" Command="{Binding UsePasswordCommand}" />
+                        </VerticalStackLayout>
+
                         <!-- Step 2: sign in (or create the owner account on first run) -->
-                        <VerticalStackLayout Spacing="12" IsVisible="{Binding IsConnected}">
+                        <VerticalStackLayout Spacing="12">
+                            <VerticalStackLayout.IsVisible>
+                                <MultiBinding Converter="{StaticResource AllTrue}">
+                                    <Binding Path="IsConnected" />
+                                    <Binding Path="ShowPasswordForm" />
+                                </MultiBinding>
+                            </VerticalStackLayout.IsVisible>
                             <Label Text="{Binding ServerName}" Style="{StaticResource Muted}" />
                             <Label Text="Create the owner account" Style="{StaticResource H2}" IsVisible="{Binding IsFirstRun}" />
                             <Label Text="This server is new. The first account becomes the administrator." Style="{StaticResource Muted}" IsVisible="{Binding IsFirstRun}" />
@@ -33,6 +57,8 @@
                             <Entry Text="{Binding Password}" Placeholder="Password" IsPassword="True"
                                    ReturnCommand="{Binding SignInCommand}" SemanticProperties.Description="Password" />
                             <Button Text="Continue" Command="{Binding SignInCommand}" IsEnabled="{Binding IsNotBusy}" />
+                            <Button Text="Sign in with a code instead" Style="{StaticResource GhostButton}" Command="{Binding UseCodeCommand}"
+                                    IsVisible="{Binding IsTv}" />
                         </VerticalStackLayout>
 
                         <ActivityIndicator IsRunning="{Binding IsBusy}" IsVisible="{Binding IsBusy}" />

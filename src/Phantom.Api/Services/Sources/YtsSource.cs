@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Microsoft.Extensions.Options;
 using Phantom.Api.Data;
 using Phantom.Shared;
 
@@ -6,11 +7,15 @@ namespace Phantom.Api.Services.Sources;
 
 /// <summary>
 /// Reads the YTS movie API: small, well-seeded encodes with IMDb ids, posters and genres, so movies
-/// come in with metadata even without a TMDB key. <see cref="Source.Categories"/> is the number of
-/// 50-movie pages to pull (newest first); <see cref="Source.Query"/> optionally searches instead.
+/// come in with metadata even without a TMDB key. Each sync pulls the newest <see cref="Source.Categories"/>
+/// 50-movie pages, plus <see cref="BackfillPages"/> pages of the back catalogue until all of it is in (where it
+/// got to is kept in the data folder). <see cref="Source.Query"/> optionally searches instead.
 /// </summary>
-public class YtsSource(HttpClient http, ILogger<YtsSource> log) : IMovieSource
+public class YtsSource(HttpClient http, IOptions<PhantomOptions> options, ILogger<YtsSource> log) : IMovieSource, IBackfillingSource
 {
+    /// <summary>Back-catalogue pages per sync: 1,000 movies.</summary>
+    public const int BackfillPages = 20;
+
     // The API moved off the yts.* site domains, which keep changing; override with the source's base URL.
     public const string DefaultBaseUrl = "https://movies-api.accel.li";
     private const int PageSize = 50;
@@ -23,18 +28,51 @@ public class YtsSource(HttpClient http, ILogger<YtsSource> log) : IMovieSource
         var pages = int.TryParse(source.Categories, out var n) && n > 0 ? Math.Min(n, 20) : 4;
 
         var results = new List<SourceRelease>();
+
+        // The newest movies, every time.
         for (var page = 1; page <= pages; page++)
         {
-            var url = $"{baseUrl}/api/v2/list_movies.json?limit={PageSize}&page={page}&sort_by=date_added";
-            if (!string.IsNullOrWhiteSpace(source.Query)) url += $"&query_term={Uri.EscapeDataString(source.Query)}";
-
-            var batch = Parse(await http.GetStringAsync(url, ct));
+            var batch = await PageAsync(baseUrl, source, page, ct);
             results.AddRange(batch.Releases);
-            if (batch.MovieCount < PageSize) break;
+            if (batch.MovieCount < PageSize) return results;
         }
-        log.LogDebug("YTS returned {Count} releases", results.Count);
+
+        // Then the next stretch of the back catalogue.
+        var next = ReadCursor(source) ?? pages + 1;
+        if (next > 0)
+        {
+            for (var i = 0; i < BackfillPages; i++, next++)
+            {
+                var batch = await PageAsync(baseUrl, source, next, ct);
+                results.AddRange(batch.Releases);
+                if (batch.MovieCount < PageSize)
+                {
+                    next = 0; // reached the end
+                    break;
+                }
+            }
+            WriteCursor(source, next);
+        }
+        log.LogDebug("YTS returned {Count} releases (catalogue page {Page})", results.Count, next);
         return results;
     }
+
+    public bool HasMore(Source source) => ReadCursor(source) is not 0;
+
+    private async Task<(IReadOnlyList<SourceRelease> Releases, int MovieCount)> PageAsync(string baseUrl, Source source, int page, CancellationToken ct)
+    {
+        var url = $"{baseUrl}/api/v2/list_movies.json?limit={PageSize}&page={page}&sort_by=date_added&order_by=desc";
+        if (!string.IsNullOrWhiteSpace(source.Query)) url += $"&query_term={Uri.EscapeDataString(source.Query)}";
+        return Parse(await http.GetStringAsync(url, ct));
+    }
+
+    // The next back-catalogue page for this source, 0 once it's all in, null before the first sync.
+    private string CursorPath(Source source) => Path.Combine(options.Value.DataDirectory, $"yts-catalogue-{source.Id}.txt");
+
+    private int? ReadCursor(Source source) =>
+        File.Exists(CursorPath(source)) && int.TryParse(File.ReadAllText(CursorPath(source)), out var page) ? page : null;
+
+    private void WriteCursor(Source source, int page) => File.WriteAllText(CursorPath(source), page.ToString());
 
     public static (IReadOnlyList<SourceRelease> Releases, int MovieCount) Parse(string json)
     {

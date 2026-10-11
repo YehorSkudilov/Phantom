@@ -7,7 +7,7 @@ namespace Phantom.Api.Services.Sources;
 
 /// <summary>
 /// Reads The Pirate Bay through its JSON API (apibay.org). With no <see cref="Source.Query"/> it pulls the
-/// top 100 of each category; with one it searches. <see cref="Source.Categories"/> is a comma-separated list
+/// all-time and last-48-hours top 100 of each category; with one it searches. <see cref="Source.Categories"/> is a comma-separated list
 /// of TPB categories (201 Movies, 207 HD Movies, 211 UHD/4K Movies).
 /// </summary>
 public class PirateBaySource(HttpClient http, ILogger<PirateBaySource> log) : IMovieSource
@@ -26,16 +26,20 @@ public class PirateBaySource(HttpClient http, ILogger<PirateBaySource> log) : IM
         var results = new List<SourceRelease>();
         foreach (var cat in cats)
         {
-            var url = string.IsNullOrWhiteSpace(source.Query)
-                ? $"{baseUrl}/precompiled/data_top100_{Uri.EscapeDataString(cat)}.json"
-                : $"{baseUrl}/q.php?q={Uri.EscapeDataString(source.Query)}&cat={Uri.EscapeDataString(cat)}";
-            try
+            // apibay has no full listing: the all-time top 100 and the last 48 hours' top 100 per category, or a search.
+            string[] urls = string.IsNullOrWhiteSpace(source.Query)
+                ? [$"{baseUrl}/precompiled/data_top100_{Uri.EscapeDataString(cat)}.json", $"{baseUrl}/precompiled/data_top100_48h_{Uri.EscapeDataString(cat)}.json"]
+                : [$"{baseUrl}/q.php?q={Uri.EscapeDataString(source.Query)}&cat={Uri.EscapeDataString(cat)}"];
+            foreach (var url in urls)
             {
-                results.AddRange(Parse(await http.GetStringAsync(url, ct)));
-            }
-            catch (HttpRequestException ex)
-            {
-                log.LogWarning(ex, "Pirate Bay category {Category} failed", cat);
+                try
+                {
+                    results.AddRange(Parse(await http.GetStringAsync(url, ct)));
+                }
+                catch (HttpRequestException ex)
+                {
+                    log.LogWarning(ex, "Pirate Bay list {Url} failed", url);
+                }
             }
         }
         // The same torrent can sit in several top lists.

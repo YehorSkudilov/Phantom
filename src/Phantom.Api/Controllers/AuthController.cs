@@ -26,7 +26,7 @@ public class AuthController(PhantomDbContext db, TokenService tokens, PasswordSe
         var isAdminCaller = User.Identity?.IsAuthenticated == true && User.IsInRole("Admin");
         if (!first && !options.Value.AllowRegistration && !isAdminCaller)
             return Forbid();
-        if (await db.Users.AnyAsync(u => u.Username == req.Username, ct))
+        if (await db.Users.AnyAsync(u => u.Username == req.Username.Trim() && u.ParentUserId == null, ct))
             return Conflict("Username already taken.");
 
         var user = new User { Username = req.Username.Trim(), IsAdmin = first, AvatarColor = "#E5A00D" };
@@ -53,7 +53,10 @@ public class AuthController(PhantomDbContext db, TokenService tokens, PasswordSe
     }
 }
 
-/// <summary>Plex Home: an account owner plus managed profiles, each with their own watch history.</summary>
+/// <summary>
+/// Each account (its own username and password) has profiles under it, each with its own watch history, optional PIN
+/// and content limit. Signing in picks the account; switching profiles stays within it.
+/// </summary>
 [ApiController]
 [Authorize]
 [Route("api/profiles")]
@@ -80,11 +83,15 @@ public class ProfilesController(PhantomDbContext db, TokenService tokens, Passwo
     {
         var me = await db.Users.FindAsync([User.UserId()], ct);
         if (me is null || me.ParentUserId is not null) return Forbid();
-        if (await db.Users.AnyAsync(u => u.Username == req.Username, ct)) return Conflict("Name already taken.");
+        if (string.IsNullOrWhiteSpace(req.Username)) return BadRequest("Name is required.");
+        var name = req.Username.Trim();
+        if (name.Equals(me.Username, StringComparison.OrdinalIgnoreCase)
+            || await db.Users.AnyAsync(u => u.ParentUserId == me.Id && u.Username == name, ct))
+            return Conflict("You already have a profile with that name.");
 
         var profile = new User
         {
-            Username = req.Username.Trim(),
+            Username = name,
             ParentUserId = me.Id,
             AvatarColor = req.AvatarColor ?? "#3FA9F5",
             MaxContentRating = string.IsNullOrWhiteSpace(req.MaxContentRating) ? null : req.MaxContentRating,

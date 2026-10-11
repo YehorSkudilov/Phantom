@@ -20,7 +20,9 @@ public class PhantomDbContext(DbContextOptions<PhantomDbContext> options) : DbCo
 
     protected override void OnModelCreating(ModelBuilder b)
     {
-        b.Entity<User>().HasIndex(u => u.Username).IsUnique();
+        // Account names (what people sign in with) are unique on the server; profile names only within their account.
+        b.Entity<User>().HasIndex(u => u.Username).IsUnique().HasFilter("\"ParentUserId\" IS NULL");
+        b.Entity<User>().HasIndex(u => new { u.ParentUserId, u.Username }).IsUnique().HasFilter("\"ParentUserId\" IS NOT NULL");
 
         b.Entity<Movie>().HasIndex(m => m.SortTitle);
         b.Entity<Movie>().HasIndex(m => m.TmdbId);

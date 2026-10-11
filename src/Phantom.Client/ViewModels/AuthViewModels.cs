@@ -14,6 +14,88 @@ public partial class ConnectViewModel(PhantomApi api, SettingsService settings) 
     [ObservableProperty] private bool isFirstRun;
     [ObservableProperty] private string? serverName;
 
+    /// <summary>On a TV, sign-in starts with a code to approve from a phone instead of typing on a remote.</summary>
+    public bool IsTv => DeviceInfo.Idiom == DeviceIdiom.TV;
+
+    [ObservableProperty] private bool usePairing = DeviceInfo.Idiom == DeviceIdiom.TV;
+    [ObservableProperty] private string? pairingCode;
+    private CancellationTokenSource? _pairing;
+
+    /// <summary>The username/password form: always on first run (creating the owner), otherwise unless pairing.</summary>
+    public bool ShowPasswordForm => IsFirstRun || !UsePairing;
+
+    partial void OnIsConnectedChanged(bool value) => UpdatePairing();
+    partial void OnIsFirstRunChanged(bool value)
+    {
+        OnPropertyChanged(nameof(ShowPasswordForm));
+        UpdatePairing();
+    }
+    partial void OnUsePairingChanged(bool value)
+    {
+        OnPropertyChanged(nameof(ShowPasswordForm));
+        UpdatePairing();
+    }
+
+    [RelayCommand]
+    private void UseCode() => UsePairing = true;
+
+    [RelayCommand]
+    private void UsePassword() => UsePairing = false;
+
+    /// <summary>Called when the page goes away.</summary>
+    public void StopPairing()
+    {
+        _pairing?.Cancel();
+        _pairing = null;
+    }
+
+    // A code only makes sense once the server is reached and has accounts to sign in to.
+    private void UpdatePairing()
+    {
+        if (UsePairing && IsConnected && !IsFirstRun)
+        {
+            if (_pairing is null) _ = PairAsync((_pairing = new CancellationTokenSource()).Token);
+        }
+        else StopPairing();
+    }
+
+    /// <summary>Shows a code and waits for it to be approved, with a fresh code whenever one expires.</summary>
+    private async Task PairAsync(CancellationToken ct)
+    {
+        while (!ct.IsCancellationRequested)
+        {
+            try
+            {
+                var start = await api.StartPairingAsync(DeviceInfo.Name is { Length: > 0 } n ? n : "TV", ct);
+                PairingCode = $"{start.Code[..3]} {start.Code[3..]}";
+                ErrorMessage = null;
+                while (!ct.IsCancellationRequested)
+                {
+                    await Task.Delay(TimeSpan.FromSeconds(3), ct);
+                    if (await api.PollPairingAsync(start.PairingId, ct) is { } auth)
+                    {
+                        StopPairing();
+                        await FinishSignInAsync(auth);
+                        return;
+                    }
+                }
+            }
+            catch (ApiException ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound)
+            {
+                // Expired: loop round for a new code.
+            }
+            catch (OperationCanceledException)
+            {
+                return;
+            }
+            catch (HttpRequestException)
+            {
+                ErrorMessage = "Can't reach the Phantom server. Retrying…";
+                try { await Task.Delay(TimeSpan.FromSeconds(5), ct); } catch (OperationCanceledException) { return; }
+            }
+        }
+    }
+
     /// <summary>Reaches the server baked into this build; the page runs it on appearing and on Retry.</summary>
     [RelayCommand]
     public Task Connect() => RunAsync(async () =>
@@ -33,13 +115,18 @@ public partial class ConnectViewModel(PhantomApi api, SettingsService settings) 
             return;
         }
         var auth = IsFirstRun ? await api.RegisterAsync(Username.Trim(), Password) : await api.LoginAsync(Username.Trim(), Password);
+        Password = "";
+        await FinishSignInAsync(auth);
+    });
+
+    private async Task FinishSignInAsync(AuthResponse auth)
+    {
         settings.Token = auth.Token;
         settings.User = auth.User;
-        Password = "";
 
         var profiles = await api.ProfilesAsync();
         await GoToAsync(profiles.Count > 1 ? "//profiles" : "//main");
-    });
+    }
 }
 
 /// <summary>"Who's watching?" — Plex Home profile picker.</summary>
