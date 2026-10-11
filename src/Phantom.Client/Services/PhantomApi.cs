@@ -287,4 +287,8 @@ public class PhantomApi(HttpClient http, SettingsService settings)
     public Task SyncSourceAsync(int id) => SendNoContentAsync(HttpMethod.Post, $"/api/sources/{id}/sync");
     public Task<ServerSettingsDto> ServerSettingsAsync() => GetAsync<ServerSettingsDto>("/api/server/settings");
     public Task SaveServerSettingsAsync(ServerSettingsDto s) => SendNoContentAsync(HttpMethod.Put, "/api/server/settings", s);
+    public Task<StorageDto> StorageAsync() => GetAsync<StorageDto>("/api/server/storage");
+    public Task ClearStreamCacheAsync(string infoHash) => SendNoContentAsync(HttpMethod.Delete, $"/api/server/storage/cache/{infoHash}");
+    public Task<StorageDto> ClearIdleCachesAsync() => SendAsync<StorageDto>(HttpMethod.Post, "/api/server/storage/cache/clear", null);
+    public Task<StorageDto> ClearPreviewsAsync() => SendAsync<StorageDto>(HttpMethod.Post, "/api/server/storage/previews/clear", null);
 }

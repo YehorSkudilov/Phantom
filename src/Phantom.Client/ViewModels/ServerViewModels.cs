@@ -142,8 +142,94 @@ public partial class AdminViewModel(PhantomApi api) : BaseViewModel
     public ObservableCollection<SourceDto> Sources { get; } = [];
     public ObservableCollection<AccountRow> Accounts { get; } = [];
 
-    public IReadOnlyList<string> Tabs { get; } = ["Overview", "Sources", "Accounts", "Server settings"];
+    public IReadOnlyList<string> Tabs { get; } = ["Overview", "Sources", "Accounts", "Server settings", "Storage"];
     [ObservableProperty] private int selectedTab;
+
+    /// <summary>The Storage tab's index in <see cref="Tabs"/>.</summary>
+    public const int StorageTab = 4;
+
+    partial void OnSelectedTabChanged(int value)
+    {
+        if (value == StorageTab) _ = RunAsync(LoadStorageAsync, showBusy: false);
+    }
+
+    // ---------- Storage ----------
+
+    public ObservableCollection<StoredTorrentDto> StoredItems { get; } = [];
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(DiskText), nameof(DiskUsed), nameof(BreakdownText), nameof(CacheLimitText), nameof(DiskLow))]
+    private StorageDto? storage;
+
+    public string DiskText => Storage is not { DiskTotalBytes: > 0 } s ? ""
+        : $"{BytesConverter.Format(s.DiskFreeBytes)} free of {BytesConverter.Format(s.DiskTotalBytes)}";
+
+    /// <summary>How full the disk is, 0-1, for the bar.</summary>
+    public double DiskUsed => Storage is { DiskTotalBytes: > 0 } s ? 1 - (double)s.DiskFreeBytes / s.DiskTotalBytes : 0;
+
+    /// <summary>Below the free space the server keeps (it clears stream caches to get it back).</summary>
+    public bool DiskLow => Storage is { DiskTotalBytes: > 0 } s && s.DiskFreeBytes < (long)s.MinFreeDiskGb << 30;
+
+    public string BreakdownText => Storage is not { } s ? "" : string.Join("\n",
+        $"Saved on the server: {BytesConverter.Format(s.SavedBytes)}",
+        $"Stream cache: {BytesConverter.Format(s.StreamCacheBytes)}",
+        $"Seek previews: {BytesConverter.Format(s.PreviewBytes)}",
+        $"Library database: {BytesConverter.Format(s.DatabaseBytes)}");
+
+    public string CacheLimitText => Storage is not { } s ? ""
+        : (s.MaxStreamCacheGb > 0 ? $"The stream cache is kept under {s.MaxStreamCacheGb} GB" : "The stream cache has no size limit")
+          + $", and cleared when fewer than {s.MinFreeDiskGb} GB are free. Change the limit in Server settings.";
+
+    private async Task LoadStorageAsync()
+    {
+        ShowStorage(await api.StorageAsync());
+    }
+
+    private void ShowStorage(StorageDto storage)
+    {
+        Storage = storage;
+        StoredItems.Clear();
+        foreach (var item in storage.Items) StoredItems.Add(item);
+    }
+
+    [RelayCommand]
+    private Task RefreshStorage() => RunAsync(LoadStorageAsync, showBusy: false);
+
+    /// <summary>Clears a stream cache; for a copy saved on the server, removes it as Downloads would.</summary>
+    [RelayCommand]
+    private Task RemoveStored(StoredTorrentDto item) => RunAsync(async () =>
+    {
+        if (item.SavedOnServer)
+        {
+            if (item.DownloadId is not { } id)
+            {
+                await Shell.Current.DisplayAlertAsync("Saved on the server", "This copy isn't from a download Phantom knows about, so it can't be removed here.", "OK");
+                return;
+            }
+            if (!await Shell.Current.DisplayAlertAsync("Remove from the server", $"Delete the saved copy of {item.Title} ({BytesConverter.Format(item.SizeBytes)})? It can still be streamed.", "Delete", "Cancel")) return;
+            await api.DeleteServerDownloadAsync(id, deleteFiles: true);
+        }
+        else
+        {
+            await api.ClearStreamCacheAsync(item.InfoHash);
+        }
+        await LoadStorageAsync();
+    }, showBusy: false);
+
+    [RelayCommand]
+    private Task ClearIdleCaches() => RunAsync(async () =>
+    {
+        if (!await Shell.Current.DisplayAlertAsync("Clear stream cache", "Delete the cached parts of everything nobody is watching right now? They download again when played.", "Clear", "Cancel")) return;
+        ShowStorage(await api.ClearIdleCachesAsync());
+        await ToastAsync("Stream cache cleared");
+    }, showBusy: false);
+
+    [RelayCommand]
+    private Task ClearPreviews() => RunAsync(async () =>
+    {
+        ShowStorage(await api.ClearPreviewsAsync());
+        await ToastAsync("Seek previews cleared; they're made again as needed");
+    }, showBusy: false);
 
     /// <summary>Re-reads the sources (sync status, catalogue progress) in place, for the page's live update.</summary>
     public async Task RefreshSourcesAsync()
@@ -184,16 +270,17 @@ public partial class AdminViewModel(PhantomApi api) : BaseViewModel
     [ObservableProperty] private string? preferredQuality;
     [ObservableProperty] private int minSeeders;
     [ObservableProperty] private int keepServerDownloadsDays = 7;
+    [ObservableProperty] private int maxStreamCacheGb;
     [ObservableProperty] private string metadataText = "";
 
     private async Task LoadMetadataAsync()
     {
         var m = await api.MetadataStatusAsync();
         MetadataText = !m.Configured
-            ? "No TMDB API key on the server, so there's no artwork or cast to fetch."
+            ? "No TMDB API key on the server: movies get no artwork or cast (shows still get theirs from TVmaze)."
             : m.Pending == 0
-                ? $"All {m.Total:N0} movies are up to date. Each is refreshed again after 30 days."
-                : $"Refreshing {m.Pending:N0} of {m.Total:N0} movies in the background. Each is refreshed again after 30 days.";
+                ? $"All {m.Total:N0} movies and shows are up to date. Each is refreshed again after 30 days (shows still airing, every 3)."
+                : $"Refreshing {m.Pending:N0} of {m.Total:N0} movies and shows in the background.";
     }
 
     [RelayCommand]
@@ -224,6 +311,8 @@ public partial class AdminViewModel(PhantomApi api) : BaseViewModel
         PreferredQuality = s2.PreferredQuality;
         MinSeeders = s2.MinSeeders;
         KeepServerDownloadsDays = s2.KeepServerDownloadsDays;
+        MaxStreamCacheGb = s2.MaxStreamCacheGb;
+        if (SelectedTab == StorageTab) await LoadStorageAsync();
     });
 
     [RelayCommand]
@@ -285,7 +374,7 @@ public partial class AdminViewModel(PhantomApi api) : BaseViewModel
     private Task SaveSettings() => RunAsync(async () =>
     {
         await api.SaveServerSettingsAsync(new ServerSettingsDto(ServerName, MaxActiveDownloads, MaxDownloadKbps, MaxUploadKbps,
-            SeedAfterDownload, StreamCacheHours, AutoDownloadNewReleases, PreferredQuality, MinSeeders, KeepServerDownloadsDays));
+            SeedAfterDownload, StreamCacheHours, AutoDownloadNewReleases, PreferredQuality, MinSeeders, KeepServerDownloadsDays, MaxStreamCacheGb));
         await ToastAsync("Server settings saved");
     });
 
