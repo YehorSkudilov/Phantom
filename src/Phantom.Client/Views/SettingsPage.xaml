@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8" ?>
 <ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:skeleton="clr-namespace:AppSkeleton;assembly=AppSkeleton"
              xmlns:vm="clr-namespace:Phantom.ViewModels"
              x:Class="Phantom.Views.SettingsPage"
              x:DataType="vm:SettingsViewModel"
@@ -15,20 +16,20 @@
         <VerticalStackLayout Padding="16" Spacing="14">
             <Border Style="{StaticResource Card}">
                 <VerticalStackLayout Spacing="10">
-                    <Label Text="Playback" Style="{StaticResource H2}" />
-                    <Label Text="Streaming quality" Style="{StaticResource Muted}" />
+                    <skeleton:CLabel Text="Playback" Style="{StaticResource H2}" />
+                    <skeleton:CLabel Text="Streaming quality" Style="{StaticResource Muted}" />
                     <Picker ItemsSource="{Binding Qualities}" SelectedItem="{Binding Quality}" />
                     <Grid Style="{StaticResource Row}">
-                        <Label Text="Auto-play next in playlists" VerticalOptions="Center" />
+                        <skeleton:CLabel Text="Auto-play next in playlists" VerticalOptions="Center" />
                         <Switch Grid.Column="1" IsToggled="{Binding AutoPlayNext}" />
                     </Grid>
                     <Grid ColumnDefinitions="*,*" ColumnSpacing="10">
                         <VerticalStackLayout>
-                            <Label Text="Skip back (s)" Style="{StaticResource Muted}" />
+                            <skeleton:CLabel Text="Skip back (s)" Style="{StaticResource Muted}" />
                             <Picker ItemsSource="{Binding SkipOptions}" SelectedItem="{Binding SkipBack}" />
                         </VerticalStackLayout>
                         <VerticalStackLayout Grid.Column="1">
-                            <Label Text="Skip forward (s)" Style="{StaticResource Muted}" />
+                            <skeleton:CLabel Text="Skip forward (s)" Style="{StaticResource Muted}" />
                             <Picker ItemsSource="{Binding SkipOptions}" SelectedItem="{Binding SkipForward}" />
                         </VerticalStackLayout>
                     </Grid>
@@ -37,14 +38,14 @@
 
             <Border Style="{StaticResource Card}">
                 <VerticalStackLayout Spacing="10">
-                    <Label Text="Subtitles" Style="{StaticResource H2}" />
+                    <skeleton:CLabel Text="Subtitles" Style="{StaticResource H2}" />
                     <Grid Style="{StaticResource Row}">
-                        <Label Text="Show subtitles automatically" VerticalOptions="Center" />
+                        <skeleton:CLabel Text="Show subtitles automatically" VerticalOptions="Center" />
                         <Switch Grid.Column="1" IsToggled="{Binding SubtitlesByDefault}" />
                     </Grid>
-                    <Label Text="Preferred language" Style="{StaticResource Muted}" />
+                    <skeleton:CLabel Text="Preferred language" Style="{StaticResource Muted}" />
                     <Picker ItemsSource="{Binding Languages}" SelectedItem="{Binding SubtitleLanguage}" />
-                    <Label Text="{Binding SubtitleSize, StringFormat='Text size: {0:0}'}" Style="{StaticResource Muted}" />
+                    <skeleton:CLabel Text="{Binding SubtitleSize, StringFormat='Text size: {0:0}'}" Style="{StaticResource Muted}" />
                     <Slider Minimum="12" Maximum="40" Value="{Binding SubtitleSize}" />
                 </VerticalStackLayout>
             </Border>

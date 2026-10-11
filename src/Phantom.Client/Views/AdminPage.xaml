@@ -11,23 +11,23 @@
     <RefreshView IsRefreshing="{Binding IsRefreshing}" Command="{Binding LoadCommand}">
         <ScrollView>
             <VerticalStackLayout Padding="16" Spacing="14">
-                <Label Text="{Binding ErrorMessage}" TextColor="{StaticResource Danger}" IsVisible="{Binding ErrorMessage, Converter={StaticResource HasValue}}" />
+                <skeleton:CLabel Text="{Binding ErrorMessage}" TextColor="{StaticResource Danger}" IsVisible="{Binding ErrorMessage, Converter={StaticResource HasValue}}" />
                 <controls:TabStrip Tabs="{Binding Tabs}" SelectedIndex="{Binding SelectedTab}" Margin="-16,0" />
 
                 <VerticalStackLayout Spacing="14" IsVisible="{Binding SelectedTab, Converter={StaticResource Equals}, ConverterParameter=0}">
                 <!-- Status -->
                 <Border Style="{StaticResource Card}">
                     <Grid ColumnDefinitions="*,*,*" RowDefinitions="Auto,Auto" RowSpacing="2">
-                        <Label Text="{Binding Info.MovieCount}" Style="{StaticResource H1}" HorizontalOptions="Center" />
-                        <Label Grid.Row="1" Text="Movies" Style="{StaticResource Muted}" HorizontalOptions="Center" />
-                        <Label Grid.Column="1" Text="{Binding Info.ActiveTorrents}" Style="{StaticResource H1}" HorizontalOptions="Center" />
-                        <Label Grid.Column="1" Grid.Row="1" Text="Active torrents" Style="{StaticResource Muted}" HorizontalOptions="Center" />
-                        <Label Grid.Column="2" Text="{Binding Info.FreeDiskBytes, Converter={StaticResource Bytes}}" Style="{StaticResource H2}" HorizontalOptions="Center" VerticalOptions="Center" />
-                        <Label Grid.Column="2" Grid.Row="1" Text="Free disk" Style="{StaticResource Muted}" HorizontalOptions="Center" />
+                        <skeleton:CLabel Text="{Binding Info.MovieCount}" Style="{StaticResource H1}" HorizontalOptions="Center" />
+                        <skeleton:CLabel Grid.Row="1" Text="Movies" Style="{StaticResource Muted}" HorizontalOptions="Center" />
+                        <skeleton:CLabel Grid.Column="1" Text="{Binding Info.ActiveTorrents}" Style="{StaticResource H1}" HorizontalOptions="Center" />
+                        <skeleton:CLabel Grid.Column="1" Grid.Row="1" Text="Active torrents" Style="{StaticResource Muted}" HorizontalOptions="Center" />
+                        <skeleton:CLabel Grid.Column="2" Text="{Binding Info.FreeDiskBytes, Converter={StaticResource Bytes}}" Style="{StaticResource H2}" HorizontalOptions="Center" VerticalOptions="Center" />
+                        <skeleton:CLabel Grid.Column="2" Grid.Row="1" Text="Free disk" Style="{StaticResource Muted}" HorizontalOptions="Center" />
                     </Grid>
                 </Border>
-                <Label Style="{StaticResource Muted}" FontSize="12">
-                    <Label.FormattedText>
+                <skeleton:CLabel Style="{StaticResource Muted}" FontSize="12">
+                    <skeleton:CLabel.FormattedText>
                         <FormattedString>
                             <Span Text="Downloading " />
                             <Span Text="{Binding Info.DownloadRate, Converter={StaticResource Bytes}, ConverterParameter=rate}" />
@@ -36,16 +36,16 @@
                             <Span Text="&#10;" />
                             <Span Text="{Binding FeaturesText}" />
                         </FormattedString>
-                    </Label.FormattedText>
-                </Label>
+                    </skeleton:CLabel.FormattedText>
+                </skeleton:CLabel>
 
                 <!-- Now playing -->
                 <Grid ColumnDefinitions="*,Auto">
-                    <Label Text="Now playing" Style="{StaticResource H2}" VerticalOptions="Center" />
+                    <skeleton:CLabel Text="Now playing" Style="{StaticResource H2}" VerticalOptions="Center" />
                     <ImageButton Grid.Column="1" Style="{StaticResource IconButton}" Source="{controls:Icon refresh}" Command="{Binding RefreshActivityCommand}"
                                  SemanticProperties.Description="Refresh" ToolTipProperties.Text="Refresh" />
                 </Grid>
-                <Label Text="Nobody is watching right now." Style="{StaticResource Muted}" IsVisible="{Binding Sessions.Count, Converter={StaticResource HasValue}, ConverterParameter=invert}" />
+                <skeleton:CLabel Text="Nobody is watching right now." Style="{StaticResource Muted}" IsVisible="{Binding Sessions.Count, Converter={StaticResource HasValue}, ConverterParameter=invert}" />
                 <VerticalStackLayout BindableLayout.ItemsSource="{Binding Sessions}" Spacing="8">
                     <BindableLayout.ItemTemplate>
                         <DataTemplate x:DataType="dto:NowPlayingDto">
@@ -55,9 +55,9 @@
                                         <Image Source="{Binding PosterUrl, Converter={StaticResource Poster}}" Aspect="AspectFill" />
                                     </Border>
                                     <VerticalStackLayout Grid.Column="1" VerticalOptions="Center">
-                                        <Label Text="{Binding MovieTitle}" FontFamily="OpenSansSemibold" />
-                                        <Label Style="{StaticResource Muted}" FontSize="12">
-                                            <Label.FormattedText>
+                                        <skeleton:CLabel Text="{Binding MovieTitle}" FontFamily="OpenSansSemibold" />
+                                        <skeleton:CLabel Style="{StaticResource Muted}" FontSize="12">
+                                            <skeleton:CLabel.FormattedText>
                                                 <FormattedString>
                                                     <Span Text="{Binding Username}" />
                                                     <Span Text=" on " />
@@ -67,8 +67,8 @@
                                                     <Span Text="  ·  " />
                                                     <Span Text="{Binding PositionMs, Converter={StaticResource Time}}" />
                                                 </FormattedString>
-                                            </Label.FormattedText>
-                                        </Label>
+                                            </skeleton:CLabel.FormattedText>
+                                        </skeleton:CLabel>
                                     </VerticalStackLayout>
                                 </Grid>
                             </Border>
@@ -81,37 +81,37 @@
                 <VerticalStackLayout Spacing="14" IsVisible="{Binding SelectedTab, Converter={StaticResource Equals}, ConverterParameter=1}">
                 <!-- Sources -->
                 <Grid ColumnDefinitions="*,Auto">
-                    <Label Text="Sources" Style="{StaticResource H2}" VerticalOptions="Center" />
+                    <skeleton:CLabel Text="Sources" Style="{StaticResource H2}" VerticalOptions="Center" />
                     <Button Grid.Column="1" Text="Check all now" Style="{StaticResource GhostButton}" Command="{Binding SyncAllCommand}"
                             ImageSource="{controls:Icon sync, Color={StaticResource PrimaryLight}, Size=20}" ContentLayout="Left,6" />
                 </Grid>
-                <Label Text="The sources Phantom checks for new movies, on a schedule. They are built in; turn one off to stop checking it."
+                <skeleton:CLabel Text="The sources Phantom checks for new movies, on a schedule. They are built in; turn one off to stop checking it."
                        Style="{StaticResource Muted}" FontSize="12" />
                 <VerticalStackLayout BindableLayout.ItemsSource="{Binding Sources}" Spacing="8">
                     <BindableLayout.ItemTemplate>
                         <DataTemplate x:DataType="dto:SourceDto">
                             <Border Style="{StaticResource Card}">
                                 <Grid ColumnDefinitions="*,Auto,Auto" RowDefinitions="Auto,Auto,Auto" ColumnSpacing="2">
-                                    <Label Text="{Binding Name}" FontFamily="OpenSansSemibold" FontSize="15" VerticalOptions="Center" />
-                                    <Label Grid.Row="1" Style="{StaticResource Muted}" FontSize="12">
-                                        <Label.FormattedText>
+                                    <skeleton:CLabel Text="{Binding Name}" FontFamily="OpenSansSemibold" FontSize="15" VerticalOptions="Center" />
+                                    <skeleton:CLabel Grid.Row="1" Style="{StaticResource Muted}" FontSize="12">
+                                        <skeleton:CLabel.FormattedText>
                                             <FormattedString>
                                                 <Span Text="{Binding Type, Converter={StaticResource SourceType}}" />
                                                 <Span Text="  ·  checks " />
                                                 <Span Text="{Binding SyncIntervalMinutes, Converter={StaticResource Interval}}" />
                                             </FormattedString>
-                                        </Label.FormattedText>
-                                    </Label>
+                                        </skeleton:CLabel.FormattedText>
+                                    </skeleton:CLabel>
                                     <VerticalStackLayout Grid.Row="2" Spacing="4" Margin="0,4,0,0">
                                         <!-- Working on it right now -->
                                         <HorizontalStackLayout Spacing="8" IsVisible="{Binding IsSyncing}">
                                             <ActivityIndicator IsRunning="{Binding IsSyncing}" WidthRequest="16" HeightRequest="16" />
-                                            <Label Text="Checking for new titles now…" FontSize="12" TextColor="{StaticResource PrimaryLight}" VerticalOptions="Center" />
+                                            <skeleton:CLabel Text="Checking for new titles now…" FontSize="12" TextColor="{StaticResource PrimaryLight}" VerticalOptions="Center" />
                                         </HorizontalStackLayout>
                                         <!-- The whole-catalogue import, while it's running -->
                                         <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8" IsVisible="{Binding CatalogueProgress, Converter={StaticResource Below100}}">
                                             <ProgressBar Progress="{Binding CatalogueProgress, Converter={StaticResource Percent}}" VerticalOptions="Center" />
-                                            <Label Grid.Column="1" Text="{Binding CatalogueProgress, StringFormat='Catalogue {0:0}% imported'}" Style="{StaticResource Muted}" FontSize="12" />
+                                            <skeleton:CLabel Grid.Column="1" Text="{Binding CatalogueProgress, StringFormat='Catalogue {0:0}% imported'}" Style="{StaticResource Muted}" FontSize="12" />
                                         </Grid>
                                         <!-- How the last check went, and when; hidden while a check runs. In red when it failed.
                                              Selectable, so an error can be copied into a bug report. -->
@@ -139,7 +139,7 @@
 
                 <VerticalStackLayout Spacing="14" IsVisible="{Binding SelectedTab, Converter={StaticResource Equals}, ConverterParameter=2}">
                 <!-- Accounts -->
-                <Label Text="Everyone signs in with their own account. Each account starts with a default profile named after it, and can add more."
+                <skeleton:CLabel Text="Everyone signs in with their own account. Each account starts with a default profile named after it, and can add more."
                        Style="{StaticResource Muted}" FontSize="12" />
                 <Border Style="{StaticResource Card}" Padding="0">
                     <VerticalStackLayout BindableLayout.ItemsSource="{Binding Accounts}">
@@ -147,15 +147,15 @@
                             <DataTemplate x:DataType="vm:AccountRow">
                                 <Grid ColumnDefinitions="Auto,*,Auto,Auto" ColumnSpacing="12" Padding="14,8">
                                     <Border WidthRequest="36" HeightRequest="36" StrokeShape="RoundRectangle 10" BackgroundColor="{Binding Account.AvatarColor}">
-                                        <Label Text="{Binding Account.Username, Converter={StaticResource Initial}}" FontFamily="OpenSansSemibold"
+                                        <skeleton:CLabel Text="{Binding Account.Username, Converter={StaticResource Initial}}" FontFamily="OpenSansSemibold"
                                                HorizontalOptions="Center" VerticalOptions="Center" />
                                     </Border>
                                     <VerticalStackLayout Grid.Column="1" VerticalOptions="Center">
                                         <HorizontalStackLayout Spacing="8">
-                                            <Label Text="{Binding Account.Username}" FontFamily="OpenSansSemibold" />
-                                            <Label Text="Admin" Style="{StaticResource Muted}" FontSize="12" VerticalOptions="Center" IsVisible="{Binding Account.IsAdmin}" />
+                                            <skeleton:CLabel Text="{Binding Account.Username}" FontFamily="OpenSansSemibold" />
+                                            <skeleton:CLabel Text="Admin" Style="{StaticResource Muted}" FontSize="12" VerticalOptions="Center" IsVisible="{Binding Account.IsAdmin}" />
                                         </HorizontalStackLayout>
-                                        <Label Text="{Binding Profiles, StringFormat='Profiles: {0}'}" Style="{StaticResource Muted}" FontSize="12" />
+                                        <skeleton:CLabel Text="{Binding Profiles, StringFormat='Profiles: {0}'}" Style="{StaticResource Muted}" FontSize="12" />
                                     </VerticalStackLayout>
                                     <ImageButton Grid.Column="2" Style="{StaticResource IconButton}"
                                                  Source="{controls:Icon admin_panel_settings, Outlined=True}" SemanticProperties.Description="Admin on or off" ToolTipProperties.Text="Admin on or off"
@@ -177,32 +177,32 @@
                 <!-- Settings -->
                 <Border Style="{StaticResource Card}">
                     <VerticalStackLayout Spacing="10">
-                        <Label Text="Server name" Style="{StaticResource Muted}" />
+                        <skeleton:CLabel Text="Server name" Style="{StaticResource Muted}" />
                         <Entry Text="{Binding ServerName}" />
-                        <Label Text="Preferred quality for new streams" Style="{StaticResource Muted}" />
+                        <skeleton:CLabel Text="Preferred quality for new streams" Style="{StaticResource Muted}" />
                         <Picker ItemsSource="{Binding QualityChoices}" SelectedItem="{Binding PreferredQuality}" />
                         <Grid ColumnDefinitions="*,*" ColumnSpacing="10" RowDefinitions="Auto,Auto,Auto,Auto" RowSpacing="4">
-                            <Label Text="Max active downloads" Style="{StaticResource Muted}" />
-                            <Label Grid.Column="1" Text="Min seeders to import" Style="{StaticResource Muted}" />
+                            <skeleton:CLabel Text="Max active downloads" Style="{StaticResource Muted}" />
+                            <skeleton:CLabel Grid.Column="1" Text="Min seeders to import" Style="{StaticResource Muted}" />
                             <Entry Grid.Row="1" Text="{Binding MaxActiveDownloads}" Keyboard="Numeric" />
                             <Entry Grid.Row="1" Grid.Column="1" Text="{Binding MinSeeders}" Keyboard="Numeric" />
-                            <Label Grid.Row="2" Text="Download limit (KB/s, 0 = ∞)" Style="{StaticResource Muted}" />
-                            <Label Grid.Row="2" Grid.Column="1" Text="Upload limit (KB/s, 0 = ∞)" Style="{StaticResource Muted}" />
+                            <skeleton:CLabel Grid.Row="2" Text="Download limit (KB/s, 0 = ∞)" Style="{StaticResource Muted}" />
+                            <skeleton:CLabel Grid.Row="2" Grid.Column="1" Text="Upload limit (KB/s, 0 = ∞)" Style="{StaticResource Muted}" />
                             <Entry Grid.Row="3" Text="{Binding MaxDownloadKbps}" Keyboard="Numeric" />
                             <Entry Grid.Row="3" Grid.Column="1" Text="{Binding MaxUploadKbps}" Keyboard="Numeric" />
                         </Grid>
-                        <Label Text="Keep streamed torrents cached for (hours)" Style="{StaticResource Muted}" />
+                        <skeleton:CLabel Text="Keep streamed torrents cached for (hours)" Style="{StaticResource Muted}" />
                         <Entry Text="{Binding StreamCacheHours}" Keyboard="Numeric" />
-                        <Label Text="Stream cache size limit (GB, 0 = no limit)" Style="{StaticResource Muted}" />
+                        <skeleton:CLabel Text="Stream cache size limit (GB, 0 = no limit)" Style="{StaticResource Muted}" />
                         <Entry Text="{Binding MaxStreamCacheGb}" Keyboard="Numeric" />
-                        <Label Text="Delete movies saved on the server after (days, 0 = keep them)" Style="{StaticResource Muted}" />
+                        <skeleton:CLabel Text="Delete movies saved on the server after (days, 0 = keep them)" Style="{StaticResource Muted}" />
                         <Entry Text="{Binding KeepServerDownloadsDays}" Keyboard="Numeric" />
                         <Grid ColumnDefinitions="*,Auto">
-                            <Label Text="Seed after downloading" VerticalOptions="Center" />
+                            <skeleton:CLabel Text="Seed after downloading" VerticalOptions="Center" />
                             <Switch Grid.Column="1" IsToggled="{Binding SeedAfterDownload}" />
                         </Grid>
                         <Grid ColumnDefinitions="*,Auto">
-                            <Label Text="Auto-download newly found movies" VerticalOptions="Center" />
+                            <skeleton:CLabel Text="Auto-download newly found movies" VerticalOptions="Center" />
                             <Switch Grid.Column="1" IsToggled="{Binding AutoDownloadNewReleases}" />
                         </Grid>
                         <Button Text="Save settings" Command="{Binding SaveSettingsCommand}" />
@@ -211,8 +211,8 @@
 
                 <Border Style="{StaticResource Card}">
                     <VerticalStackLayout Spacing="10">
-                        <Label Text="Metadata" Style="{StaticResource H2}" />
-                        <Label Text="{Binding MetadataText}" Style="{StaticResource Muted}" />
+                        <skeleton:CLabel Text="Metadata" Style="{StaticResource H2}" />
+                        <skeleton:CLabel Text="{Binding MetadataText}" Style="{StaticResource Muted}" />
                         <Button Text="Refresh all metadata now" Style="{StaticResource SecondaryButton}" Command="{Binding RefreshAllMetadataCommand}"
                                 ImageSource="{controls:Icon sync, Size=20}" ContentLayout="Left,6" HorizontalOptions="Start" />
                     </VerticalStackLayout>
@@ -224,11 +224,11 @@
                 <Border Style="{StaticResource Card}">
                     <VerticalStackLayout Spacing="8">
                         <Grid ColumnDefinitions="*,Auto">
-                            <Label Text="Disk" Style="{StaticResource H2}" VerticalOptions="Center" />
+                            <skeleton:CLabel Text="Disk" Style="{StaticResource H2}" VerticalOptions="Center" />
                             <ImageButton Grid.Column="1" Style="{StaticResource IconButton}" Source="{controls:Icon refresh}" Command="{Binding RefreshStorageCommand}"
                                          SemanticProperties.Description="Refresh" ToolTipProperties.Text="Refresh" />
                         </Grid>
-                        <Label Text="{Binding DiskText}" FontFamily="OpenSansSemibold" />
+                        <skeleton:CLabel Text="{Binding DiskText}" FontFamily="OpenSansSemibold" />
                         <ProgressBar Progress="{Binding DiskUsed}">
                             <ProgressBar.Triggers>
                                 <DataTrigger TargetType="ProgressBar" Binding="{Binding DiskLow}" Value="True">
@@ -236,8 +236,8 @@
                                 </DataTrigger>
                             </ProgressBar.Triggers>
                         </ProgressBar>
-                        <Label Text="{Binding BreakdownText}" Style="{StaticResource Muted}" LineHeight="1.3" />
-                        <Label Text="{Binding CacheLimitText}" Style="{StaticResource Muted}" FontSize="12" />
+                        <skeleton:CLabel Text="{Binding BreakdownText}" Style="{StaticResource Muted}" LineHeight="1.3" />
+                        <skeleton:CLabel Text="{Binding CacheLimitText}" Style="{StaticResource Muted}" FontSize="12" />
                         <FlexLayout Wrap="Wrap" Margin="-4,4,-4,0">
                             <Button Text="Clear stream cache" Style="{StaticResource SecondaryButton}" Command="{Binding ClearIdleCachesCommand}" Margin="4"
                                     ImageSource="{controls:Icon delete_sweep, Size=20}" ContentLayout="Left,6" />
@@ -247,28 +247,28 @@
                     </VerticalStackLayout>
                 </Border>
 
-                <Label Text="Largest first. Stream caches are parts of torrents kept from watching, saved copies are kept for good (until removed or they expire)."
+                <skeleton:CLabel Text="Largest first. Stream caches are parts of torrents kept from watching, saved copies are kept for good (until removed or they expire)."
                        Style="{StaticResource Muted}" FontSize="12" />
                 <VerticalStackLayout BindableLayout.ItemsSource="{Binding StoredItems}" Spacing="8">
                     <BindableLayout.EmptyView>
-                        <Label Text="Nothing stored yet." Style="{StaticResource Muted}" HorizontalOptions="Center" Margin="0,16" />
+                        <skeleton:CLabel Text="Nothing stored yet." Style="{StaticResource Muted}" HorizontalOptions="Center" Margin="0,16" />
                     </BindableLayout.EmptyView>
                     <BindableLayout.ItemTemplate>
                         <DataTemplate x:DataType="dto:StoredTorrentDto">
                             <Border Style="{StaticResource Card}">
                                 <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
                                     <VerticalStackLayout Spacing="2" VerticalOptions="Center">
-                                        <Label Text="{Binding Title}" FontFamily="OpenSansSemibold" LineBreakMode="TailTruncation" MaxLines="2" />
-                                        <Label Style="{StaticResource Muted}" FontSize="12">
-                                            <Label.FormattedText>
+                                        <skeleton:CLabel Text="{Binding Title}" FontFamily="OpenSansSemibold" LineBreakMode="TailTruncation" MaxLines="2" />
+                                        <skeleton:CLabel Style="{StaticResource Muted}" FontSize="12">
+                                            <skeleton:CLabel.FormattedText>
                                                 <FormattedString>
                                                     <Span Text="{Binding SizeBytes, Converter={StaticResource Bytes}}" />
                                                     <Span Text="  ·  " />
                                                     <Span Text="{Binding KindText}" />
                                                 </FormattedString>
-                                            </Label.FormattedText>
-                                        </Label>
-                                        <Label Text="Being watched" FontSize="12" TextColor="{StaticResource PrimaryLight}" IsVisible="{Binding InUse}" />
+                                            </skeleton:CLabel.FormattedText>
+                                        </skeleton:CLabel>
+                                        <skeleton:CLabel Text="Being watched" FontSize="12" TextColor="{StaticResource PrimaryLight}" IsVisible="{Binding InUse}" />
                                     </VerticalStackLayout>
                                     <ImageButton Grid.Column="1" Style="{StaticResource IconButton}" Source="{controls:Icon delete, Outlined=True}" VerticalOptions="Center"
                                                  IsVisible="{Binding InUse, Converter={StaticResource Not}}"

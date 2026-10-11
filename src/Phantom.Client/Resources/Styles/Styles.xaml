@@ -29,7 +29,8 @@
         <Setter Property="BarTextColor" Value="{StaticResource TextPrimary}" />
     </Style>
 
-    <Style TargetType="Label">
+    <!-- Applies to CLabel (AppSkeleton's selectable label) too -->
+    <Style TargetType="Label" ApplyToDerivedTypes="True">
         <Setter Property="TextColor" Value="{StaticResource TextPrimary}" />
         <Setter Property="FontFamily" Value="OpenSansRegular" />
         <Setter Property="FontSize" Value="14" />

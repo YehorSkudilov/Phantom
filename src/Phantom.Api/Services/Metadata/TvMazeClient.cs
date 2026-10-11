@@ -110,11 +110,20 @@ public partial class TvMazeClient(HttpClient http, ILogger<TvMazeClient> log)
         {
             var wait = MinGap - (DateTime.UtcNow - _lastRequest);
             if (wait > TimeSpan.Zero) await Task.Delay(wait, ct);
-            _lastRequest = DateTime.UtcNow;
-            using var res = await http.GetAsync(Api + path, ct);
-            if (res.StatusCode == HttpStatusCode.NotFound) return null;
-            res.EnsureSuccessStatusCode();
-            return JsonDocument.Parse(await res.Content.ReadAsStringAsync(ct));
+            for (var attempt = 0; ; attempt++)
+            {
+                _lastRequest = DateTime.UtcNow;
+                using var res = await http.GetAsync(Api + path, ct);
+                if (res.StatusCode == HttpStatusCode.NotFound) return null;
+                // Too many at once (other servers share its limit too): wait as asked, then once more.
+                if (res.StatusCode == HttpStatusCode.TooManyRequests && attempt == 0)
+                {
+                    await Task.Delay(res.Headers.RetryAfter?.Delta ?? TimeSpan.FromSeconds(10), ct);
+                    continue;
+                }
+                res.EnsureSuccessStatusCode();
+                return JsonDocument.Parse(await res.Content.ReadAsStringAsync(ct));
+            }
         }
         finally
         {

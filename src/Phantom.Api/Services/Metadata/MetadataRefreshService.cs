@@ -21,6 +21,7 @@ public class MetadataRefreshService(IServiceScopeFactory scopes, PlaybackActivit
     /// <summary>TMDB lookups at once; well inside its rate limit (about 40 requests a second).</summary>
     private const int Workers = 6;
     private const int BatchSize = 120;
+    private const int ShowBatchSize = 60;
 
     /// <summary>Movies waiting for a refresh.</summary>
     public static IQueryable<Movie> Due(PhantomDbContext db)
@@ -34,8 +35,9 @@ public class MetadataRefreshService(IServiceScopeFactory scopes, PlaybackActivit
     {
         var cutoff = DateTime.UtcNow - RefreshAfter;
         var airingCutoff = DateTime.UtcNow - AiringRefreshAfter;
-        // One still without a poster is tried again daily: it may have been looked up before TVmaze was used.
-        var posterCutoff = DateTime.UtcNow - TimeSpan.FromDays(1);
+        // One still without a poster is tried again every few hours: it may have been looked up before TVmaze was used,
+        // or TVmaze may have been busy.
+        var posterCutoff = DateTime.UtcNow - TimeSpan.FromHours(6);
         return db.Shows.Where(s => s.MetadataRefreshedAt == null || s.MetadataRefreshedAt < cutoff
                                    || (s.Status != "Ended" && s.Status != "Canceled" && s.MetadataRefreshedAt < airingCutoff)
                                    || (s.PosterUrl == null && s.MetadataRefreshedAt < posterCutoff));
@@ -73,17 +75,20 @@ public class MetadataRefreshService(IServiceScopeFactory scopes, PlaybackActivit
                     .Select(m => m.Id).Take(BatchSize).ToListAsync(ct)
                 : [];
             // Shows take a request per season, so fewer at a time.
-            showIds = await DueShows(db).OrderBy(s => s.MetadataRefreshedAt != null).ThenBy(s => s.MetadataRefreshedAt)
-                .Select(s => s.Id).Take(BatchSize / 6).ToListAsync(ct);
+            // Shows never looked up first, then ones still without a poster, then the oldest.
+            showIds = await DueShows(db).OrderBy(s => s.MetadataRefreshedAt != null).ThenBy(s => s.PosterUrl != null).ThenBy(s => s.MetadataRefreshedAt)
+                .Select(s => s.Id).Take(ShowBatchSize).ToListAsync(ct);
         }
         if (movieIds.Count + showIds.Count == 0) return false;
 
         var workers = activity.IsWatching ? 1 : Workers;
         var options = new ParallelOptions { MaxDegreeOfParallelism = workers, CancellationToken = ct };
-        await Parallel.ForEachAsync(movieIds, options, (id, token) => new ValueTask(RefreshAsync(id, isShow: false, token)));
-        await Parallel.ForEachAsync(showIds, options, (id, token) => new ValueTask(RefreshAsync(id, isShow: true, token)));
+        // Movies and shows side by side: shows wait mostly on TVmaze's pace, which needn't hold the movies up.
+        await Task.WhenAll(
+            Parallel.ForEachAsync(movieIds, options, (id, token) => new ValueTask(RefreshAsync(id, isShow: false, token))),
+            Parallel.ForEachAsync(showIds, options, (id, token) => new ValueTask(RefreshAsync(id, isShow: true, token))));
         log.LogInformation("Refreshed metadata for {Movies} movies and {Shows} shows ({Workers} at a time)", movieIds.Count, showIds.Count, workers);
-        return movieIds.Count == BatchSize || showIds.Count == BatchSize / 6;
+        return movieIds.Count == BatchSize || showIds.Count == ShowBatchSize;
     }
 
     /// <summary>

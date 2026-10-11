@@ -10,20 +10,20 @@
              Title="Username and password">
     <ScrollView>
         <VerticalStackLayout Padding="16" Spacing="14" MaximumWidthRequest="640">
-            <Label Text="{Binding ErrorMessage}" TextColor="{StaticResource Danger}" IsVisible="{Binding ErrorMessage, Converter={StaticResource HasValue}}" />
+            <skeleton:CLabel Text="{Binding ErrorMessage}" TextColor="{StaticResource Danger}" IsVisible="{Binding ErrorMessage, Converter={StaticResource HasValue}}" />
 
             <Border Style="{StaticResource Card}">
                 <VerticalStackLayout Spacing="10">
-                    <Label Text="Sign-in details" Style="{StaticResource H2}" />
-                    <Label Text="Your username is what you sign in with, and the name of your default profile." Style="{StaticResource Muted}" />
-                    <Label Text="Username" Style="{StaticResource Muted}" />
+                    <skeleton:CLabel Text="Sign-in details" Style="{StaticResource H2}" />
+                    <skeleton:CLabel Text="Your username is what you sign in with, and the name of your default profile." Style="{StaticResource Muted}" />
+                    <skeleton:CLabel Text="Username" Style="{StaticResource Muted}" />
                     <Entry Text="{Binding Username}" />
-                    <Label Text="New password (leave empty to keep it)" Style="{StaticResource Muted}" />
+                    <skeleton:CLabel Text="New password (leave empty to keep it)" Style="{StaticResource Muted}" />
                     <skeleton:CPasswordEntry Text="{Binding NewPassword}" ReturnType="Next"
                                              TextColor="{StaticResource TextPrimary}" PlaceholderColor="{StaticResource TextSecondary}" />
                     <skeleton:CPasswordEntry Text="{Binding ConfirmPassword}" Placeholder="Repeat the new password" ReturnType="Next"
                                              TextColor="{StaticResource TextPrimary}" PlaceholderColor="{StaticResource TextSecondary}" />
-                    <Label Text="Current password, to confirm" Style="{StaticResource Muted}" />
+                    <skeleton:CLabel Text="Current password, to confirm" Style="{StaticResource Muted}" />
                     <skeleton:CPasswordEntry Text="{Binding CurrentPassword}" ReturnType="Done"
                                              TextColor="{StaticResource TextPrimary}" PlaceholderColor="{StaticResource TextSecondary}">
                         <skeleton:CPasswordEntry.Behaviors>
