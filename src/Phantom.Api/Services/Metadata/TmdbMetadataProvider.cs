@@ -59,7 +59,7 @@ public class TmdbMetadataProvider(HttpClient http, IOptions<PhantomOptions> opti
             await ApplyCollectionAsync(db, movie, r, ct);
             movie.MetadataRefreshedAt = DateTime.UtcNow;
         }
-        catch (Exception ex) when (ex is HttpRequestException or JsonException or TaskCanceledException)
+        catch (Exception ex) when (ex is HttpRequestException or JsonException or TaskCanceledException or InvalidOperationException or KeyNotFoundException)
         {
             log.LogWarning(ex, "TMDB lookup failed for {Title}", movie.Title);
         }
@@ -185,7 +185,7 @@ public class TmdbMetadataProvider(HttpClient http, IOptions<PhantomOptions> opti
             if (Str(r, "poster_path") is { } poster) show.PosterUrl = Images + "w500" + poster;
             if (Str(r, "backdrop_path") is { } backdrop) show.BackdropUrl = Images + "w1280" + backdrop;
             if (r.TryGetProperty("networks", out var networks) && networks.GetArrayLength() > 0) show.Network = Str(networks[0], "name");
-            if (r.TryGetProperty("episode_run_time", out var runtimes) && runtimes.GetArrayLength() > 0 && runtimes[0].TryGetInt32(out var runtime))
+            if (r.TryGetProperty("episode_run_time", out var runtimes) && runtimes.GetArrayLength() > 0 && runtimes[0].TryGetInt(out var runtime))
                 show.EpisodeRuntimeMinutes = runtime;
             show.ContentRating = ShowCertification(r) ?? show.ContentRating;
             show.TrailerUrl = Trailer(r) ?? show.TrailerUrl;
@@ -195,7 +195,7 @@ public class TmdbMetadataProvider(HttpClient http, IOptions<PhantomOptions> opti
             await ApplyEpisodesAsync(show, r, ct);
             show.MetadataRefreshedAt = DateTime.UtcNow;
         }
-        catch (Exception ex) when (ex is HttpRequestException or JsonException or TaskCanceledException)
+        catch (Exception ex) when (ex is HttpRequestException or JsonException or TaskCanceledException or InvalidOperationException or KeyNotFoundException)
         {
             log.LogWarning(ex, "TMDB lookup failed for show {Title}", show.Title);
         }
@@ -253,20 +253,20 @@ public class TmdbMetadataProvider(HttpClient http, IOptions<PhantomOptions> opti
         if (!r.TryGetProperty("seasons", out var seasons)) return;
         foreach (var season in seasons.EnumerateArray())
         {
-            if (!season.TryGetProperty("season_number", out var sn) || !sn.TryGetInt32(out var number) || number <= 0) continue;
+            if (!season.TryGetProperty("season_number", out var sn) || !sn.TryGetInt(out var number) || number <= 0) continue;
             using var doc = await GetAsync($"/tv/{show.TmdbId}/season/{number}", ct);
             if (!doc.RootElement.TryGetProperty("episodes", out var episodes)) continue;
             foreach (var e in episodes.EnumerateArray())
             {
-                if (!e.TryGetProperty("episode_number", out var en) || !en.TryGetInt32(out var episodeNumber)) continue;
+                if (!e.TryGetProperty("episode_number", out var en) || !en.TryGetInt(out var episodeNumber)) continue;
                 var episode = show.Episodes.FirstOrDefault(x => x.SeasonNumber == number && x.EpisodeNumber == episodeNumber);
                 if (episode is null) show.Episodes.Add(episode = new Episode { SeasonNumber = number, EpisodeNumber = episodeNumber });
-                episode.TmdbId = e.TryGetProperty("id", out var id) && id.TryGetInt32(out var idValue) ? idValue : episode.TmdbId;
+                episode.TmdbId = e.TryGetProperty("id", out var id) && id.TryGetInt(out var idValue) ? idValue : episode.TmdbId;
                 episode.Title = Str(e, "name") ?? episode.Title;
                 episode.Overview = Str(e, "overview") ?? episode.Overview;
                 if (Str(e, "still_path") is { } still) episode.StillUrl = Images + "w300" + still;
                 if (DateOnly.TryParse(Str(e, "air_date"), System.Globalization.CultureInfo.InvariantCulture, out var aired)) episode.AirDate = aired;
-                if (e.TryGetProperty("runtime", out var rt) && rt.TryGetInt32(out var minutes)) episode.RuntimeMinutes = minutes;
+                if (e.TryGetProperty("runtime", out var rt) && rt.TryGetInt(out var minutes)) episode.RuntimeMinutes = minutes;
             }
         }
     }

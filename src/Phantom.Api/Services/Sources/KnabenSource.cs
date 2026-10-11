@@ -82,7 +82,7 @@ public partial class KnabenSource(HttpClient http, IOptions<PhantomOptions> opti
     {
         using var doc = JsonDocument.Parse(json);
         var root = doc.RootElement;
-        var total = root.TryGetProperty("total", out var t) && t.TryGetProperty("value", out var v) && v.TryGetInt32(out var n) ? n : 0;
+        var total = root.TryGetProperty("total", out var t) && t.TryGetProperty("value", out var v) && v.TryGetInt(out var n) ? n : 0;
         if (!root.TryGetProperty("hits", out var hits) || hits.ValueKind != JsonValueKind.Array) return ([], 0, total);
 
         var results = new List<SourceRelease>();
@@ -105,7 +105,7 @@ public partial class KnabenSource(HttpClient http, IOptions<PhantomOptions> opti
                     MagnetUri = Str(hit, "magnetUrl") ?? Magnets.Build(hash, name),
                     Quality = show.Quality,
                     Codec = show.Codec,
-                    SizeBytes = hit.TryGetProperty("bytes", out var tvBytes) && tvBytes.TryGetInt64(out var tvSize) ? tvSize : 0,
+                    SizeBytes = hit.TryGetProperty("bytes", out var tvBytes) && tvBytes.TryGetLong(out var tvSize) ? tvSize : 0,
                     Seeders = seeders,
                     Leechers = Math.Max(0, Int(hit, "peers") - seeders),
                     IsShow = true,
@@ -129,7 +129,7 @@ public partial class KnabenSource(HttpClient http, IOptions<PhantomOptions> opti
                 MagnetUri = Str(hit, "magnetUrl") ?? Magnets.Build(hash, name),
                 Quality = parsed.Quality,
                 Codec = parsed.Codec,
-                SizeBytes = hit.TryGetProperty("bytes", out var b) && b.TryGetInt64(out var size) ? size : 0,
+                SizeBytes = hit.TryGetProperty("bytes", out var b) && b.TryGetLong(out var size) ? size : 0,
                 Seeders = seeders,
                 Leechers = Math.Max(0, Int(hit, "peers") - seeders),
             });
@@ -139,13 +139,13 @@ public partial class KnabenSource(HttpClient http, IOptions<PhantomOptions> opti
 
     private static bool InCategory(JsonElement hit, int category) =>
         hit.TryGetProperty("categoryId", out var ids) && ids.ValueKind == JsonValueKind.Array
-        && ids.EnumerateArray().Any(i => i.TryGetInt32(out var id) && id == category);
+        && ids.EnumerateArray().Any(i => i.TryGetInt(out var id) && id == category);
 
     private static string? Str(JsonElement e, string name) =>
         e.TryGetProperty(name, out var p) && p.ValueKind == JsonValueKind.String ? p.GetString() : null;
 
     private static int Int(JsonElement e, string name) =>
-        e.TryGetProperty(name, out var p) && p.TryGetInt32(out var v) ? v : 0;
+        e.TryGetProperty(name, out var p) && p.TryGetInt(out var v) ? v : 0;
 
     // Episodes and seasons that end up under Movies.
     [GeneratedRegex(@"\bS\d{1,2}(E\d{1,3})?\b|\bSeason\s?\d", RegexOptions.IgnoreCase)]

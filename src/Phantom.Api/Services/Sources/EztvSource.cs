@@ -70,7 +70,7 @@ public class EztvSource(HttpClient http, IOptions<PhantomOptions> options, ILogg
     {
         var json = await http.GetStringAsync($"{baseUrl}/api/get-torrents?limit={PageSize}&page={page}", ct);
         using (var doc = JsonDocument.Parse(json))
-            if (doc.RootElement.TryGetProperty("torrents_count", out var tc) && tc.TryGetInt32(out var total))
+            if (doc.RootElement.TryGetProperty("torrents_count", out var tc) && tc.TryGetInt(out var total))
                 _totalPages = (total + PageSize - 1) / PageSize;
         return Parse(json);
     }

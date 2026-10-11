@@ -55,6 +55,26 @@ public class EpisodeParsingTests
 public class TvSourceTests
 {
     [Fact]
+    public void Null_and_text_numbers_from_sources_dont_fail_the_sync()
+    {
+        // "The requested operation requires an element of type 'Number', but the target element has type 'Null'."
+        var (knaben, _, _) = KnabenSource.Parse("""
+            {"total":{"value":null},"hits":[
+              {"title":"Some Show S01E02 1080p","hash":"BBCDEF0123456789ABCDEF0123456789ABCDEF01","categoryId":[2000000,null],
+               "seeders":null,"peers":null,"bytes":null}
+            ]}
+            """);
+        Assert.Equal(0, Assert.Single(knaben).Seeders);
+
+        var (yts, _) = YtsSource.Parse("""
+            {"status":"ok","data":{"movie_count":null,"movies":[{"title":"Old Film","year":null,"runtime":null,
+              "torrents":[{"hash":"ABCDEF0123456789ABCDEF0123456789ABCDEF01","quality":"720p","seeds":"12","peers":null,"size_bytes":"3000000000"}]}]}}
+            """);
+        var film = Assert.Single(yts);
+        Assert.Equal((null, 12, 3_000_000_000L), (film.Year, film.Seeders, film.SizeBytes));
+    }
+
+    [Fact]
     public void Knaben_takes_episodes_and_packs_from_its_tv_category()
     {
         var (releases, _, _) = KnabenSource.Parse("""

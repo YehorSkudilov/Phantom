@@ -75,7 +75,7 @@ public class YtsSource(HttpClient http, IOptions<PhantomOptions> options, ILogge
         if (!string.IsNullOrWhiteSpace(source.Query)) url += $"&query_term={Uri.EscapeDataString(source.Query)}";
         var json = await http.GetStringAsync(url, ct);
         using (var doc = JsonDocument.Parse(json))
-            if (doc.RootElement.TryGetProperty("data", out var data) && data.TryGetProperty("movie_count", out var mc) && mc.TryGetInt32(out var total))
+            if (doc.RootElement.TryGetProperty("data", out var data) && data.TryGetProperty("movie_count", out var mc) && mc.TryGetInt(out var total))
                 _totalPages = (total + PageSize - 1) / PageSize;
         return Parse(json);
     }
@@ -100,8 +100,8 @@ public class YtsSource(HttpClient http, IOptions<PhantomOptions> options, ILogge
 
             var title = Str(m, "title_english") ?? Str(m, "title") ?? "";
             if (title.Length == 0) continue;
-            int? year = m.TryGetProperty("year", out var y) && y.TryGetInt32(out var yv) && yv > 0 ? yv : null;
-            int? runtime = m.TryGetProperty("runtime", out var r) && r.TryGetInt32(out var rv) && rv > 0 ? rv : null;
+            int? year = m.TryGetProperty("year", out var y) && y.TryGetInt(out var yv) && yv > 0 ? yv : null;
+            int? runtime = m.TryGetProperty("runtime", out var r) && r.TryGetInt(out var rv) && rv > 0 ? rv : null;
             var genres = m.TryGetProperty("genres", out var g) && g.ValueKind == JsonValueKind.Array
                 ? g.EnumerateArray().Select(x => x.GetString()).OfType<string>().ToList()
                 : [];
@@ -128,9 +128,9 @@ public class YtsSource(HttpClient http, IOptions<PhantomOptions> options, ILogge
                     TorrentUrl = Str(t, "url"),
                     Quality = quality,
                     Codec = codec,
-                    SizeBytes = t.TryGetProperty("size_bytes", out var s) && s.TryGetInt64(out var sv) ? sv : 0,
-                    Seeders = t.TryGetProperty("seeds", out var se) && se.TryGetInt32(out var sev) ? sev : 0,
-                    Leechers = t.TryGetProperty("peers", out var pe) && pe.TryGetInt32(out var pev) ? pev : 0,
+                    SizeBytes = t.TryGetProperty("size_bytes", out var s) && s.TryGetLong(out var sv) ? sv : 0,
+                    Seeders = t.TryGetProperty("seeds", out var se) && se.TryGetInt(out var sev) ? sev : 0,
+                    Leechers = t.TryGetProperty("peers", out var pe) && pe.TryGetInt(out var pev) ? pev : 0,
                     ImdbId = string.IsNullOrWhiteSpace(imdb) ? null : imdb,
                     Overview = overview,
                     PosterUrl = poster,
