@@ -24,7 +24,11 @@ public partial class PlayerPage : ContentPage
         Media.PositionChanged += (_, e) => Dispatcher.Dispatch(() => OnPositionChanged(e.Position));
         Media.StateChanged += (_, e) => Dispatcher.Dispatch(() => OnStateChanged(e.NewState));
         Media.MediaEnded += (_, _) => Dispatcher.Dispatch(OnEnded);
-        Media.MediaFailed += (_, e) => Dispatcher.Dispatch(() => _vm.ErrorMessage = $"Playback failed: {e.ErrorMessage}");
+        Media.MediaFailed += (_, e) => Dispatcher.Dispatch(() =>
+        {
+            SetLoading(false);
+            _vm.ErrorMessage = PlaybackError(e.ErrorMessage);
+        });
 
         // Material only has numbered skip icons for 5, 10 and 30 seconds; other lengths get the plain arrow.
         BackButton.Source = IconExtension.Create(_vm.SkipBack is 5 or 10 or 30 ? $"replay_{_vm.SkipBack}" : "fast_rewind", Colors.White, size: 36);
@@ -173,6 +177,17 @@ public partial class PlayerPage : ContentPage
             Controls.IsVisible = true; // keep the close button reachable
         }
         else _vm.StopLoadingStatus();
+    }
+
+    /// <summary>The player's error as something people can act on (the raw one is often an HTTP status or a codec code).</summary>
+    private static string PlaybackError(string? raw)
+    {
+        var text = raw ?? "";
+        if (text.Contains("502") || text.Contains("503") || text.Contains("504") || text.Contains("Gateway", StringComparison.OrdinalIgnoreCase))
+            return "The Phantom server isn't responding right now. It may be restarting — try again in a minute.";
+        if (text.Contains("404")) return "The server couldn't find this movie's file. Try another version.";
+        if (text.Contains("401") || text.Contains("403")) return "Your sign-in has expired. Sign in again.";
+        return "This movie couldn't be played. Try again, choose another version, or pick a lower quality (the server converts it).";
     }
 
     private void LoadSource()

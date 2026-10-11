@@ -327,7 +327,8 @@ public class DownloadManager
 
         using var res = await _http.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, ct);
         if (existing > 0 && res.StatusCode != HttpStatusCode.PartialContent) existing = 0; // server ignored the range
-        res.EnsureSuccessStatusCode();
+        if (!res.IsSuccessStatusCode)
+            throw new HttpRequestException(PhantomApi.Describe(res.StatusCode, await res.Content.ReadAsStringAsync(ct)), null, res.StatusCode);
 
         var total = existing + (res.Content.Headers.ContentLength ?? info.FileSize - existing);
         MainThread.BeginInvokeOnMainThread(() =>
