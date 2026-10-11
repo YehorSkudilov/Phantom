@@ -20,7 +20,7 @@
                            IsVisible="{Binding Movie.BackdropUrl, Converter={StaticResource HasValue}}" />
                     <Image Source="{Binding Movie.PosterUrl, Converter={StaticResource Poster}}" Aspect="AspectFill" Opacity="0.35"
                            IsVisible="{Binding Movie.BackdropUrl, Converter={StaticResource HasValue}, ConverterParameter=invert}" />
-                    <BoxView Background="{StaticResource BackdropFade}" />
+                    <Grid Background="{StaticResource BackdropFade}" />
                     <Grid ColumnDefinitions="120,*" ColumnSpacing="16" Padding="16" VerticalOptions="End">
                         <Border StrokeShape="RoundRectangle 10" HeightRequest="180">
                             <Image Source="{Binding Movie.PosterUrl, Converter={StaticResource Poster}}" Aspect="AspectFill" />
@@ -40,8 +40,14 @@
 
                 <!-- Primary actions -->
                 <VerticalStackLayout Padding="16,0" Spacing="10">
-                    <Button Text="{Binding PlayLabel}" Command="{Binding PlayCommand}" FontSize="16" HeightRequest="52"
-                            ImageSource="{controls:Icon play_arrow, Color=White, Size=20}" ContentLayout="Left,8" />
+                    <!-- Trailer beside Play; Play takes the whole row when there's no trailer. -->
+                    <Grid ColumnDefinitions="Auto,*">
+                        <Button Text="Trailer" Style="{StaticResource SecondaryButton}" HeightRequest="52" Margin="0,0,10,0"
+                                ImageSource="{controls:Icon smart_display, Size=20}" ContentLayout="Left,8"
+                                Command="{Binding PlayTrailerCommand}" IsVisible="{Binding Movie.TrailerUrl, Converter={StaticResource HasValue}}" />
+                        <Button Grid.Column="1" Text="{Binding PlayLabel}" Command="{Binding PlayCommand}" FontSize="16" HeightRequest="52"
+                                ImageSource="{controls:Icon play_arrow, Color=White, Size=20}" ContentLayout="Left,8" />
+                    </Grid>
                     <ProgressBar Progress="{Binding Movie.Playback.ProgressPercent, Converter={StaticResource Percent}}" IsVisible="{Binding CanResume}" />
                     <Button Text="Start over" Style="{StaticResource SecondaryButton}" Command="{Binding PlayFromStartCommand}" IsVisible="{Binding CanResume}"
                             ImageSource="{controls:Icon replay, Size=20}" ContentLayout="Left,8" />
@@ -64,9 +70,6 @@
                         </Grid>
                     </Border>
 
-                    <Button Text="Watch trailer" Style="{StaticResource GhostButton}" HorizontalOptions="Start"
-                            ImageSource="{controls:Icon smart_display, Color={StaticResource PrimaryLight}, Size=20}" ContentLayout="Left,6"
-                            Command="{Binding PlayTrailerCommand}" IsVisible="{Binding Movie.TrailerUrl, Converter={StaticResource HasValue}}" />
                 </VerticalStackLayout>
 
                 <!-- Overview -->

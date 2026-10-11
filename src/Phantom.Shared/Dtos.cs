@@ -35,7 +35,8 @@ public record MovieSummaryDto(
     bool Watched,
     double ProgressPercent,
     DateTime AddedAt,
-    string? BestQuality);
+    string? BestQuality,
+    string? BackdropUrl = null);
 
 public record MovieDetailDto(
     int Id,

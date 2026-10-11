@@ -190,16 +190,19 @@ public partial class DownloadsViewModel(DownloadManager manager, SettingsService
         : Task.CompletedTask;
 
     [RelayCommand]
-    private void Toggle(OfflineDownload item)
-    {
-        if (item.Status is OfflineStatus.Downloading or OfflineStatus.Queued or OfflineStatus.WaitingForWifi) manager.Pause(item);
-        else if (item.Status is OfflineStatus.Paused or OfflineStatus.Failed) manager.Resume(item);
-    }
+    private void Pause(OfflineDownload item) => manager.Pause(item);
 
+    [RelayCommand]
+    private void Resume(OfflineDownload item) => manager.Resume(item);
+
+    /// <summary>Cancels an unfinished download, or deletes a finished one from the device.</summary>
     [RelayCommand]
     private async Task Delete(OfflineDownload item)
     {
-        if (!await Shell.Current.DisplayAlertAsync("Remove download", $"Delete {item.Title} from this device?", "Delete", "Cancel")) return;
+        var confirmed = item.IsComplete
+            ? await Shell.Current.DisplayAlertAsync("Delete download", $"Delete {item.Title} from this device? You can still stream it.", "Delete", "Keep")
+            : await Shell.Current.DisplayAlertAsync("Cancel download", $"Stop downloading {item.Title} and remove what's downloaded so far?", "Cancel download", "Keep downloading");
+        if (!confirmed) return;
         await manager.DeleteAsync(item);
         Refresh();
     }

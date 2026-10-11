@@ -6,7 +6,7 @@
              xmlns:vm="clr-namespace:Phantom.ViewModels"
              x:Class="Phantom.Views.LibraryPage"
              x:DataType="vm:LibraryViewModel">
-    <Grid RowDefinitions="Auto,Auto,Auto,Auto,*">
+    <Grid RowDefinitions="Auto,Auto,*">
         <Grid ColumnDefinitions="*,Auto,Auto" Padding="16,18,8,0">
             <Label Text="Library" Style="{StaticResource H1}" VerticalOptions="Center" />
             <ImageButton Grid.Column="1" Style="{StaticResource IconButton}" Source="{controls:Icon tune}" Command="{Binding ToggleFiltersCommand}"
@@ -19,15 +19,21 @@
             </Grid>
         </Grid>
 
+        <!-- Search: typing swaps the library below for results across titles, cast and genres. -->
+        <SearchBar Grid.Row="1" x:Name="Box" Text="{Binding Search.Query}" Placeholder="Search movies, actors, directors, genres"
+                   SearchCommand="{Binding Search.SearchCommand}" Margin="8,6,8,0" />
+
+        <Grid Grid.Row="2" RowDefinitions="Auto,Auto,Auto,*"
+              IsVisible="{Binding Search.Query, Converter={StaticResource HasValue}, ConverterParameter=invert}">
         <!-- Sort + summary -->
-        <Grid Grid.Row="1" ColumnDefinitions="*,Auto" Padding="16,8" ColumnSpacing="10">
+        <Grid ColumnDefinitions="*,Auto" Padding="16,8" ColumnSpacing="10">
             <Label Text="{Binding Summary}" Style="{StaticResource Muted}" VerticalOptions="Center" />
             <Picker Grid.Column="1" Title="Sort" ItemsSource="{Binding SortOptions}" SelectedItem="{Binding SelectedSort}"
                     WidthRequest="160" SemanticProperties.Description="Sort by" />
         </Grid>
 
         <!-- Filters panel -->
-        <Border Grid.Row="2" Style="{StaticResource Card}" Margin="16,0,16,8" IsVisible="{Binding ShowFilters}">
+        <Border Grid.Row="1" Style="{StaticResource Card}" Margin="16,0,16,8" IsVisible="{Binding ShowFilters}">
             <VerticalStackLayout Spacing="8">
                 <Grid ColumnDefinitions="*,*" ColumnSpacing="10" RowDefinitions="Auto,Auto,Auto" RowSpacing="8">
                     <Picker Title="Genre" ItemsSource="{Binding Genres}" SelectedItem="{Binding SelectedGenre}" />
@@ -41,7 +47,7 @@
         </Border>
 
         <!-- A–Z jump bar -->
-        <CollectionView Grid.Row="3" ItemsSource="{Binding Letters}" HeightRequest="36" SelectionMode="None" Margin="8,0,8,6">
+        <CollectionView Grid.Row="2" ItemsSource="{Binding Letters}" HeightRequest="36" SelectionMode="None" Margin="8,0,8,6">
             <CollectionView.ItemsLayout>
                 <LinearItemsLayout Orientation="Horizontal" ItemSpacing="2" />
             </CollectionView.ItemsLayout>
@@ -58,7 +64,7 @@
             </CollectionView.ItemTemplate>
         </CollectionView>
 
-        <RefreshView Grid.Row="4" IsRefreshing="{Binding IsRefreshing}" Command="{Binding ReloadCommand}">
+        <RefreshView Grid.Row="3" IsRefreshing="{Binding IsRefreshing}" Command="{Binding ReloadCommand}">
             <Grid>
                 <CollectionView x:Name="Grid" ItemsSource="{Binding Movies}" IsVisible="{Binding IsGrid}"
                                 ItemTemplate="{StaticResource PosterCard}" SelectionMode="Single"
@@ -83,5 +89,40 @@
                 </CollectionView>
             </Grid>
         </RefreshView>
+        </Grid>
+
+        <!-- Search results -->
+        <ScrollView Grid.Row="2" BindingContext="{Binding Search}" x:DataType="vm:SearchViewModel"
+                    IsVisible="{Binding Query, Converter={StaticResource HasValue}}">
+            <VerticalStackLayout Spacing="10" Padding="0,8,0,108">
+                <Label Text="No results." Style="{StaticResource Muted}" HorizontalOptions="Center" Margin="0,40" IsVisible="{Binding NoResults}" />
+
+                <Label Text="People" Style="{StaticResource H2}" Margin="16,8,16,0" IsVisible="{Binding People.Count, Converter={StaticResource HasValue}}" />
+                <FlexLayout BindableLayout.ItemsSource="{Binding People}" Wrap="Wrap" Margin="12,0">
+                    <BindableLayout.ItemTemplate>
+                        <DataTemplate x:DataType="x:String">
+                            <Button Text="{Binding .}" Style="{StaticResource SecondaryButton}" Margin="4"
+                                    ImageSource="{controls:Icon person, Size=18}" ContentLayout="Left,6"
+                                    Command="{Binding Source={RelativeSource AncestorType={x:Type vm:SearchViewModel}}, Path=OpenPersonCommand, x:DataType=vm:SearchViewModel}"
+                                    CommandParameter="{Binding .}" />
+                        </DataTemplate>
+                    </BindableLayout.ItemTemplate>
+                </FlexLayout>
+
+                <Label Text="Genres" Style="{StaticResource H2}" Margin="16,8,16,0" IsVisible="{Binding Genres.Count, Converter={StaticResource HasValue}}" />
+                <FlexLayout BindableLayout.ItemsSource="{Binding Genres}" Wrap="Wrap" Margin="12,0">
+                    <BindableLayout.ItemTemplate>
+                        <DataTemplate x:DataType="x:String">
+                            <Button Text="{Binding .}" Style="{StaticResource SecondaryButton}" Margin="4"
+                                    Command="{Binding Source={RelativeSource AncestorType={x:Type vm:SearchViewModel}}, Path=OpenGenreCommand, x:DataType=vm:SearchViewModel}"
+                                    CommandParameter="{Binding .}" />
+                        </DataTemplate>
+                    </BindableLayout.ItemTemplate>
+                </FlexLayout>
+
+                <Label Text="Movies" Style="{StaticResource H2}" Margin="16,8,16,0" IsVisible="{Binding Movies.Count, Converter={StaticResource HasValue}}" />
+                <VerticalStackLayout BindableLayout.ItemsSource="{Binding Movies}" BindableLayout.ItemTemplate="{StaticResource MovieRow}" x:Name="SearchMovies" />
+            </VerticalStackLayout>
+        </ScrollView>
     </Grid>
 </views:TabView>

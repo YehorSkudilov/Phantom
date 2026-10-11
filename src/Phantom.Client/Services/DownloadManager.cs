@@ -37,15 +37,45 @@ public partial class OfflineDownload : ObservableObject
     public double Progress => TotalBytes <= 0 ? 0 : (double)DownloadedBytes / TotalBytes;
     public string PosterSource => LocalPosterPath is { } p && File.Exists(p) ? p : PosterUrl ?? "logo_mark.png";
     public bool IsComplete => Status == OfflineStatus.Completed;
+    public bool CanPause => Status is OfflineStatus.Downloading or OfflineStatus.Queued or OfflineStatus.WaitingForWifi;
+    public bool CanResume => Status is OfflineStatus.Paused or OfflineStatus.Failed;
 
-    partial void OnDownloadedBytesChanged(long value) => OnPropertyChanged(nameof(Progress));
-    partial void OnTotalBytesChanged(long value) => OnPropertyChanged(nameof(Progress));
-    partial void OnStatusChanged(OfflineStatus value) => OnPropertyChanged(nameof(IsComplete));
+    /// <summary>The status as shown under the title.</summary>
+    public string StatusText => Status switch
+    {
+        OfflineStatus.Queued => "Waiting to start",
+        OfflineStatus.Downloading => "Downloading",
+        OfflineStatus.Paused => "Paused",
+        OfflineStatus.Completed => "Ready to watch offline",
+        OfflineStatus.Failed => "Download failed",
+        OfflineStatus.WaitingForWifi => "Waiting for Wi-Fi",
+        _ => Status.ToString(),
+    };
+
+    /// <summary>"1.2 GB of 4.5 GB · 3.1 MB/s" while downloading, the size once done.</summary>
+    public string SizeText => IsComplete
+        ? Phantom.BytesConverter.Format(TotalBytes)
+        : TotalBytes <= 0 ? ""
+        : $"{Phantom.BytesConverter.Format(DownloadedBytes)} of {Phantom.BytesConverter.Format(TotalBytes)}"
+          + (BytesPerSecond > 0 ? $"  ·  {Phantom.BytesConverter.Format(BytesPerSecond)}/s" : "");
+
+    partial void OnDownloadedBytesChanged(long value) { OnPropertyChanged(nameof(Progress)); OnPropertyChanged(nameof(SizeText)); }
+    partial void OnTotalBytesChanged(long value) { OnPropertyChanged(nameof(Progress)); OnPropertyChanged(nameof(SizeText)); }
+    partial void OnBytesPerSecondChanged(long value) => OnPropertyChanged(nameof(SizeText));
+    partial void OnStatusChanged(OfflineStatus value)
+    {
+        OnPropertyChanged(nameof(IsComplete));
+        OnPropertyChanged(nameof(CanPause));
+        OnPropertyChanged(nameof(CanResume));
+        OnPropertyChanged(nameof(StatusText));
+        OnPropertyChanged(nameof(SizeText));
+    }
 }
 
 /// <summary>
-/// Client-side downloads: copies the server's direct stream to app storage with resumable
-/// HTTP range requests, one item at a time, honouring the Wi-Fi-only preference.
+/// Client-side downloads: copies the server's direct stream to app storage with resumable HTTP range requests,
+/// up to <see cref="MaxParallel"/> at a time, honouring the Wi-Fi-only preference. The torrent itself is always
+/// fetched by the server (see EnqueueAsync); the device only ever downloads over HTTP from it.
 /// </summary>
 public class DownloadManager
 {
@@ -55,8 +85,22 @@ public class DownloadManager
     private readonly string _root = Path.Combine(FileSystem.AppDataDirectory, "downloads");
     private readonly string _indexPath;
     private readonly SemaphoreSlim _saveLock = new(1, 1);
-    private CancellationTokenSource? _current;
-    private Task? _worker;
+    private readonly Dictionary<OfflineDownload, CancellationTokenSource> _running = [];
+    private readonly Lock _queueLock = new();
+
+    /// <summary>How many movies download to the device at once.</summary>
+    public const int MaxParallel = 3;
+
+    /// <summary>Waits before retrying an interrupted download (each picks up where it stopped, via the .part file);
+    /// after the last it shows as failed, and Resume starts the retries over.</summary>
+    private static readonly TimeSpan[] RetryDelays = [TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(15), TimeSpan.FromSeconds(30),
+        TimeSpan.FromMinutes(1), TimeSpan.FromMinutes(2), TimeSpan.FromMinutes(5)];
+
+    /// <summary>No data for this long counts as an interrupted download (retried) rather than a slow one.</summary>
+    private static readonly TimeSpan StallTimeout = TimeSpan.FromSeconds(90);
+
+    private readonly Dictionary<OfflineDownload, int> _retries = [];
+    private readonly HashSet<OfflineDownload> _waiting = [];
 
     public ObservableCollection<OfflineDownload> Items { get; } = [];
 
@@ -98,11 +142,22 @@ public class DownloadManager
         await CachePosterAsync(item);
         await SaveAsync();
         Kick();
+
+        // Have the server download (and keep) the whole torrent too: it fetches from the swarm at full speed while
+        // this device copies from it, and a paused or interrupted device download picks up from the server's copy.
+        try
+        {
+            await _api.QueueServerDownloadAsync(movie.Id, releaseId);
+        }
+        catch (Exception ex) when (ex is HttpRequestException or ApiException or TaskCanceledException)
+        {
+            // The device download still works without it, streaming the torrent through the server as it goes.
+        }
     }
 
     public void Pause(OfflineDownload item)
     {
-        if (item.Status == OfflineStatus.Downloading) _current?.Cancel();
+        Cancel(item);
         item.Status = OfflineStatus.Paused;
         item.BytesPerSecond = 0;
         _ = SaveAsync();
@@ -110,6 +165,7 @@ public class DownloadManager
 
     public void Resume(OfflineDownload item)
     {
+        lock (_queueLock) _retries.Remove(item);
         item.Status = OfflineStatus.Queued;
         item.Error = null;
         _ = SaveAsync();
@@ -118,7 +174,12 @@ public class DownloadManager
 
     public async Task DeleteAsync(OfflineDownload item)
     {
-        if (item.Status == OfflineStatus.Downloading) _current?.Cancel();
+        Cancel(item);
+        lock (_queueLock)
+        {
+            _retries.Remove(item);
+            _waiting.Remove(item);
+        }
         Items.Remove(item);
         foreach (var path in new[] { item.FilePath, item.FilePath + ".part", item.LocalPosterPath })
             if (!string.IsNullOrEmpty(path) && File.Exists(path)) File.Delete(path);
@@ -152,49 +213,101 @@ public class DownloadManager
         await SaveAsync();
     }
 
+    private void Cancel(OfflineDownload item)
+    {
+        lock (_queueLock)
+        {
+            if (_running.TryGetValue(item, out var cts)) cts.Cancel();
+        }
+    }
+
+    /// <summary>Starts queued items until <see cref="MaxParallel"/> are downloading.</summary>
     private void Kick()
     {
-        if (_worker is { IsCompleted: false }) return;
-        _worker = Task.Run(RunQueueAsync);
+        if (Connectivity.Current.NetworkAccess != NetworkAccess.Internet && Connectivity.Current.NetworkAccess != NetworkAccess.ConstrainedInternet)
+            return;
+
+        lock (_queueLock)
+        {
+            // Oldest first: new downloads are inserted at the top of the list.
+            foreach (var next in Items.ToList().AsEnumerable().Reverse().Where(i => i.Status is OfflineStatus.Queued or OfflineStatus.WaitingForWifi).ToList())
+            {
+                if (_running.Count >= MaxParallel) return;
+                if (_running.ContainsKey(next) || _waiting.Contains(next)) continue;
+                if (_settings.DownloadOnWifiOnly && !OnWifi())
+                {
+                    MainThread.BeginInvokeOnMainThread(() => next.Status = OfflineStatus.WaitingForWifi);
+                    continue;
+                }
+
+                var cts = new CancellationTokenSource();
+                _running[next] = cts; // DownloadAsync marks it Downloading, on the UI thread
+                _ = Task.Run(() => RunAsync(next, cts));
+            }
+        }
     }
 
     private static bool OnWifi() =>
         Connectivity.Current.ConnectionProfiles.Any(p => p is ConnectionProfile.WiFi or ConnectionProfile.Ethernet);
 
-    private async Task RunQueueAsync()
+    private async Task RunAsync(OfflineDownload item, CancellationTokenSource cts)
     {
-        while (true)
+        try
         {
-            var next = Items.LastOrDefault(i => i.Status is OfflineStatus.Queued or OfflineStatus.WaitingForWifi);
-            if (next is null) return;
-            if (Connectivity.Current.NetworkAccess != NetworkAccess.Internet && Connectivity.Current.NetworkAccess != NetworkAccess.ConstrainedInternet)
-                return;
-            if (_settings.DownloadOnWifiOnly && !OnWifi())
+            await DownloadAsync(item, cts.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            // Paused or deleted.
+        }
+        catch (Exception ex) when (ex is HttpRequestException or IOException or ApiException or TimeoutException)
+        {
+            int attempt;
+            lock (_queueLock)
             {
-                MainThread.BeginInvokeOnMainThread(() => next.Status = OfflineStatus.WaitingForWifi);
+                _retries.TryGetValue(item, out attempt);
+                _retries[item] = attempt + 1;
+            }
+
+            if (attempt < RetryDelays.Length && !cts.IsCancellationRequested)
+            {
+                // Interrupted (connection dropped, server restarted, torrent stalled...): try again shortly.
+                var delay = RetryDelays[attempt];
+                MainThread.BeginInvokeOnMainThread(() =>
+                {
+                    item.Status = OfflineStatus.Queued;
+                    item.Error = $"Interrupted, retrying in {(delay.TotalMinutes >= 1 ? $"{delay.TotalMinutes:0} min" : $"{delay.TotalSeconds:0} s")}…";
+                    item.BytesPerSecond = 0;
+                });
+                lock (_queueLock)
+                {
+                    _running.Remove(item);
+                    _waiting.Add(item);
+                }
+                cts.Dispose();
+                await SaveAsync();
+                _ = Task.Delay(delay).ContinueWith(_ =>
+                {
+                    lock (_queueLock) _waiting.Remove(item);
+                    Kick();
+                }, TaskScheduler.Default);
                 return;
             }
 
-            _current = new CancellationTokenSource();
-            try
+            MainThread.BeginInvokeOnMainThread(() =>
             {
-                await DownloadAsync(next, _current.Token);
-            }
-            catch (OperationCanceledException)
-            {
-                // Paused or deleted.
-            }
-            catch (Exception ex) when (ex is HttpRequestException or IOException or ApiException)
-            {
-                MainThread.BeginInvokeOnMainThread(() =>
-                {
-                    next.Status = OfflineStatus.Failed;
-                    next.Error = ex.Message;
-                    next.BytesPerSecond = 0;
-                });
-            }
-            await SaveAsync();
+                item.Status = OfflineStatus.Failed;
+                item.Error = ex.Message;
+                item.BytesPerSecond = 0;
+            });
         }
+        finally
+        {
+            lock (_queueLock) _running.Remove(item);
+        }
+        cts.Dispose();
+        await SaveAsync();
+        Kick();
     }
 
     private async Task DownloadAsync(OfflineDownload item, CancellationToken ct)
@@ -221,6 +334,7 @@ public class DownloadManager
         {
             item.TotalBytes = total;
             item.DownloadedBytes = existing;
+            item.Error = null;
         });
 
         await using (var src = await res.Content.ReadAsStreamAsync(ct))
@@ -230,7 +344,7 @@ public class DownloadManager
             long done = existing, windowBytes = 0;
             var window = System.Diagnostics.Stopwatch.StartNew();
             int read;
-            while ((read = await src.ReadAsync(buffer, ct)) > 0)
+            while ((read = await ReadWithStallTimeoutAsync(src, buffer, ct)) > 0)
             {
                 await dst.WriteAsync(buffer.AsMemory(0, read), ct);
                 done += read;
@@ -251,12 +365,29 @@ public class DownloadManager
         }
 
         File.Move(part, item.FilePath, overwrite: true);
+        lock (_queueLock) _retries.Remove(item);
         MainThread.BeginInvokeOnMainThread(() =>
         {
+            item.Error = null;
             item.DownloadedBytes = item.TotalBytes = new FileInfo(item.FilePath).Length;
             item.BytesPerSecond = 0;
             item.Status = OfflineStatus.Completed;
         });
+    }
+
+    /// <summary>A read that gives up (as an interruption, so it's retried) when no data arrives for a while.</summary>
+    private static async Task<int> ReadWithStallTimeoutAsync(Stream src, byte[] buffer, CancellationToken ct)
+    {
+        using var stall = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        stall.CancelAfter(StallTimeout);
+        try
+        {
+            return await src.ReadAsync(buffer, stall.Token);
+        }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+        {
+            throw new TimeoutException("No data from the server for a while.");
+        }
     }
 
     private async Task CachePosterAsync(OfflineDownload item)

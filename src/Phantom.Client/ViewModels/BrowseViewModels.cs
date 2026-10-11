@@ -62,8 +62,11 @@ public record SortOption(string Name, MovieSort Sort, bool Descending)
     public override string ToString() => Name;
 }
 
-public partial class LibraryViewModel(PhantomApi api, SettingsService settings) : BaseViewModel, IQueryAttributable
+public partial class LibraryViewModel(PhantomApi api, SettingsService settings, SearchViewModel search) : BaseViewModel, IQueryAttributable
 {
+    /// <summary>The search box at the top of the Library tab.</summary>
+    public SearchViewModel Search => search;
+
     private const int PageSize = 60;
     private int _page;
     private int _total;
@@ -270,8 +273,16 @@ public partial class SearchViewModel(PhantomApi api) : BaseViewModel
     }, showBusy: false);
 
     [RelayCommand]
-    private Task OpenPerson(string name) => Views.MainPage.ShowLibrary($"actor={Uri.EscapeDataString(name)}");
+    private Task OpenPerson(string name)
+    {
+        Query = "";
+        return Views.MainPage.ShowLibrary($"actor={Uri.EscapeDataString(name)}");
+    }
 
     [RelayCommand]
-    private Task OpenGenre(string genre) => Views.MainPage.ShowLibrary($"genre={Uri.EscapeDataString(genre)}");
+    private Task OpenGenre(string genre)
+    {
+        Query = "";
+        return Views.MainPage.ShowLibrary($"genre={Uri.EscapeDataString(genre)}");
+    }
 }

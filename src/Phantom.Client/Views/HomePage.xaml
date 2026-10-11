@@ -31,8 +31,11 @@
                         <TapGestureRecognizer Command="{Binding OpenMovieCommand}" CommandParameter="{Binding Featured}" />
                     </Border.GestureRecognizers>
                     <Grid>
-                        <Image Source="{Binding Featured.PosterUrl, Converter={StaticResource Poster}}" Aspect="AspectFill" Opacity="0.55" />
-                        <BoxView Background="{StaticResource BackdropFade}" />
+                        <Image Source="{Binding Featured.BackdropUrl, Converter={StaticResource Poster}}" Aspect="AspectFill" Opacity="0.8"
+                               IsVisible="{Binding Featured.BackdropUrl, Converter={StaticResource HasValue}}" />
+                        <Image Source="{Binding Featured.PosterUrl, Converter={StaticResource Poster}}" Aspect="AspectFill" Opacity="0.55"
+                               IsVisible="{Binding Featured.BackdropUrl, Converter={StaticResource HasValue}, ConverterParameter=invert}" />
+                        <Grid Background="{StaticResource BackdropFade}" />
                         <VerticalStackLayout VerticalOptions="End" Padding="18" Spacing="6">
                             <Label Text="FEATURED" FontSize="11" TextColor="{StaticResource Accent}" CharacterSpacing="2" />
                             <Label Text="{Binding Featured.Title}" Style="{StaticResource H1}" MaxLines="2" />

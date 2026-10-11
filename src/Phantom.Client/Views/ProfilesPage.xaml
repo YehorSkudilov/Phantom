@@ -12,13 +12,13 @@
             <Label Text="Who's watching?" Style="{StaticResource H1}" HorizontalOptions="Center" />
         </VerticalStackLayout>
 
-        <CollectionView Grid.Row="1" ItemsSource="{Binding Profiles}" SelectionMode="None" HorizontalOptions="Center">
-            <CollectionView.ItemsLayout>
-                <GridItemsLayout Orientation="Vertical" Span="3" HorizontalItemSpacing="18" VerticalItemSpacing="18" />
-            </CollectionView.ItemsLayout>
-            <CollectionView.ItemTemplate>
+        <!-- A wrapping row rather than a CollectionView: a centred CollectionView grid sizes itself from its items and
+             its items from it, which WinUI reports as a layout cycle and crashes on. -->
+        <ScrollView Grid.Row="1">
+            <FlexLayout BindableLayout.ItemsSource="{Binding Profiles}" Wrap="Wrap" JustifyContent="Center" AlignContent="Start">
+                <BindableLayout.ItemTemplate>
                 <DataTemplate x:DataType="dto:UserDto">
-                    <VerticalStackLayout Spacing="8" WidthRequest="96">
+                    <VerticalStackLayout Spacing="8" WidthRequest="96" Margin="9">
                         <VerticalStackLayout.GestureRecognizers>
                             <TapGestureRecognizer Command="{Binding Source={RelativeSource AncestorType={x:Type vm:ProfilesViewModel}}, Path=SelectCommand, x:DataType=vm:ProfilesViewModel}"
                                                   CommandParameter="{Binding .}" />
@@ -38,8 +38,9 @@
                         <Image Source="{controls:Icon lock, Color={StaticResource TextSecondary}}" IsVisible="{Binding HasPin}" HorizontalOptions="Center" WidthRequest="14" HeightRequest="14" />
                     </VerticalStackLayout>
                 </DataTemplate>
-            </CollectionView.ItemTemplate>
-        </CollectionView>
+                </BindableLayout.ItemTemplate>
+            </FlexLayout>
+        </ScrollView>
 
         <VerticalStackLayout Grid.Row="2" Spacing="10">
             <Label Text="{Binding ErrorMessage}" TextColor="{StaticResource Danger}" HorizontalOptions="Center"

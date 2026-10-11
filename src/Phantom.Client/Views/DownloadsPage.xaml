@@ -20,64 +20,62 @@
             </Grid>
         </Border>
 
+        <!-- Empty state outside the list: on Windows a CollectionView with a footer never shows its EmptyView. -->
+        <VerticalStackLayout Grid.Row="2" Spacing="8" Margin="32,48" HorizontalOptions="Center"
+                             IsVisible="{Binding Items.Count, Converter={StaticResource HasValue}, ConverterParameter=invert}">
+            <Image Source="logo_mark.png" HeightRequest="56" Opacity="0.6" />
+            <Label Text="No downloads yet" Style="{StaticResource H2}" HorizontalOptions="Center" />
+            <Label Text="Open a movie and tap Download to watch it without a connection." Style="{StaticResource Muted}" HorizontalTextAlignment="Center" />
+        </VerticalStackLayout>
+
         <CollectionView Grid.Row="2" ItemsSource="{Binding Items}" SelectionMode="None">
             <CollectionView.Footer>
                 <BoxView HeightRequest="{x:Static views:TabView.NavBarInset}" Color="Transparent" />
             </CollectionView.Footer>
-            <CollectionView.EmptyView>
-                <VerticalStackLayout Spacing="8" Margin="32,48" HorizontalOptions="Center">
-                    <Image Source="logo_mark.png" HeightRequest="56" Opacity="0.6" />
-                    <Label Text="No downloads yet" Style="{StaticResource H2}" HorizontalOptions="Center" />
-                    <Label Text="Open a movie and tap Download to watch it without a connection." Style="{StaticResource Muted}" HorizontalTextAlignment="Center" />
-                </VerticalStackLayout>
-            </CollectionView.EmptyView>
             <CollectionView.ItemTemplate>
                 <DataTemplate x:DataType="svc:OfflineDownload">
-                    <SwipeView>
-                        <SwipeView.RightItems>
-                            <SwipeItems>
-                                <SwipeItem Text="Delete" BackgroundColor="{StaticResource Danger}"
-                                           Command="{Binding Source={RelativeSource AncestorType={x:Type vm:DownloadsViewModel}}, Path=DeleteCommand, x:DataType=vm:DownloadsViewModel}"
-                                           CommandParameter="{Binding .}" />
-                            </SwipeItems>
-                        </SwipeView.RightItems>
-                        <Grid ColumnDefinitions="60,*,Auto" ColumnSpacing="12" Padding="16,8" BackgroundColor="{StaticResource Background}">
-                            <Grid.GestureRecognizers>
-                                <TapGestureRecognizer Command="{Binding Source={RelativeSource AncestorType={x:Type vm:DownloadsViewModel}}, Path=PlayCommand, x:DataType=vm:DownloadsViewModel}"
-                                                      CommandParameter="{Binding .}" />
-                            </Grid.GestureRecognizers>
-                            <Border StrokeShape="RoundRectangle 6" HeightRequest="88">
+                    <Border Style="{StaticResource Card}" Margin="16,5" Padding="10">
+                        <Border.GestureRecognizers>
+                            <TapGestureRecognizer Command="{Binding Source={RelativeSource AncestorType={x:Type vm:DownloadsViewModel}}, Path=OpenCommand, x:DataType=vm:DownloadsViewModel}"
+                                                  CommandParameter="{Binding .}" />
+                        </Border.GestureRecognizers>
+                        <Grid ColumnDefinitions="56,*,Auto" ColumnSpacing="12">
+                            <Border StrokeShape="RoundRectangle 6" HeightRequest="84">
                                 <Image Source="{Binding PosterSource}" Aspect="AspectFill" />
                             </Border>
-                            <VerticalStackLayout Grid.Column="1" VerticalOptions="Center" Spacing="4">
-                                <Label Text="{Binding Title}" FontFamily="OpenSansSemibold" LineBreakMode="TailTruncation" />
-                                <Label Style="{StaticResource Muted}">
-                                    <Label.FormattedText>
-                                        <FormattedString>
-                                            <Span Text="{Binding Status}" />
-                                            <Span Text="  ·  " />
-                                            <Span Text="{Binding DownloadedBytes, Converter={StaticResource Bytes}}" />
-                                            <Span Text=" / " />
-                                            <Span Text="{Binding TotalBytes, Converter={StaticResource Bytes}}" />
-                                        </FormattedString>
-                                    </Label.FormattedText>
-                                </Label>
-                                <ProgressBar Progress="{Binding Progress}" IsVisible="{Binding IsComplete, Converter={StaticResource Not}}" />
-                                <Label Text="{Binding BytesPerSecond, Converter={StaticResource Bytes}, ConverterParameter=rate}" Style="{StaticResource Muted}" FontSize="11"
-                                       IsVisible="{Binding BytesPerSecond, Converter={StaticResource HasValue}}" />
-                                <Label Text="{Binding Error}" TextColor="{StaticResource Danger}" FontSize="11" IsVisible="{Binding Error, Converter={StaticResource HasValue}}" />
+                            <VerticalStackLayout Grid.Column="1" VerticalOptions="Center" Spacing="3">
+                                <Label Text="{Binding Title}" FontFamily="OpenSansSemibold" FontSize="15" LineBreakMode="TailTruncation" />
+                                <Label Text="{Binding StatusText}" FontSize="12" TextColor="{StaticResource PrimaryLight}" />
+                                <ProgressBar Progress="{Binding Progress}" IsVisible="{Binding IsComplete, Converter={StaticResource Not}}" Margin="0,2" />
+                                <Label Text="{Binding SizeText}" Style="{StaticResource Muted}" FontSize="12"
+                                       IsVisible="{Binding SizeText, Converter={StaticResource HasValue}}" />
+                                <Label Text="{Binding Error}" TextColor="{StaticResource Danger}" FontSize="11" MaxLines="2"
+                                       IsVisible="{Binding Error, Converter={StaticResource HasValue}}" />
                             </VerticalStackLayout>
-                            <HorizontalStackLayout Grid.Column="2" Spacing="0">
-                                <ImageButton Style="{StaticResource IconButton}" Source="{controls:Icon pause_circle, Outlined=True}" IsVisible="{Binding IsComplete, Converter={StaticResource Not}}"
-                                        ToolTipProperties.Text="Pause or resume"
-                                        Command="{Binding Source={RelativeSource AncestorType={x:Type vm:DownloadsViewModel}}, Path=ToggleCommand, x:DataType=vm:DownloadsViewModel}"
-                                        CommandParameter="{Binding .}" SemanticProperties.Description="Pause or resume" />
-                                <ImageButton Style="{StaticResource IconButton}" Source="{controls:Icon info, Outlined=True}" ToolTipProperties.Text="Details"
-                                        Command="{Binding Source={RelativeSource AncestorType={x:Type vm:DownloadsViewModel}}, Path=OpenCommand, x:DataType=vm:DownloadsViewModel}"
-                                        CommandParameter="{Binding .}" SemanticProperties.Description="Details" />
+                            <HorizontalStackLayout Grid.Column="2" VerticalOptions="Center" Spacing="2">
+                                <ImageButton Style="{StaticResource IconButton}" Source="{controls:Icon play_arrow}" IsVisible="{Binding IsComplete}"
+                                             SemanticProperties.Description="Play" ToolTipProperties.Text="Play"
+                                             Command="{Binding Source={RelativeSource AncestorType={x:Type vm:DownloadsViewModel}}, Path=PlayCommand, x:DataType=vm:DownloadsViewModel}"
+                                             CommandParameter="{Binding .}" />
+                                <ImageButton Style="{StaticResource IconButton}" Source="{controls:Icon pause}" IsVisible="{Binding CanPause}"
+                                             SemanticProperties.Description="Pause" ToolTipProperties.Text="Pause"
+                                             Command="{Binding Source={RelativeSource AncestorType={x:Type vm:DownloadsViewModel}}, Path=PauseCommand, x:DataType=vm:DownloadsViewModel}"
+                                             CommandParameter="{Binding .}" />
+                                <ImageButton Style="{StaticResource IconButton}" Source="{controls:Icon download}" IsVisible="{Binding CanResume}"
+                                             SemanticProperties.Description="Resume" ToolTipProperties.Text="Resume"
+                                             Command="{Binding Source={RelativeSource AncestorType={x:Type vm:DownloadsViewModel}}, Path=ResumeCommand, x:DataType=vm:DownloadsViewModel}"
+                                             CommandParameter="{Binding .}" />
+                                <ImageButton Style="{StaticResource IconButton}" Source="{controls:Icon close}" IsVisible="{Binding IsComplete, Converter={StaticResource Not}}"
+                                             SemanticProperties.Description="Cancel download" ToolTipProperties.Text="Cancel download"
+                                             Command="{Binding Source={RelativeSource AncestorType={x:Type vm:DownloadsViewModel}}, Path=DeleteCommand, x:DataType=vm:DownloadsViewModel}"
+                                             CommandParameter="{Binding .}" />
+                                <ImageButton Style="{StaticResource IconButton}" Source="{controls:Icon delete, Outlined=True}" IsVisible="{Binding IsComplete}"
+                                             SemanticProperties.Description="Delete from this device" ToolTipProperties.Text="Delete from this device"
+                                             Command="{Binding Source={RelativeSource AncestorType={x:Type vm:DownloadsViewModel}}, Path=DeleteCommand, x:DataType=vm:DownloadsViewModel}"
+                                             CommandParameter="{Binding .}" />
                             </HorizontalStackLayout>
                         </Grid>
-                    </SwipeView>
+                    </Border>
                 </DataTemplate>
             </CollectionView.ItemTemplate>
         </CollectionView>

@@ -70,7 +70,7 @@ public class LibraryService(PhantomDbContext db)
     {
         var rows = await q.Select(m => new
         {
-            m.Id, m.Title, m.Year, m.PosterUrl, m.Rating, m.RuntimeMinutes, m.ContentRating, m.AddedAt,
+            m.Id, m.Title, m.Year, m.PosterUrl, m.BackdropUrl, m.Rating, m.RuntimeMinutes, m.ContentRating, m.AddedAt,
             Qualities = m.Releases.Select(r => r.Quality).ToList(),
             State = db.WatchStates.Where(w => w.UserId == userId && w.MovieId == m.Id)
                 .Select(w => new { w.Watched, w.PositionMs, w.DurationMs }).FirstOrDefault(),
@@ -81,7 +81,8 @@ public class LibraryService(PhantomDbContext db)
             r.State?.Watched ?? false,
             r.State is { DurationMs: > 0 } s ? Math.Round(s.PositionMs * 100.0 / s.DurationMs, 1) : 0,
             r.AddedAt,
-            r.Qualities.OrderByDescending(ReleaseNameParser.QualityRank).FirstOrDefault())).ToList();
+            r.Qualities.OrderByDescending(ReleaseNameParser.QualityRank).FirstOrDefault(),
+            r.BackdropUrl)).ToList();
     }
 
     public async Task<MovieDetailDto?> DetailAsync(ClaimsPrincipal user, int id, CancellationToken ct)

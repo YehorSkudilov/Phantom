@@ -12,6 +12,15 @@ public partial class LibraryPage : TabView
         InitializeComponent();
         BindingContext = _vm = vm;
         SizeChanged += (_, _) => GridLayout.Span = Math.Max(3, (int)(Width / 140));
+        // BindableLayout rows have no selection; open a movie on tap instead.
+        SearchMovies.ChildAdded += (_, e) =>
+        {
+            if (e.Element is View view)
+                view.GestureRecognizers.Add(new TapGestureRecognizer
+                {
+                    Command = new Command(() => _vm.Search.OpenMovieCommand.Execute(view.BindingContext as MovieSummaryDto)),
+                });
+        };
     }
 
     public override void Load()
