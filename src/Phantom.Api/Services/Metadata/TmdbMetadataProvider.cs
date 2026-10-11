@@ -71,14 +71,14 @@ public class TmdbMetadataProvider(HttpClient http, IOptions<PhantomOptions> opti
         {
             using var find = await GetAsync($"/find/{movie.ImdbId}?external_source=imdb_id", ct);
             var hits = find.RootElement.GetProperty("movie_results");
-            if (hits.GetArrayLength() > 0) return hits[0].GetProperty("id").GetInt32();
+            if (hits.GetArrayLength() > 0 && hits[0].TryGetProperty("id", out var hit) && hit.TryGetInt(out var hitId)) return hitId;
         }
 
         var q = $"/search/movie?query={Uri.EscapeDataString(movie.Title)}";
         if (movie.Year is { } year) q += $"&year={year}";
         using var search = await GetAsync(q, ct);
         var results = search.RootElement.GetProperty("results");
-        return results.GetArrayLength() > 0 ? results[0].GetProperty("id").GetInt32() : null;
+        return results.GetArrayLength() > 0 && results[0].TryGetProperty("id", out var first) && first.TryGetInt(out var firstId) ? firstId : null;
     }
 
     private async Task<JsonDocument> GetAsync(string path, CancellationToken ct)
@@ -207,14 +207,14 @@ public class TmdbMetadataProvider(HttpClient http, IOptions<PhantomOptions> opti
         {
             using var find = await GetAsync($"/find/{show.ImdbId}?external_source=imdb_id", ct);
             var hits = find.RootElement.GetProperty("tv_results");
-            if (hits.GetArrayLength() > 0) return hits[0].GetProperty("id").GetInt32();
+            if (hits.GetArrayLength() > 0 && hits[0].TryGetProperty("id", out var hit) && hit.TryGetInt(out var hitId)) return hitId;
         }
 
         var q = $"/search/tv?query={Uri.EscapeDataString(show.Title)}";
         if (show.Year is { } year) q += $"&first_air_date_year={year}";
         using var search = await GetAsync(q, ct);
         var results = search.RootElement.GetProperty("results");
-        return results.GetArrayLength() > 0 ? results[0].GetProperty("id").GetInt32() : null;
+        return results.GetArrayLength() > 0 && results[0].TryGetProperty("id", out var first) && first.TryGetInt(out var firstId) ? firstId : null;
     }
 
     private static string? ShowCertification(JsonElement r)
@@ -274,7 +274,7 @@ public class TmdbMetadataProvider(HttpClient http, IOptions<PhantomOptions> opti
     private static async Task ApplyCollectionAsync(PhantomDbContext db, Movie movie, JsonElement r, CancellationToken ct)
     {
         if (!r.TryGetProperty("belongs_to_collection", out var bc) || bc.ValueKind != JsonValueKind.Object) return;
-        var id = bc.GetProperty("id").GetInt32();
+        if (!bc.TryGetProperty("id", out var idElement) || !idElement.TryGetInt(out var id)) return;
         var collection = db.Collections.Local.FirstOrDefault(c => c.TmdbCollectionId == id)
                          ?? await db.Collections.Include(c => c.Movies).FirstOrDefaultAsync(c => c.TmdbCollectionId == id, ct);
         if (collection is null)
