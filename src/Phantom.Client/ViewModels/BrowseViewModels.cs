@@ -33,6 +33,14 @@ public partial class HomeViewModel(PhantomApi api, SettingsService settings, Dow
         await downloads.SyncOfflineProgressAsync();
     });
 
+    /// <summary>Forgets the rows (another profile is in use): they're loaded afresh, as the skeleton shows.</summary>
+    public void Reset()
+    {
+        Hubs.Clear();
+        Featured = null;
+        HasLoaded = false;
+    }
+
     private static bool SameRow(HubDto a, HubDto b) => a.Key == b.Key && a.Title == b.Title && a.Items.SequenceEqual(b.Items);
 
     [RelayCommand]
@@ -87,6 +95,15 @@ public partial class MyStuffViewModel(MovieListViewModel watchlist, MovieListVie
     /// Loads the open list: the first time it's shown, and again each time the tab comes back into view (what was
     /// watched, or added to the watchlist, changes elsewhere in the app). Quietly, so the list stays on screen meanwhile.
     /// </summary>
+    /// <summary>Forgets the lists (another profile is in use): each loads afresh when it's next shown.</summary>
+    public void Reset()
+    {
+        Watchlist.Movies.Clear();
+        History.Movies.Clear();
+        Collections.Collections.Clear();
+        Playlists.Playlists.Clear();
+    }
+
     public void LoadSelectedTab(bool onlyIfEmpty = false)
     {
         switch (SelectedTab)
@@ -115,6 +132,14 @@ public partial class LibraryViewModel(PhantomApi api, SettingsService settings, 
         : "Movies and shows show up here as soon as your server finds them.";
     public string? EmptyActionText => HasActiveFilters ? "Clear filters" : null;
     public string EmptyGlyph => HasActiveFilters ? "search_off" : "movie_filter";
+
+    /// <summary>Forgets the library (another profile is in use, which may see other titles): it's loaded afresh when next shown.</summary>
+    public void Reset()
+    {
+        Movies.Clear();
+        _filtersLoaded = false;
+        HasLoaded = false;
+    }
 
     protected override void OnPropertyChanged(System.ComponentModel.PropertyChangedEventArgs e)
     {

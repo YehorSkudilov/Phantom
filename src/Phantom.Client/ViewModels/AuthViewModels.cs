@@ -145,6 +145,7 @@ public partial class ProfilesViewModel(PhantomApi api, SettingsService settings)
         CanManage = settings.User is { IsManaged: false };
     });
 
+    // Not held up by the list reloading (each time the page appears): a tap then used to do nothing.
     [RelayCommand]
     private Task Select(UserDto profile) => RunAsync(async () =>
     {
@@ -168,8 +169,9 @@ public partial class ProfilesViewModel(PhantomApi api, SettingsService settings)
         var auth = await api.SwitchProfileAsync(profile.Id, pin);
         settings.Token = auth.Token;
         settings.User = auth.User;
+        Views.MainPage.ProfileChanged();
         await GoToAsync("//main");
-    });
+    }, showBusy: false);
 
     [RelayCommand]
     private Task AddProfile() => RunAsync(async () =>

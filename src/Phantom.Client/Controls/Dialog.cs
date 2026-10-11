@@ -137,7 +137,7 @@ public static class Dialog
         if (!string.IsNullOrEmpty(message))
             body.Add(new AppSkeleton.CLabel { Text = message, FontSize = 14, LineHeight = 1.3, TextColor = Res("TextSecondary") });
 
-        var page = new DialogPage(body, sheet, cancelResult);
+        var page = new DialogPage(body, sheet, cancelResult, navigation);
         build(page.Close, body);
         await navigation.PushModalAsync(page, animated: false);
         return await page.Result;
@@ -152,11 +152,13 @@ public static class Dialog
         private readonly bool _sheet;
         private readonly string? _cancelResult;
         private bool _closing;
+        private readonly INavigation _host;
 
         public Task<string?> Result => _result.Task;
 
-        public DialogPage(View body, bool sheet, string? cancelResult)
+        public DialogPage(View body, bool sheet, string? cancelResult, INavigation host)
         {
+            _host = host;
             _sheet = sheet;
             _cancelResult = cancelResult;
             BackgroundColor = Colors.Transparent;
@@ -202,13 +204,24 @@ public static class Dialog
         {
             if (_closing) return;
             _closing = true;
+            // From here on it takes no taps, so even a pop-up that fails to go away can't block the page under it.
+            InputTransparent = true;
+            if (Content is { } content) content.InputTransparent = true;
             try
             {
-                await Task.WhenAll(
+                // The fade, but not waited on for ever (an animation that can't run never finishes).
+                await Task.WhenAny(Task.WhenAll(
                     _scrim.FadeToAsync(0, 120),
                     _card.FadeToAsync(0, 120),
-                    _card.TranslateToAsync(0, _sheet ? 60 : 16, 120, Easing.CubicIn));
-                if (Navigation.ModalStack.Contains(this)) await Navigation.PopModalAsync(animated: false);
+                    _card.TranslateToAsync(0, _sheet ? 60 : 16, 120, Easing.CubicIn)), Task.Delay(400));
+                // Popped from the navigation it was pushed on: the page's own can be a different one under Shell, whose
+                // modal stack didn't list it, which left an invisible pop-up over the app swallowing every tap.
+                if (_host.ModalStack.Contains(this)) await _host.PopModalAsync(animated: false);
+                else if (Navigation.ModalStack.Contains(this)) await Navigation.PopModalAsync(animated: false);
+            }
+            catch (Exception ex) when (ex is InvalidOperationException or ArgumentException)
+            {
+                System.Diagnostics.Debug.WriteLine($"Dialog: couldn't close: {ex}");
             }
             finally
             {

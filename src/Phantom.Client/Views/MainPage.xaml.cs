@@ -63,6 +63,24 @@ public partial class MainPage : ContentPage
             page.NavBar.SelectItem(page._tabs[(int)tab]);
     }
 
+    /// <summary>
+    /// Another profile is now in use: the tabs forget what they loaded for the last one (its rows, lists and library,
+    /// which a profile with a content limit mustn't see), and load afresh as they're shown.
+    /// </summary>
+    public static void ProfileChanged()
+    {
+        if (_instance?.TryGetTarget(out var page) != true) return;
+        foreach (var tab in page._tabs)
+        {
+            switch (tab.Page.BindingContext)
+            {
+                case ViewModels.HomeViewModel home: home.Reset(); break;
+                case ViewModels.LibraryViewModel library: library.Reset(); break;
+                case ViewModels.MyStuffViewModel mine: mine.Reset(); break;
+            }
+        }
+    }
+
     /// <summary>Opens Downloads on its "On this device" tab: what plays without a connection.</summary>
     public static async Task ShowDeviceDownloads()
     {
