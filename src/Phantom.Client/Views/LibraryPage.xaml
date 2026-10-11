@@ -35,18 +35,27 @@
                 </MultiBinding>
             </Grid.IsVisible>
         <!-- Movies / TV shows, sort, and how many there are -->
-        <Grid ColumnDefinitions="Auto,*,Auto" RowDefinitions="Auto,Auto" Padding="16,8" ColumnSpacing="10" RowSpacing="4">
-            <HorizontalStackLayout Spacing="6" VerticalOptions="Center">
-                <Button Text="Movies" Command="{Binding ShowMoviesCommand}" Padding="14,4" MinimumHeightRequest="36" FontSize="13">
+        <!-- All / Movies / TV shows on a row of their own (with the sort beside them a phone had no room), then how many
+             there are and the sort -->
+        <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto" Padding="16,8" ColumnSpacing="10" RowSpacing="6">
+            <HorizontalStackLayout Grid.ColumnSpan="2" Spacing="6">
+                <Button Text="All" Command="{Binding ShowAllCommand}" Style="{StaticResource SecondaryButton}" Padding="14,4" MinimumHeightRequest="36" FontSize="13">
                     <Button.Triggers>
-                        <DataTrigger TargetType="Button" Binding="{Binding IsShows}" Value="True">
-                            <Setter Property="BackgroundColor" Value="{StaticResource SurfaceRaised}" />
-                            <Setter Property="TextColor" Value="{StaticResource TextPrimary}" />
+                        <DataTrigger TargetType="Button" Binding="{Binding IsAll}" Value="True">
+                            <Setter Property="BackgroundColor" Value="{StaticResource Primary}" />
+                            <Setter Property="TextColor" Value="{StaticResource White}" />
                         </DataTrigger>
                     </Button.Triggers>
                 </Button>
-                <Button Text="TV shows" Command="{Binding ShowTvCommand}" Padding="14,4" MinimumHeightRequest="36" FontSize="13"
-                        Style="{StaticResource SecondaryButton}">
+                <Button Text="Movies" Command="{Binding ShowMoviesCommand}" Style="{StaticResource SecondaryButton}" Padding="14,4" MinimumHeightRequest="36" FontSize="13">
+                    <Button.Triggers>
+                        <DataTrigger TargetType="Button" Binding="{Binding IsMovies}" Value="True">
+                            <Setter Property="BackgroundColor" Value="{StaticResource Primary}" />
+                            <Setter Property="TextColor" Value="{StaticResource White}" />
+                        </DataTrigger>
+                    </Button.Triggers>
+                </Button>
+                <Button Text="TV shows" Command="{Binding ShowTvCommand}" Style="{StaticResource SecondaryButton}" Padding="14,4" MinimumHeightRequest="36" FontSize="13">
                     <Button.Triggers>
                         <DataTrigger TargetType="Button" Binding="{Binding IsShows}" Value="True">
                             <Setter Property="BackgroundColor" Value="{StaticResource Primary}" />
@@ -55,9 +64,9 @@
                     </Button.Triggers>
                 </Button>
             </HorizontalStackLayout>
-            <Picker Grid.Column="2" Title="Sort" ItemsSource="{Binding SortOptions}" SelectedItem="{Binding SelectedSort}"
+            <Label Grid.Row="1" Text="{Binding Summary}" Style="{StaticResource Muted}" VerticalOptions="Center" />
+            <Picker Grid.Row="1" Grid.Column="1" Title="Sort" ItemsSource="{Binding SortOptions}" SelectedItem="{Binding SelectedSort}"
                     WidthRequest="160" SemanticProperties.Description="Sort by" />
-            <Label Grid.Row="1" Grid.ColumnSpan="3" Text="{Binding Summary}" Style="{StaticResource Muted}" />
         </Grid>
 
         <!-- Filters panel -->
@@ -96,7 +105,7 @@
              view (the second) without pull-to-refresh. -->
         <Grid Grid.Row="3">
             <RefreshView IsRefreshing="{Binding IsRefreshing}" Command="{Binding ReloadCommand}" IsVisible="{Binding IsGrid}">
-                <CollectionView x:Name="Grid" ItemsSource="{Binding Movies}"
+                <CollectionView x:Name="Grid" ItemsSource="{Binding Movies}" Scrolled="OnListScrolled"
                                 ItemTemplate="{StaticResource PosterCard}" SelectionMode="Single"
                                 SelectionChanged="OnSelected"
                                 RemainingItemsThreshold="12" RemainingItemsThresholdReachedCommand="{Binding LoadMoreCommand}">
@@ -104,7 +113,18 @@
                         <GridItemsLayout x:Name="GridLayout" Orientation="Vertical" Span="3" HorizontalItemSpacing="10" VerticalItemSpacing="6" />
                     </CollectionView.ItemsLayout>
                     <CollectionView.Footer>
-                        <BoxView HeightRequest="{x:Static views:TabView.NavBarInset}" Color="Transparent" />
+                        <VerticalStackLayout Padding="0,8,0,0">
+                            <ActivityIndicator IsRunning="{Binding IsLoadingMore}" IsVisible="{Binding IsLoadingMore}" HorizontalOptions="Center" />
+                            <Button Text="Load more" Style="{StaticResource SecondaryButton}" Command="{Binding LoadMoreCommand}" HorizontalOptions="Center">
+                                <Button.IsVisible>
+                                    <MultiBinding Converter="{StaticResource AllTrue}">
+                                        <Binding Path="HasMore" />
+                                        <Binding Path="IsLoadingMore" Converter="{StaticResource Not}" />
+                                    </MultiBinding>
+                                </Button.IsVisible>
+                            </Button>
+                            <BoxView HeightRequest="{x:Static views:TabView.NavBarInset}" Color="Transparent" />
+                        </VerticalStackLayout>
                     </CollectionView.Footer>
                     <CollectionView.EmptyView>
                         <Label Text="Nothing matches these filters." Style="{StaticResource Muted}" HorizontalOptions="Center" Margin="0,40" />
@@ -112,11 +132,22 @@
                 </CollectionView>
             </RefreshView>
             <RefreshView IsRefreshing="{Binding IsRefreshing}" Command="{Binding ReloadCommand}" IsVisible="{Binding IsGrid, Converter={StaticResource Not}}">
-                <CollectionView ItemsSource="{Binding Movies}"
+                <CollectionView ItemsSource="{Binding Movies}" Scrolled="OnListScrolled"
                                 ItemTemplate="{StaticResource MovieRow}" SelectionMode="Single" SelectionChanged="OnSelected"
                                 RemainingItemsThreshold="12" RemainingItemsThresholdReachedCommand="{Binding LoadMoreCommand}">
                     <CollectionView.Footer>
-                        <BoxView HeightRequest="{x:Static views:TabView.NavBarInset}" Color="Transparent" />
+                        <VerticalStackLayout Padding="0,8,0,0">
+                            <ActivityIndicator IsRunning="{Binding IsLoadingMore}" IsVisible="{Binding IsLoadingMore}" HorizontalOptions="Center" />
+                            <Button Text="Load more" Style="{StaticResource SecondaryButton}" Command="{Binding LoadMoreCommand}" HorizontalOptions="Center">
+                                <Button.IsVisible>
+                                    <MultiBinding Converter="{StaticResource AllTrue}">
+                                        <Binding Path="HasMore" />
+                                        <Binding Path="IsLoadingMore" Converter="{StaticResource Not}" />
+                                    </MultiBinding>
+                                </Button.IsVisible>
+                            </Button>
+                            <BoxView HeightRequest="{x:Static views:TabView.NavBarInset}" Color="Transparent" />
+                        </VerticalStackLayout>
                     </CollectionView.Footer>
                     <CollectionView.EmptyView>
                         <Label Text="Nothing matches these filters." Style="{StaticResource Muted}" HorizontalOptions="Center" Margin="0,40" />

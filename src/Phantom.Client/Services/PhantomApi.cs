@@ -152,7 +152,8 @@ public class PhantomApi(HttpClient http, SettingsService settings)
     // ---------- Library ----------
 
     public Task<List<HubDto>> HubsAsync(CancellationToken ct = default) => GetAsync<List<HubDto>>("/api/library/hubs", ct);
-    public Task<LibraryFiltersDto> FiltersAsync(MediaKind kind = MediaKind.Movie) => GetAsync<LibraryFiltersDto>($"/api/library/filters?kind={kind}");
+    public Task<LibraryFiltersDto> FiltersAsync(MediaKind kind = MediaKind.Movie, bool all = false) =>
+        GetAsync<LibraryFiltersDto>($"/api/library/filters?kind={kind}" + (all ? "&all=true" : ""));
     public Task<SearchResultDto> SearchAsync(string q, CancellationToken ct = default) => GetAsync<SearchResultDto>($"/api/library/search?q={Uri.EscapeDataString(q)}", ct);
 
     public Task<PagedResult<MovieSummaryDto>> MoviesAsync(MovieQuery q, CancellationToken ct = default)
@@ -177,6 +178,7 @@ public class PhantomApi(HttpClient http, SettingsService settings)
         Add("actor", q.Actor);
         Add("director", q.Director);
         if (q.Kind != MediaKind.Movie) Add("kind", q.Kind);
+        if (q.AllKinds) Add("allKinds", true);
         return GetAsync<PagedResult<MovieSummaryDto>>("/api/library/movies?" + string.Join('&', parts), ct);
     }
 

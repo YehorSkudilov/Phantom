@@ -19,6 +19,8 @@
             <local:MinutesConverter x:Key="Minutes" />
             <local:TimeSpanConverter x:Key="Time" />
             <local:PosterConverter x:Key="Poster" />
+            <local:BackdropConverter x:Key="Backdrop" />
+            <local:PosterWidthConverter x:Key="PosterWidth" />
             <local:EqualsConverter x:Key="Equals" />
             <local:InitialConverter x:Key="Initial" />
             <local:SourceTypeConverter x:Key="SourceType" />

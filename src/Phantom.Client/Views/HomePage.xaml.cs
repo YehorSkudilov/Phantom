@@ -21,6 +21,15 @@ public partial class HomePage : TabView
         if (_vm.Hubs.Count == 0 && !_vm.IsBusy) _vm.RefreshCommand.Execute(null);
     }
 
+    // The featured banner keeps about a 16:9 backdrop's shape as the window widens, within reason, rather than a fixed
+    // 220 that left a wide screen with a thin, heavily cropped strip of it.
+    private void OnHeroSizeChanged(object? sender, EventArgs e)
+    {
+        if (Hero.Width <= 0) return;
+        var height = Math.Clamp(Hero.Width * 9 / 16, 200, 520);
+        if (Math.Abs(Hero.HeightRequest - height) > 1) Hero.HeightRequest = height;
+    }
+
     /// <summary>Clears the selection so tapping the same poster again still navigates.</summary>
     internal static void ClearSelection(object? sender)
     {

@@ -27,25 +27,41 @@
                 <Label Text="{Binding ErrorMessage}" TextColor="{StaticResource Danger}" Margin="16,0"
                        IsVisible="{Binding ErrorMessage, Converter={StaticResource HasValue}}" />
 
-                <!-- Featured hero: continue watching or newest addition -->
-                <Border Margin="16,8" StrokeShape="RoundRectangle 16" HeightRequest="220"
+                <!-- Featured hero: continue watching or newest addition. Its height follows its width (about 16:9, see
+                     HomePage.OnHeroSizeChanged) so a backdrop isn't cut down to a strip on a wide screen. -->
+                <Border x:Name="Hero" Margin="16,8" StrokeShape="RoundRectangle 16" HeightRequest="220" SizeChanged="OnHeroSizeChanged"
                         IsVisible="{Binding Featured, Converter={StaticResource HasValue}}" BackgroundColor="{StaticResource Surface}">
                     <Border.GestureRecognizers>
                         <TapGestureRecognizer Command="{Binding OpenMovieCommand}" CommandParameter="{Binding Featured}" />
                     </Border.GestureRecognizers>
                     <Grid>
-                        <Image Source="{Binding Featured.BackdropUrl, Converter={StaticResource Poster}}" Aspect="AspectFill" Opacity="0.8"
+                        <Image Source="{Binding Featured.BackdropUrl, Converter={StaticResource Backdrop}}" Aspect="AspectFill" Opacity="0.85"
                                IsVisible="{Binding Featured.BackdropUrl, Converter={StaticResource HasValue}}" />
-                        <Image Source="{Binding Featured.PosterUrl, Converter={StaticResource Poster}}" Aspect="AspectFill" Opacity="0.55"
+                        <!-- No backdrop: the poster dimmed behind, and sharp at its own shape beside the title rather than
+                             stretched across (which blurred it) -->
+                        <Image Source="{Binding Featured.PosterUrl, Converter={StaticResource Poster}}" Aspect="AspectFill" Opacity="0.25"
                                IsVisible="{Binding Featured.BackdropUrl, Converter={StaticResource HasValue}, ConverterParameter=invert}" />
                         <Grid Background="{StaticResource BackdropFade}" />
-                        <VerticalStackLayout VerticalOptions="End" Padding="18" Spacing="6">
-                            <Label Text="FEATURED" FontSize="11" TextColor="{StaticResource Accent}" CharacterSpacing="2" />
-                            <Label Text="{Binding Featured.Title}" Style="{StaticResource H1}" MaxLines="2" />
-                            <Label Text="{Binding Featured.Year}" Style="{StaticResource Muted}" />
-                            <ProgressBar Progress="{Binding Featured.ProgressPercent, Converter={StaticResource Percent}}"
-                                         IsVisible="{Binding Featured.ProgressPercent, Converter={StaticResource HasValue}}" WidthRequest="160" HorizontalOptions="Start" />
-                        </VerticalStackLayout>
+                        <Grid ColumnDefinitions="Auto,*" ColumnSpacing="16" Padding="18">
+                            <Border StrokeShape="RoundRectangle 10" VerticalOptions="End" WidthRequest="{Binding Source={x:Reference Hero}, Path=Height, Converter={StaticResource PosterWidth}}"
+                                    IsVisible="{Binding Featured.BackdropUrl, Converter={StaticResource HasValue}, ConverterParameter=invert}">
+                                <Image Source="{Binding Featured.PosterUrl, Converter={StaticResource Poster}}" Aspect="AspectFill" />
+                            </Border>
+                            <VerticalStackLayout Grid.Column="1" VerticalOptions="End" Spacing="6">
+                                <Label Text="FEATURED" FontSize="11" TextColor="{StaticResource Accent}" CharacterSpacing="2" />
+                                <Label Text="{Binding Featured.Title}" Style="{StaticResource H1}" MaxLines="2" />
+                                <Label Style="{StaticResource Muted}">
+                                    <Label.FormattedText>
+                                        <FormattedString>
+                                            <Span Text="{Binding Featured.Year}" />
+                                            <Span Text="{Binding Featured.Caption, StringFormat='  ·  {0}'}" />
+                                        </FormattedString>
+                                    </Label.FormattedText>
+                                </Label>
+                                <ProgressBar Progress="{Binding Featured.ProgressPercent, Converter={StaticResource Percent}}"
+                                             IsVisible="{Binding Featured.ProgressPercent, Converter={StaticResource HasValue}}" WidthRequest="160" HorizontalOptions="Start" />
+                            </VerticalStackLayout>
+                        </Grid>
                     </Grid>
                 </Border>
 

@@ -151,3 +151,29 @@ public class Below100Converter : IValueConverter
     public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture) => value is double d && d < 100;
     public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture) => throw new NotSupportedException();
 }
+
+/// <summary>
+/// A backdrop for a big banner. TMDB's are served 1280 wide, soft once stretched across a desktop or TV screen, so
+/// there it asks for TMDB's full-size image instead; phones keep the lighter one.
+/// </summary>
+public class BackdropConverter : IValueConverter
+{
+    public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
+    {
+        if (value is not string { Length: > 0 } url) return ImageSource.FromFile("logo_mark.png");
+        if (DeviceInfo.Idiom == DeviceIdiom.Desktop || DeviceInfo.Idiom == DeviceIdiom.TV || DeviceInfo.Idiom == DeviceIdiom.Tablet)
+            url = url.Replace("image.tmdb.org/t/p/w1280/", "image.tmdb.org/t/p/original/", StringComparison.Ordinal);
+        return ImageSource.FromUri(new Uri(url));
+    }
+
+    public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture) => throw new NotSupportedException();
+}
+
+/// <summary>A poster's width (2:3) for a banner of the given height, less its padding.</summary>
+public class PosterWidthConverter : IValueConverter
+{
+    public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture) =>
+        value is double height && height > 36 ? (height - 36) * 2 / 3 : 120d;
+
+    public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture) => throw new NotSupportedException();
+}

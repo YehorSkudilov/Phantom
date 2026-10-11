@@ -165,6 +165,11 @@ public class ShowApiTests : IClassFixture<PhantomFactory>
                 new Release { Name = "Test.Show.S02E01.720p", InfoHash = new string('f', 40), SeasonNumber = 2, EpisodeNumber = 1, Quality = "720p", Seeders = 4 },
             ],
         });
+        db.Movies.Add(new Movie
+        {
+            Title = "A Test Movie", SortTitle = "test movie", Year = 2021, ExternalKey = "testmovie", Rating = 7,
+            Releases = [new Release { Name = "A.Test.Movie.2021.1080p", InfoHash = new string('g', 40), Quality = "1080p", Seeders = 4 }],
+        });
         db.SaveChanges();
     }
 
@@ -189,10 +194,37 @@ public class ShowApiTests : IClassFixture<PhantomFactory>
         var shows = await client.GetFromJsonAsync<PagedResult<MovieSummaryDto>>("/api/library/movies?kind=Show", Json);
         var show = Assert.Single(shows!.Items);
         Assert.Equal((MediaKind.Show, "2 seasons"), (show.Kind, show.Caption));
-        Assert.Empty((await client.GetFromJsonAsync<PagedResult<MovieSummaryDto>>("/api/library/movies", Json))!.Items);
+        Assert.Equal(["A Test Movie"], (await client.GetFromJsonAsync<PagedResult<MovieSummaryDto>>("/api/library/movies", Json))!.Items.Select(i => i.Title));
 
         var filters = await client.GetFromJsonAsync<LibraryFiltersDto>("/api/library/filters?kind=Show", Json);
         Assert.Equal(["Drama"], filters!.Genres);
+    }
+
+    [Theory]
+    [InlineData("Title", false)]
+    [InlineData("Title", true)]
+    [InlineData("Year", true)]
+    [InlineData("Rating", true)]
+    [InlineData("Runtime", false)]
+    [InlineData("AddedAt", true)]
+    [InlineData("LastViewed", true)]
+    [InlineData("Random", false)]
+    public async Task All_lists_movies_and_shows_together(string sort, bool descending)
+    {
+        var client = await ClientAsync();
+        var all = await client.GetFromJsonAsync<PagedResult<MovieSummaryDto>>($"/api/library/movies?allKinds=true&sort={sort}&descending={descending}", Json);
+        Assert.Equal(2, all!.Total);
+        Assert.Equal([MediaKind.Movie, MediaKind.Show], all.Items.Select(i => i.Kind).Order());
+        if (sort == "Title")
+            Assert.Equal(descending ? ["Test Show", "A Test Movie"] : ["A Test Movie", "Test Show"], all.Items.Select(i => i.Title));
+
+        // Paged as one list, and a movie-only filter leaves the shows out.
+        Assert.Single((await client.GetFromJsonAsync<PagedResult<MovieSummaryDto>>($"/api/library/movies?allKinds=true&sort={sort}&pageSize=1&page=2", Json))!.Items);
+        Assert.Equal(1, (await client.GetFromJsonAsync<PagedResult<MovieSummaryDto>>("/api/library/movies?allKinds=true&quality=1080p", Json))!.Total);
+
+        var filters = await client.GetFromJsonAsync<LibraryFiltersDto>("/api/library/filters?all=true", Json);
+        Assert.Contains("Drama", filters!.Genres);
+        Assert.Equal([2021, 2020], filters.Years);
     }
 
     [Fact]

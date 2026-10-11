@@ -49,9 +49,9 @@ public partial class HomeViewModel(PhantomApi api, SettingsService settings, Dow
         var query = hub.Key switch
         {
             "continue" => "inProgress=true",
-            "recent" => "sort=AddedAt",
-            "released" => "sort=Year",
-            "top" or "recommended" => "sort=Rating",
+            "recent" => "kind=Movie&sort=AddedAt",
+            "released" => "kind=Movie&sort=Year",
+            "top" or "recommended" => "kind=Movie&sort=Rating",
             "shows-recent" => "kind=Show&sort=AddedAt",
             "shows-top" => "kind=Show&sort=Rating",
             "watchlist" => null,
@@ -66,6 +66,9 @@ public partial class HomeViewModel(PhantomApi api, SettingsService settings, Dow
     [RelayCommand]
     private Task GoToDownloads() => Views.MainPage.ShowTab(Views.AppTab.Downloads);
 }
+
+/// <summary>What the Library lists.</summary>
+public enum LibraryKind { All, Movies, Shows }
 
 public record SortOption(string Name, MovieSort Sort, bool Descending)
 {
@@ -105,7 +108,7 @@ public partial class LibraryViewModel(PhantomApi api, SettingsService settings, 
         }
     }
 
-    private const int PageSize = 60;
+    private const int PageSize = 90;
     private int _page;
     private int _total;
     private CancellationTokenSource? _loadCts;
@@ -140,12 +143,14 @@ public partial class LibraryViewModel(PhantomApi api, SettingsService settings, 
     [ObservableProperty] private string? director;
     [ObservableProperty] private bool showFilters;
 
-    /// <summary>The whole library's Movies / TV shows switch.</summary>
+    /// <summary>The whole library's All / Movies / TV shows switch.</summary>
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(IsShows))]
-    private MediaKind kind;
+    [NotifyPropertyChangedFor(nameof(IsAll), nameof(IsMovies), nameof(IsShows))]
+    private LibraryKind kind = LibraryKind.All;
 
-    public bool IsShows => Kind == MediaKind.Show;
+    public bool IsAll => Kind == LibraryKind.All;
+    public bool IsMovies => Kind == LibraryKind.Movies;
+    public bool IsShows => Kind == LibraryKind.Shows;
     [ObservableProperty] private bool isGrid = settings.LibraryView == "grid";
     [ObservableProperty] private string summary = "";
 
@@ -160,7 +165,12 @@ public partial class LibraryViewModel(PhantomApi api, SettingsService settings, 
         SelectedGenre = "All genres";
         SelectedWatchState = "All";
         Actor = Director = null;
-        SetKind(query.TryGetValue("kind", out var k) && k.ToString() == nameof(MediaKind.Show) ? MediaKind.Show : MediaKind.Movie);
+        SetKind(query.TryGetValue("kind", out var k) ? k.ToString() switch
+        {
+            nameof(MediaKind.Show) => LibraryKind.Shows,
+            nameof(MediaKind.Movie) => LibraryKind.Movies,
+            _ => LibraryKind.All,
+        } : LibraryKind.All);
         if (query.TryGetValue("genre", out var g)) SelectedGenre = Uri.UnescapeDataString(g.ToString()!);
         if (query.TryGetValue("actor", out var a)) Actor = Uri.UnescapeDataString(a.ToString()!);
         if (query.TryGetValue("director", out var d)) Director = Uri.UnescapeDataString(d.ToString()!);
@@ -181,12 +191,15 @@ public partial class LibraryViewModel(PhantomApi api, SettingsService settings, 
     partial void OnIsGridChanged(bool value) => settings.LibraryView = value ? "grid" : "list";
 
     [RelayCommand]
-    private void ShowMovies() => SwitchKind(MediaKind.Movie);
+    private void ShowAll() => SwitchKind(LibraryKind.All);
 
     [RelayCommand]
-    private void ShowTv() => SwitchKind(MediaKind.Show);
+    private void ShowMovies() => SwitchKind(LibraryKind.Movies);
 
-    private void SwitchKind(MediaKind value)
+    [RelayCommand]
+    private void ShowTv() => SwitchKind(LibraryKind.Shows);
+
+    private void SwitchKind(LibraryKind value)
     {
         if (Kind == value) return;
         _suspendReload = true;
@@ -196,7 +209,7 @@ public partial class LibraryViewModel(PhantomApi api, SettingsService settings, 
     }
 
     /// <summary>Movies and shows have their own genres, years and ratings, so the filters start over.</summary>
-    private void SetKind(MediaKind value)
+    private void SetKind(LibraryKind value)
     {
         if (Kind == value) return;
         Kind = value;
@@ -225,7 +238,8 @@ public partial class LibraryViewModel(PhantomApi api, SettingsService settings, 
         StartsWith = SelectedLetter == "All" ? null : SelectedLetter,
         Actor = Actor,
         Director = Director,
-        Kind = Kind,
+        Kind = Kind == LibraryKind.Shows ? MediaKind.Show : MediaKind.Movie,
+        AllKinds = Kind == LibraryKind.All,
         Page = page,
         PageSize = PageSize,
     };
@@ -247,27 +261,47 @@ public partial class LibraryViewModel(PhantomApi api, SettingsService settings, 
             foreach (var m in result.Items) Movies.Add(m);
             _page = 1;
             _total = result.Total;
-            Summary = $"{result.Total} {(IsShows ? (result.Total == 1 ? "show" : "shows") : (result.Total == 1 ? "movie" : "movies"))}"
+            HasMore = Movies.Count < _total;
+            Summary = $"{result.Total} {Kind switch { LibraryKind.Shows => result.Total == 1 ? "show" : "shows", LibraryKind.Movies => result.Total == 1 ? "movie" : "movies", _ => result.Total == 1 ? "title" : "titles" }}"
                       + (Actor is not null ? $" with {Actor}" : Director is not null ? $" by {Director}" : "");
         }, showBusy: false);
         _ = EndRefreshAsync();
     }
 
+    /// <summary>More of the library to load, for the "Load more" button at the end of the list.</summary>
+    [ObservableProperty] private bool hasMore;
+    [ObservableProperty] private bool isLoadingMore;
+
+    /// <summary>
+    /// The next page, when the list nears its end (the page watches the scroll position, as the list's own "nearly at
+    /// the end" event doesn't always fire) or "Load more" is tapped.
+    /// </summary>
     [RelayCommand]
     private async Task LoadMore()
     {
-        if (IsBusy || Movies.Count >= _total) return;
-        await RunAsync(async () =>
+        if (IsLoadingMore || Movies.Count >= _total || _loadCts is not { } cts) return;
+        IsLoadingMore = true;
+        try
         {
-            var result = await api.MoviesAsync(BuildQuery(_page + 1));
-            foreach (var m in result.Items) Movies.Add(m);
-            _page++;
-        });
+            await RunAsync(async () =>
+            {
+                var result = await api.MoviesAsync(BuildQuery(_page + 1), cts.Token);
+                if (cts.IsCancellationRequested) return; // the filters changed meanwhile: this page is of the old list
+                foreach (var m in result.Items) Movies.Add(m);
+                _page++;
+                _total = result.Total;
+            }, showBusy: false);
+        }
+        finally
+        {
+            IsLoadingMore = false;
+            HasMore = Movies.Count < _total;
+        }
     }
 
     private async Task LoadFiltersAsync()
     {
-        var filters = await api.FiltersAsync(Kind);
+        var filters = await api.FiltersAsync(Kind == LibraryKind.Shows ? MediaKind.Show : MediaKind.Movie, all: Kind == LibraryKind.All);
         foreach (var list in new[] { Genres, Decades, Qualities, Ratings })
             while (list.Count > 1) list.RemoveAt(list.Count - 1);
         foreach (var g in filters.Genres) Genres.Add(g);

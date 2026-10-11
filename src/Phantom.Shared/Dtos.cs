@@ -192,6 +192,12 @@ public record MovieQuery
 
     /// <summary>Movies, or shows (which ignore Quality, Director and the Runtime sort).</summary>
     public MediaKind Kind { get; init; } = MediaKind.Movie;
+
+    /// <summary>
+    /// Movies and shows together, sorted as one list (<see cref="Kind"/> is then ignored). A Quality or Director filter
+    /// leaves it movies only, as shows have neither.
+    /// </summary>
+    public bool AllKinds { get; init; }
     public bool Descending { get; init; } = true;
     public int Page { get; init; } = 1;
     public int PageSize { get; init; } = 50;

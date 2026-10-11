@@ -19,6 +19,7 @@ public class LibraryController(PhantomDbContext db, LibraryService library, Show
         var userId = User.UserId();
         var pageSize = Math.Clamp(query.PageSize, 1, 200);
         var page = Math.Max(1, query.Page);
+        if (query.AllKinds) return await AllKindsAsync(query, userId, page, pageSize, ct);
         if (query.Kind == MediaKind.Show)
         {
             var sq = shows.Apply(shows.Visible(User), query, userId);
@@ -32,9 +33,84 @@ public class LibraryController(PhantomDbContext db, LibraryService library, Show
         return new PagedResult<MovieSummaryDto>(items, total, page, pageSize);
     }
 
-    [HttpGet("filters")]
-    public async Task<LibraryFiltersDto> Filters([FromQuery] MediaKind kind, CancellationToken ct)
+    /// <summary>One row of the mixed library: just what sorting needs, for movies and shows alike.</summary>
+    private sealed class LibraryRow
     {
+        public int Id { get; init; }
+        public bool IsShow { get; init; }
+        public string SortTitle { get; init; } = "";
+        public int? Year { get; init; }
+        public double? Rating { get; init; }
+        public int? Runtime { get; init; }
+        public DateTime AddedAt { get; init; }
+        public DateTime? LastViewed { get; init; }
+    }
+
+    /// <summary>
+    /// Movies and shows as one list: both filtered as usual, put together in one query (a SQL UNION), sorted and paged
+    /// there, then the page's summaries fetched by kind and put back in its order.
+    /// </summary>
+    private async Task<PagedResult<MovieSummaryDto>> AllKindsAsync(MovieQuery query, int userId, int page, int pageSize, CancellationToken ct)
+    {
+        IQueryable<LibraryRow> rows = library.Apply(library.Visible(User), query, userId, sort: false).Select(m => new LibraryRow
+        {
+            Id = m.Id, IsShow = false, SortTitle = m.SortTitle, Year = m.Year, Rating = m.Rating, Runtime = m.RuntimeMinutes, AddedAt = m.AddedAt,
+            LastViewed = db.WatchStates.Where(w => w.UserId == userId && w.MovieId == m.Id).Select(w => w.LastViewedAt).FirstOrDefault(),
+        });
+        // Shows have no quality or director: a filter on either leaves only movies.
+        if (string.IsNullOrWhiteSpace(query.Quality) && string.IsNullOrWhiteSpace(query.Director))
+        {
+            rows = rows.Concat(shows.Apply(shows.Visible(User), query, userId, sort: false).Select(s => new LibraryRow
+            {
+                Id = s.Id, IsShow = true, SortTitle = s.SortTitle, Year = s.Year, Rating = s.Rating, Runtime = (int?)null, AddedAt = s.AddedAt,
+                LastViewed = db.EpisodeWatchStates.Where(w => w.UserId == userId && w.Episode!.ShowId == s.Id).Max(w => w.LastViewedAt),
+            }));
+        }
+
+        var ordered = (query.Sort, query.Descending) switch
+        {
+            (MovieSort.Title, false) => rows.OrderBy(r => r.SortTitle),
+            (MovieSort.Title, true) => rows.OrderByDescending(r => r.SortTitle),
+            (MovieSort.Year, false) => rows.OrderBy(r => r.Year).ThenBy(r => r.SortTitle),
+            (MovieSort.Year, true) => rows.OrderByDescending(r => r.Year).ThenBy(r => r.SortTitle),
+            (MovieSort.Rating, false) => rows.OrderBy(r => r.Rating),
+            (MovieSort.Rating, true) => rows.OrderByDescending(r => r.Rating),
+            (MovieSort.Runtime, false) => rows.OrderBy(r => r.Runtime),
+            (MovieSort.Runtime, true) => rows.OrderByDescending(r => r.Runtime),
+            (MovieSort.LastViewed, _) => rows.OrderByDescending(r => r.LastViewed),
+            (MovieSort.Random, _) => rows.OrderBy(r => EF.Functions.Random()),
+            (_, false) => rows.OrderBy(r => r.AddedAt),
+            _ => rows.OrderByDescending(r => r.AddedAt),
+        };
+
+        var total = await rows.CountAsync(ct);
+        var pageRows = await ordered.ThenBy(r => r.IsShow).ThenBy(r => r.Id)
+            .Skip((page - 1) * pageSize).Take(pageSize).Select(r => new { r.Id, r.IsShow }).ToListAsync(ct);
+
+        var movieIds = pageRows.Where(r => !r.IsShow).Select(r => r.Id).ToList();
+        var showIds = pageRows.Where(r => r.IsShow).Select(r => r.Id).ToList();
+        var movies = (await library.SummariesAsync(library.Visible(User).Where(m => movieIds.Contains(m.Id)), userId, ct)).ToDictionary(m => m.Id);
+        var showItems = (await shows.SummariesAsync(shows.Visible(User).Where(s => showIds.Contains(s.Id)), userId, ct)).ToDictionary(s => s.Id);
+        var items = pageRows
+            .Select(r => r.IsShow ? showItems.GetValueOrDefault(r.Id) : movies.GetValueOrDefault(r.Id))
+            .OfType<MovieSummaryDto>().ToList();
+        return new PagedResult<MovieSummaryDto>(items, total, page, pageSize);
+    }
+
+    [HttpGet("filters")]
+    public async Task<LibraryFiltersDto> Filters([FromQuery] MediaKind kind, [FromQuery] bool all, CancellationToken ct)
+    {
+        // Movies and shows together: both kinds' choices in one list each.
+        if (all)
+        {
+            var m = await Filters(MediaKind.Movie, false, ct);
+            var s = await Filters(MediaKind.Show, false, ct);
+            return new LibraryFiltersDto(
+                m.Genres.Union(s.Genres).Order().ToList(),
+                m.Years.Union(s.Years).OrderDescending().ToList(),
+                m.Qualities,
+                m.ContentRatings.Union(s.ContentRatings).OrderBy(ContentRatings.Rank).ToList());
+        }
         if (kind == MediaKind.Show)
         {
             var visibleShows = shows.Visible(User);

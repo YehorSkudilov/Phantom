@@ -20,7 +20,8 @@ public class ShowLibraryService(PhantomDbContext db)
         return q;
     }
 
-    public IQueryable<Show> Apply(IQueryable<Show> q, MovieQuery query, int userId)
+    /// <param name="sort">False for the filters alone (the library's "All" sorts movies and shows together).</param>
+    public IQueryable<Show> Apply(IQueryable<Show> q, MovieQuery query, int userId, bool sort = true)
     {
         if (!string.IsNullOrWhiteSpace(query.Search))
         {
@@ -45,6 +46,7 @@ public class ShowLibraryService(PhantomDbContext db)
         if (query.Unwatched == false) q = q.Where(x => states.Any(w => w.Episode!.ShowId == x.Id && w.Watched));
         if (query.InProgress == true) q = q.Where(x => states.Any(w => w.Episode!.ShowId == x.Id && (w.Watched || w.PositionMs > 0)));
 
+        if (!sort) return q;
         return (query.Sort, query.Descending) switch
         {
             (MovieSort.Title, false) => q.OrderBy(x => x.SortTitle),
