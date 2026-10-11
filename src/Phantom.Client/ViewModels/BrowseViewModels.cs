@@ -44,6 +44,8 @@ public partial class HomeViewModel(PhantomApi api, SettingsService settings, Dow
             "recent" => "sort=AddedAt",
             "released" => "sort=Year",
             "top" or "recommended" => "sort=Rating",
+            "shows-recent" => "kind=Show&sort=AddedAt",
+            "shows-top" => "kind=Show&sort=Rating",
             "watchlist" => null,
             _ when hub.Key.StartsWith("genre:") => $"genre={Uri.EscapeDataString(hub.Key[6..])}",
             _ => "",
@@ -70,7 +72,7 @@ public partial class LibraryViewModel(PhantomApi api, SettingsService settings, 
     public SearchViewModel Search => search;
 
     // Sub-tabs: the whole library, then the profile's own lists.
-    public IReadOnlyList<string> Tabs { get; } = ["All movies", "Watchlist", "Recently watched", "Collections", "Playlists"];
+    public IReadOnlyList<string> Tabs { get; } = ["All", "Watchlist", "Recently watched", "Collections", "Playlists"];
     public MovieListViewModel Watchlist { get; } = watchlist.Use("watchlist");
     public MovieListViewModel History { get; } = history.Use("history");
     public CollectionsViewModel Collections => collections;
@@ -126,6 +128,13 @@ public partial class LibraryViewModel(PhantomApi api, SettingsService settings, 
     [ObservableProperty] private string? actor;
     [ObservableProperty] private string? director;
     [ObservableProperty] private bool showFilters;
+
+    /// <summary>The whole library's Movies / TV shows switch.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsShows))]
+    private MediaKind kind;
+
+    public bool IsShows => Kind == MediaKind.Show;
     [ObservableProperty] private bool isGrid = settings.LibraryView == "grid";
     [ObservableProperty] private string summary = "";
 
@@ -140,6 +149,7 @@ public partial class LibraryViewModel(PhantomApi api, SettingsService settings, 
         SelectedGenre = "All genres";
         SelectedWatchState = "All";
         Actor = Director = null;
+        SetKind(query.TryGetValue("kind", out var k) && k.ToString() == nameof(MediaKind.Show) ? MediaKind.Show : MediaKind.Movie);
         if (query.TryGetValue("genre", out var g)) SelectedGenre = Uri.UnescapeDataString(g.ToString()!);
         if (query.TryGetValue("actor", out var a)) Actor = Uri.UnescapeDataString(a.ToString()!);
         if (query.TryGetValue("director", out var d)) Director = Uri.UnescapeDataString(d.ToString()!);
@@ -159,6 +169,33 @@ public partial class LibraryViewModel(PhantomApi api, SettingsService settings, 
     partial void OnSelectedLetterChanged(string value) => AutoReload();
     partial void OnIsGridChanged(bool value) => settings.LibraryView = value ? "grid" : "list";
 
+    [RelayCommand]
+    private void ShowMovies() => SwitchKind(MediaKind.Movie);
+
+    [RelayCommand]
+    private void ShowTv() => SwitchKind(MediaKind.Show);
+
+    private void SwitchKind(MediaKind value)
+    {
+        if (Kind == value) return;
+        _suspendReload = true;
+        SetKind(value);
+        _suspendReload = false;
+        ReloadCommand.Execute(null);
+    }
+
+    /// <summary>Movies and shows have their own genres, years and ratings, so the filters start over.</summary>
+    private void SetKind(MediaKind value)
+    {
+        if (Kind == value) return;
+        Kind = value;
+        SelectedGenre = "All genres";
+        SelectedDecade = "Any decade";
+        SelectedQuality = "Any quality";
+        SelectedRating = "Any rating";
+        _filtersLoaded = false;
+    }
+
     private void AutoReload()
     {
         if (!_suspendReload && SelectedSort is not null) ReloadCommand.Execute(null);
@@ -177,6 +214,7 @@ public partial class LibraryViewModel(PhantomApi api, SettingsService settings, 
         StartsWith = SelectedLetter == "All" ? null : SelectedLetter,
         Actor = Actor,
         Director = Director,
+        Kind = Kind,
         Page = page,
         PageSize = PageSize,
     };
@@ -198,7 +236,8 @@ public partial class LibraryViewModel(PhantomApi api, SettingsService settings, 
             foreach (var m in result.Items) Movies.Add(m);
             _page = 1;
             _total = result.Total;
-            Summary = $"{result.Total} movies" + (Actor is not null ? $" with {Actor}" : Director is not null ? $" by {Director}" : "");
+            Summary = $"{result.Total} {(IsShows ? (result.Total == 1 ? "show" : "shows") : (result.Total == 1 ? "movie" : "movies"))}"
+                      + (Actor is not null ? $" with {Actor}" : Director is not null ? $" by {Director}" : "");
         }, showBusy: false);
         _ = EndRefreshAsync();
     }
@@ -217,7 +256,9 @@ public partial class LibraryViewModel(PhantomApi api, SettingsService settings, 
 
     private async Task LoadFiltersAsync()
     {
-        var filters = await api.FiltersAsync();
+        var filters = await api.FiltersAsync(Kind);
+        foreach (var list in new[] { Genres, Decades, Qualities, Ratings })
+            while (list.Count > 1) list.RemoveAt(list.Count - 1);
         foreach (var g in filters.Genres) Genres.Add(g);
         foreach (var d in filters.Years.Select(y => y / 10 * 10).Distinct()) Decades.Add($"{d}s");
         foreach (var q in filters.Qualities) Qualities.Add(q);

@@ -47,7 +47,15 @@
                         </Grid>
                     </Border>
                     <Label Grid.Row="1" Text="{Binding Title}" FontSize="13" LineBreakMode="TailTruncation" MaxLines="1" />
-                    <Label Grid.Row="2" Text="{Binding Year}" Style="{StaticResource Muted}" FontSize="12" />
+                    <!-- A show's caption: the episode to carry on with, or how many seasons -->
+                    <Label Grid.Row="2" Style="{StaticResource Muted}" FontSize="12" LineBreakMode="TailTruncation" MaxLines="1">
+                        <Label.FormattedText>
+                            <FormattedString>
+                                <Span Text="{Binding Year}" />
+                                <Span Text="{Binding Caption, StringFormat='  ·  {0}'}" />
+                            </FormattedString>
+                        </Label.FormattedText>
+                    </Label>
                 </Grid>
             </DataTemplate>
 

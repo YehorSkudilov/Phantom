@@ -24,7 +24,7 @@
         <controls:TabStrip Grid.Row="1" Tabs="{Binding Tabs}" SelectedIndex="{Binding SelectedTab}" Margin="0,4,0,0" />
 
         <!-- Search: typing swaps the library below for results across titles, cast and genres. -->
-        <SearchBar Grid.Row="2" x:Name="Box" IsVisible="{Binding SelectedTab, Converter={StaticResource Equals}, ConverterParameter=0}" Text="{Binding Search.Query}" Placeholder="Search movies, actors, directors, genres"
+        <SearchBar Grid.Row="2" x:Name="Box" IsVisible="{Binding SelectedTab, Converter={StaticResource Equals}, ConverterParameter=0}" Text="{Binding Search.Query}" Placeholder="Search movies, shows, actors, genres"
                    SearchCommand="{Binding Search.SearchCommand}" Margin="8,6,8,0" />
 
         <Grid Grid.Row="3" RowDefinitions="Auto,Auto,Auto,*">
@@ -34,11 +34,30 @@
                     <Binding Path="Search.Query" Converter="{StaticResource HasValue}" ConverterParameter="invert" />
                 </MultiBinding>
             </Grid.IsVisible>
-        <!-- Sort + summary -->
-        <Grid ColumnDefinitions="*,Auto" Padding="16,8" ColumnSpacing="10">
-            <Label Text="{Binding Summary}" Style="{StaticResource Muted}" VerticalOptions="Center" />
-            <Picker Grid.Column="1" Title="Sort" ItemsSource="{Binding SortOptions}" SelectedItem="{Binding SelectedSort}"
+        <!-- Movies / TV shows, sort, and how many there are -->
+        <Grid ColumnDefinitions="Auto,*,Auto" RowDefinitions="Auto,Auto" Padding="16,8" ColumnSpacing="10" RowSpacing="4">
+            <HorizontalStackLayout Spacing="6" VerticalOptions="Center">
+                <Button Text="Movies" Command="{Binding ShowMoviesCommand}" Padding="14,4" MinimumHeightRequest="36" FontSize="13">
+                    <Button.Triggers>
+                        <DataTrigger TargetType="Button" Binding="{Binding IsShows}" Value="True">
+                            <Setter Property="BackgroundColor" Value="{StaticResource SurfaceRaised}" />
+                            <Setter Property="TextColor" Value="{StaticResource TextPrimary}" />
+                        </DataTrigger>
+                    </Button.Triggers>
+                </Button>
+                <Button Text="TV shows" Command="{Binding ShowTvCommand}" Padding="14,4" MinimumHeightRequest="36" FontSize="13"
+                        Style="{StaticResource SecondaryButton}">
+                    <Button.Triggers>
+                        <DataTrigger TargetType="Button" Binding="{Binding IsShows}" Value="True">
+                            <Setter Property="BackgroundColor" Value="{StaticResource Primary}" />
+                            <Setter Property="TextColor" Value="{StaticResource White}" />
+                        </DataTrigger>
+                    </Button.Triggers>
+                </Button>
+            </HorizontalStackLayout>
+            <Picker Grid.Column="2" Title="Sort" ItemsSource="{Binding SortOptions}" SelectedItem="{Binding SelectedSort}"
                     WidthRequest="160" SemanticProperties.Description="Sort by" />
+            <Label Grid.Row="1" Grid.ColumnSpan="3" Text="{Binding Summary}" Style="{StaticResource Muted}" />
         </Grid>
 
         <!-- Filters panel -->

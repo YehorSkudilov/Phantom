@@ -19,6 +19,7 @@
                         <Span Text="{Binding RuntimeMinutes, Converter={StaticResource Minutes}}" />
                         <Span Text="   " />
                         <Span Text="{Binding BestQuality}" />
+                        <Span Text="{Binding Caption}" />
                     </FormattedString>
                 </Label.FormattedText>
             </Label>

@@ -49,7 +49,9 @@ public partial class ServerDownloadsViewModel(PhantomApi api, SettingsService se
     }, showBusy: false);
 
     [RelayCommand]
-    private Task Open(ServerDownloadDto d) => GoToAsync($"{nameof(Views.MovieDetailPage)}?id={d.MovieId}");
+    private Task Open(ServerDownloadDto d) => d.ShowId is { } showId
+        ? GoToAsync($"{nameof(Views.ShowDetailPage)}?id={showId}")
+        : GoToAsync($"{nameof(Views.MovieDetailPage)}?id={d.MovieId}");
 }
 
 public partial class MoreViewModel(PhantomApi api, SettingsService settings) : BaseViewModel
