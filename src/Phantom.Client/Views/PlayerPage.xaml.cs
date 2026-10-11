@@ -27,8 +27,16 @@ public partial class PlayerPage : ContentPage
         Media.MediaEnded += (_, _) => Dispatcher.Dispatch(OnEnded);
         Media.MediaFailed += (_, e) => Dispatcher.Dispatch(() =>
         {
+            // Most failures are a file this device can't decode (DTS or AC3 sound, 10-bit HEVC, an AVI...): the server
+            // converts it, from the same point, before giving up. A server error wouldn't be helped by that.
+            if (!IsServerError(e.ErrorMessage)
+                && _vm.TryConvertAfterFailure(_pendingResume || !_started ? _vm.ResumePosition + _vm.TranscodeOffset : _vm.ActualPosition(Media.Position)))
+            {
+                Flash("Converting it on the server…");
+                return;
+            }
             SetLoading(false);
-            _vm.ErrorMessage = PlaybackError(e.ErrorMessage);
+            _vm.ErrorMessage = PlaybackError(e.ErrorMessage, canConvert: _vm.Stream?.TranscodeUrl is not null);
         });
 
         // Material only has numbered skip icons for 5, 10 and 30 seconds; other lengths get the plain arrow.
@@ -98,11 +106,28 @@ public partial class PlayerPage : ContentPage
 
     // ---------- Double-tap to skip ----------
 
-    private async void OnSurfaceDoubleTapped(object? sender, TappedEventArgs e)
+    private void OnSurfaceDoubleTapped(object? sender, TappedEventArgs e)
     {
         if (sender is not View surface || e.GetPosition(surface) is not { } at || TransportControls.IsVisible == false && Buffering.IsVisible) return;
-        if (at.X < surface.Width / 3) await SkipAsync(-_vm.SkipBack);
-        else if (at.X > surface.Width * 2 / 3) await SkipAsync(_vm.SkipForward);
+        if (at.X < surface.Width / 3) Guard(() => SkipAsync(-_vm.SkipBack));
+        else if (at.X > surface.Width * 2 / 3) Guard(() => SkipAsync(_vm.SkipForward));
+    }
+
+    /// <summary>
+    /// Runs an event handler's work. An exception from an async void handler ends the app on iOS, so anything unexpected
+    /// (MediaElement throws while the player is between states) is shown over the video instead.
+    /// </summary>
+    private async void Guard(Func<Task> work)
+    {
+        try
+        {
+            await work();
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Player: {ex}");
+            _vm.ErrorMessage = $"Something went wrong in the player: {ex.Message}";
+        }
     }
 
     // Taps in quick succession add up ("+10s", "+20s", ...) and seek once at the end: every seek makes the server fetch
@@ -155,7 +180,10 @@ public partial class PlayerPage : ContentPage
             await SkipFlash.FadeToAsync(0, 250);
             if (!cts.IsCancellationRequested) SkipFlash.IsVisible = false;
         }
-        catch (TaskCanceledException) { }
+        catch (Exception)
+        {
+            // Replaced by a newer message, or the page is closing; either way nothing to show.
+        }
     }
 
     // ---------- Up next ----------
@@ -208,15 +236,20 @@ public partial class PlayerPage : ContentPage
     }
 
     /// <summary>The player's error as something people can act on (the raw one is often an HTTP status or a codec code).</summary>
-    private static string PlaybackError(string? raw)
+    private static string PlaybackError(string? raw, bool canConvert)
     {
         var text = raw ?? "";
         if (text.Contains("502") || text.Contains("503") || text.Contains("504") || text.Contains("Gateway", StringComparison.OrdinalIgnoreCase))
             return "The Phantom server isn't responding right now. It may be restarting — try again in a minute.";
         if (text.Contains("404")) return "The server couldn't find this movie's file. Try another version.";
         if (text.Contains("401") || text.Contains("403")) return "Your sign-in has expired. Sign in again.";
-        return "This movie couldn't be played. Try again, choose another version, or pick a lower quality (the server converts it).";
+        return canConvert
+            ? "This couldn't be played, even converted by the server. Try again, or choose another version."
+            : "This device can't play this file's format, and the server can't convert it (ffmpeg isn't installed there). Choose another version.";
     }
+
+    private static bool IsServerError(string? raw) =>
+        raw is { } text && new[] { "401", "403", "404", "502", "503", "504", "Gateway" }.Any(code => text.Contains(code, StringComparison.OrdinalIgnoreCase));
 
     private void LoadSource()
     {
@@ -233,11 +266,11 @@ public partial class PlayerPage : ContentPage
 
     // The loading panel stays until it's Playing (see OnStateChanged): on iOS this fires as soon as the file's header is
     // read, well before the first frame.
-    private async void OnOpened()
+    private void OnOpened() => Guard(async () =>
     {
         await TryResumeAsync();
         Media.Play();
-    }
+    });
 
     /// <summary>
     /// Jumps to where the movie was left off. On iOS MediaOpened comes when the item is ready but the player may not be,
@@ -303,11 +336,11 @@ public partial class PlayerPage : ContentPage
         if (state == MediaElementState.Paused) _ = Report(PlayerState.Paused);
     }
 
-    private async void OnEnded()
+    private void OnEnded() => Guard(async () =>
     {
         await Report(PlayerState.Stopped, atEnd: true);
         if (_upNextCancelled || !_vm.TryPlayNext()) await Shell.Current.GoToAsync("..");
-    }
+    });
 
     private Task Report(PlayerState state, bool atEnd = false)
     {
@@ -355,16 +388,16 @@ public partial class PlayerPage : ContentPage
         return TrySeekAsync(target);
     }
 
-    private async void OnSkipBack(object? sender, EventArgs e)
+    private void OnSkipBack(object? sender, EventArgs e)
     {
         ShowControls();
-        await SkipAsync(-_vm.SkipBack);
+        Guard(() => SkipAsync(-_vm.SkipBack));
     }
 
-    private async void OnSkipForward(object? sender, EventArgs e)
+    private void OnSkipForward(object? sender, EventArgs e)
     {
         ShowControls();
-        await SkipAsync(_vm.SkipForward);
+        Guard(() => SkipAsync(_vm.SkipForward));
     }
 
     // ---------- Keyboard (Windows) ----------
@@ -376,8 +409,8 @@ public partial class PlayerPage : ContentPage
         switch (key)
         {
             case "Space" or "K": OnPlayPause(null, EventArgs.Empty); break;
-            case "Left" or "J": _ = SkipAsync(-_vm.SkipBack); break;
-            case "Right" or "L": _ = SkipAsync(_vm.SkipForward); break;
+            case "Left" or "J": Guard(() => SkipAsync(-_vm.SkipBack)); break;
+            case "Right" or "L": Guard(() => SkipAsync(_vm.SkipForward)); break;
             case "Up": ChangeVolume(0.1); Flash($"Volume {VolumeSlider.Value:P0}"); break;
             case "Down": ChangeVolume(-0.1); Flash($"Volume {VolumeSlider.Value:P0}"); break;
             case "M": ToggleMute(); Flash(Media.ShouldMute ? "Muted" : "Sound on"); break;
@@ -488,15 +521,20 @@ public partial class PlayerPage : ContentPage
         {
             // A newer position replaced this one.
         }
+        catch (Exception ex)
+        {
+            // A preview is a nicety: losing one must never take the player down.
+            System.Diagnostics.Debug.WriteLine($"Seek preview: {ex}");
+        }
     }
 
-    private async void OnSeekCompleted(object? sender, EventArgs e)
+    private void OnSeekCompleted(object? sender, EventArgs e)
     {
         _seeking = false;
         _preview?.Cancel();
         _previewUrl = null;
         SeekPreview.IsVisible = false;
-        await SeekToAsync(_vm.TotalDuration(Media.Duration) * Seek.Value);
+        Guard(() => SeekToAsync(_vm.TotalDuration(Media.Duration) * Seek.Value));
     }
 
     // Menus mark what's in use with a tick, and say it in the title, so it's clear before anything is picked.
@@ -550,19 +588,31 @@ public partial class PlayerPage : ContentPage
         }
     }
 
-    private async void OnClose(object? sender, EventArgs e) => await Shell.Current.GoToAsync("..");
+    private void OnClose(object? sender, EventArgs e) => Guard(() => Shell.Current.GoToAsync(".."));
 
-    protected override async void OnDisappearing()
+    protected override void OnDisappearing()
     {
         base.OnDisappearing();
         _hideTimer?.Stop();
+        _skipDelay?.Cancel();
+        _preview?.Cancel();
         _vm.StopLoadingStatus();
         SetFullscreen(false);
 #if WINDOWS
         if (_keyRoot is not null && _keyHandler is not null) _keyRoot.RemoveHandler(Microsoft.UI.Xaml.UIElement.KeyDownEvent, _keyHandler);
 #endif
-        await Report(PlayerState.Stopped);
-        Media.Stop();
-        Media.Handler?.DisconnectHandler();
+        // The position is read now, then the player is stopped straight away: once this method awaits anything the page
+        // is on its way out, and stopping a MediaElement whose native player has gone throws (which ended the app).
+        var report = Report(PlayerState.Stopped);
+        try
+        {
+            Media.Stop();
+            Media.Handler?.DisconnectHandler();
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Player teardown: {ex}");
+        }
+        _ = report.ContinueWith(t => _ = t.Exception, TaskScheduler.Default); // a failed report mustn't surface later
     }
 }

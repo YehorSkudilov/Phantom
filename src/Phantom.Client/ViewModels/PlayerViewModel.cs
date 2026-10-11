@@ -27,6 +27,9 @@ public partial class PlayerViewModel(PhantomApi api, SettingsService settings, D
     private TimeSpan _runtime;
     private EpisodeDto? _nextEpisode;
 
+    // Direct play failed on this device, so the server converts it whatever the quality setting says.
+    private bool _forceConvert;
+
     public ObservableCollection<SubtitleChoice> SubtitleChoices { get; } = [];
     public IReadOnlyList<QualityOption> Qualities => QualityOption.All;
     public IReadOnlyList<double> Speeds { get; } = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0];
@@ -183,6 +186,7 @@ public partial class PlayerViewModel(PhantomApi api, SettingsService settings, D
     [RelayCommand]
     private Task Load() => RunAsync(async () =>
     {
+        _forceConvert = false;
         LoadingText = "Opening…";
         LoadingDetail = null;
         LoadingProgress = -1;
@@ -237,13 +241,43 @@ public partial class PlayerViewModel(PhantomApi api, SettingsService settings, D
         ApplySource(ResumePosition);
     });
 
+    /// <summary>
+    /// File types this device's player opens itself. Apple's only plays MP4 and MOV, so the MKVs and AVIs most torrents
+    /// have are converted by the server from the start rather than failing first.
+    /// </summary>
+    public static bool CanPlayDirectly(string fileName) => Path.GetExtension(fileName).ToLowerInvariant() switch
+    {
+#if IOS || MACCATALYST
+        ".mp4" or ".m4v" or ".mov" => true,
+#elif ANDROID
+        ".mp4" or ".m4v" or ".mov" or ".mkv" or ".webm" or ".ts" => true,
+#else
+        ".mp4" or ".m4v" or ".mov" or ".mkv" or ".webm" or ".ts" or ".avi" or ".wmv" or ".mpg" or ".mpeg" => true,
+#endif
+        _ => false,
+    };
+
+    /// <summary>
+    /// After direct play fails: switches to the server's conversion at <paramref name="position"/> (the file's video or
+    /// audio is something this device can't decode). False when it was already converting, or the server can't.
+    /// </summary>
+    public bool TryConvertAfterFailure(TimeSpan position)
+    {
+        if (IsTranscoding || _forceConvert || Stream?.TranscodeUrl is null || _offline) return false;
+        _forceConvert = true;
+        ApplySource(position);
+        return true;
+    }
+
     /// <summary>Chooses direct play or a transcode URL starting at <paramref name="start"/>.</summary>
     private void ApplySource(TimeSpan start)
     {
         if (Stream is null) return;
         var quality = SelectedQuality.Resolve();
-        QualityLabel = SelectedQuality.IsAuto ? $"Auto · {ShortName(quality)}" : ShortName(quality);
-        IsTranscoding = !quality.IsOriginal && Stream.TranscodeUrl is not null;
+        // "Original" still has to be converted when this device can't play the file as it is.
+        var mustConvert = Stream.TranscodeUrl is not null && (_forceConvert || !CanPlayDirectly(Stream.FileName));
+        QualityLabel = (SelectedQuality.IsAuto ? $"Auto · {ShortName(quality)}" : ShortName(quality)) + (mustConvert && quality.IsOriginal ? " · converted" : "");
+        IsTranscoding = Stream.TranscodeUrl is not null && (!quality.IsOriginal || mustConvert);
         if (IsTranscoding)
         {
             TranscodeOffset = start;

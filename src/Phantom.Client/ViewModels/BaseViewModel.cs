@@ -64,6 +64,13 @@ public abstract partial class BaseViewModel : ObservableObject
         {
             ErrorMessage = "The server took too long to respond.";
         }
+        catch (Exception ex)
+        {
+            // Anything else (an unexpected reply, a platform hiccup) is shown on the page: commands run from async void
+            // code, where an exception that gets away ends the app on iOS.
+            System.Diagnostics.Debug.WriteLine(ex);
+            ErrorMessage = $"Something went wrong: {ex.Message}";
+        }
         finally
         {
             if (showBusy) IsBusy = false;

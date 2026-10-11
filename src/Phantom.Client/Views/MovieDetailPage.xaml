@@ -36,21 +36,26 @@
 
                 <!-- Primary actions -->
                 <VerticalStackLayout Padding="16,0" Spacing="10">
-                    <!-- Trailer, then Start over (when there's a place to resume from), then Play/Resume taking the rest. -->
-                    <Grid ColumnDefinitions="Auto,Auto,*,Auto">
-                        <Button Text="Trailer" Style="{StaticResource SecondaryButton}" HeightRequest="52" Margin="0,0,10,0"
-                                ImageSource="{controls:Icon smart_display, Size=20}" ContentLayout="Left,8"
-                                Command="{Binding PlayTrailerCommand}" IsVisible="{Binding Movie.TrailerUrl, Converter={StaticResource HasValue}}" />
-                        <Button Grid.Column="1" Text="Start over" Style="{StaticResource SecondaryButton}" HeightRequest="52" Margin="0,0,10,0"
-                                ImageSource="{controls:Icon replay, Size=20}" ContentLayout="Left,8"
-                                Command="{Binding PlayFromStartCommand}" IsVisible="{Binding CanResume}" />
-                        <Button Grid.Column="2" Text="{Binding PlayLabel}" Command="{Binding PlayCommand}" FontSize="16" HeightRequest="52"
+                    <!-- Play/Resume across the whole width (a phone has no room for three buttons in a row) -->
+                    <Grid ColumnDefinitions="*,Auto">
+                        <Button Text="{Binding PlayLabel}" Command="{Binding PlayCommand}" FontSize="16" HeightRequest="52"
                                 ImageSource="{controls:Icon play_arrow, Color=White, Size=20}" ContentLayout="Left,8" />
                         <!-- Where to play from, when there's a downloaded or server-saved copy as well as streaming -->
-                        <Button Grid.Column="3" HeightRequest="52" WidthRequest="52" Padding="0" Margin="6,0,0,0"
+                        <Button Grid.Column="1" HeightRequest="52" WidthRequest="52" Padding="0" Margin="6,0,0,0"
                                 ImageSource="{controls:Icon expand_more, Color=White, Size=24}" Command="{Binding ChoosePlaySourceCommand}"
                                 IsVisible="{Binding HasPlayChoices}" SemanticProperties.Description="Play from" ToolTipProperties.Text="Play from…" />
                     </Grid>
+                    <!-- Then Trailer and Start over (when there's a place to resume from), sharing the row between them -->
+                    <FlexLayout Direction="Row" Wrap="NoWrap">
+                        <Button Text="Trailer" Style="{StaticResource SecondaryButton}" HeightRequest="46" Margin="0,0,5,0"
+                                FlexLayout.Grow="1" FlexLayout.Basis="0"
+                                ImageSource="{controls:Icon smart_display, Size=20}" ContentLayout="Left,8"
+                                Command="{Binding PlayTrailerCommand}" IsVisible="{Binding Movie.TrailerUrl, Converter={StaticResource HasValue}}" />
+                        <Button Text="Start over" Style="{StaticResource SecondaryButton}" HeightRequest="46" Margin="5,0,0,0"
+                                FlexLayout.Grow="1" FlexLayout.Basis="0"
+                                ImageSource="{controls:Icon replay, Size=20}" ContentLayout="Left,8"
+                                Command="{Binding PlayFromStartCommand}" IsVisible="{Binding CanResume}" />
+                    </FlexLayout>
                     <ProgressBar Progress="{Binding Movie.Playback.ProgressPercent, Converter={StaticResource Percent}}" IsVisible="{Binding CanResume}" />
                     <!-- Version (torrent release), next to Play -->
                     <Grid ColumnDefinitions="Auto,*" ColumnSpacing="10" IsVisible="{Binding Releases.Count, Converter={StaticResource HasValue}}">

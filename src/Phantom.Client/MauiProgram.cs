@@ -11,6 +11,7 @@ public static class MauiProgram
 {
     public static MauiApp CreateMauiApp()
     {
+        Services.CrashLog.Install();
         var builder = MauiApp.CreateBuilder();
         builder
             .UseMauiApp<App>()

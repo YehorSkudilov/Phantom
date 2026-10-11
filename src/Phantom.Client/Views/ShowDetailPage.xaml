@@ -36,13 +36,12 @@
 
                 <!-- Play the next episode; trailer, watchlist, watched -->
                 <VerticalStackLayout Padding="16,0" Spacing="10">
-                    <Grid ColumnDefinitions="Auto,*">
-                        <Button Text="Trailer" Style="{StaticResource SecondaryButton}" HeightRequest="52" Margin="0,0,10,0"
-                                ImageSource="{controls:Icon smart_display, Size=20}" ContentLayout="Left,8"
-                                Command="{Binding PlayTrailerCommand}" IsVisible="{Binding Show.TrailerUrl, Converter={StaticResource HasValue}}" />
-                        <Button Grid.Column="1" Text="{Binding PlayLabel}" Command="{Binding PlayCommand}" IsEnabled="{Binding CanPlay}" FontSize="16" HeightRequest="52"
-                                ImageSource="{controls:Icon play_arrow, Color=White, Size=20}" ContentLayout="Left,8" />
-                    </Grid>
+                    <!-- Play across the whole width, the trailer under it -->
+                    <Button Text="{Binding PlayLabel}" Command="{Binding PlayCommand}" IsEnabled="{Binding CanPlay}" FontSize="16" HeightRequest="52"
+                            ImageSource="{controls:Icon play_arrow, Color=White, Size=20}" ContentLayout="Left,8" />
+                    <Button Text="Trailer" Style="{StaticResource SecondaryButton}" HeightRequest="46"
+                            ImageSource="{controls:Icon smart_display, Size=20}" ContentLayout="Left,8"
+                            Command="{Binding PlayTrailerCommand}" IsVisible="{Binding Show.TrailerUrl, Converter={StaticResource HasValue}}" />
                     <ProgressBar Progress="{Binding NextProgress}" IsVisible="{Binding NextProgress, Converter={StaticResource HasValue}}" />
                     <Grid ColumnDefinitions="*,*" ColumnSpacing="8">
                         <controls:ActionTile Glyph="{Binding WatchlistGlyph}" Text="{Binding WatchlistLabel}" IsActive="{Binding IsOnWatchlist}"
