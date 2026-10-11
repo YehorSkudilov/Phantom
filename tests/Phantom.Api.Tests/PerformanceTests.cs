@@ -120,6 +120,32 @@ public class ShowRowTests : IClassFixture<PhantomFactory>
     }
 
     [Fact]
+    public async Task Saving_episodes_of_a_pack_on_the_server_saves_each_on_its_own()
+    {
+        var client = await ClientAsync();
+        var old = await RowAsync(client, "Old Show");
+        var season1 = (await client.GetFromJsonAsync<List<EpisodeDto>>($"/api/shows/{old.Id}/seasons/1", Json))!;
+
+        async Task<ServerDownloadDto> Save(int episodeId) => (await (await client.PostAsJsonAsync("/api/downloads",
+            new CreateServerDownloadRequest(0, null, episodeId), Json)).Content.ReadFromJsonAsync<ServerDownloadDto>(Json))!;
+        var first = await Save(season1[0].Id);
+        var second = await Save(season1[1].Id);
+        var again = await Save(season1[0].Id);
+
+        // Both come from the season 1 pack, but each is a download of just that episode.
+        Assert.Equal(first.ReleaseId, second.ReleaseId);
+        Assert.NotEqual(first.Id, second.Id);
+        Assert.Equal(first.Id, again.Id);
+        Assert.Equal(("Old Show · S01E01", "Old Show · S01E02"), (first.MovieTitle, second.MovieTitle));
+
+        // Removing one leaves the other.
+        Assert.Equal(HttpStatusCode.NoContent, (await client.DeleteAsync($"/api/downloads/{first.Id}?deleteFiles=true")).StatusCode);
+        var left = await client.GetFromJsonAsync<List<ServerDownloadDto>>("/api/downloads", Json);
+        Assert.Equal([second.Id], left!.Where(d => d.ReleaseId == first.ReleaseId).Select(d => d.Id));
+        await client.DeleteAsync($"/api/downloads/{second.Id}?deleteFiles=true");
+    }
+
+    [Fact]
     public async Task New_on_tv_puts_the_show_with_the_newest_release_first()
     {
         var client = await ClientAsync();

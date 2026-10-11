@@ -41,7 +41,7 @@
                 <Label Text="{Binding ErrorMessage}" TextColor="{StaticResource Danger}" Margin="16,0"
                        IsVisible="{Binding ErrorMessage, Converter={StaticResource HasValue}}" />
 
-                <!-- Play the next episode; trailer, watchlist, watched -->
+                <!-- Play the next episode; trailer, watchlist, watched, download, save on the server -->
                 <VerticalStackLayout Padding="16,0" Spacing="10">
                     <!-- Play across the whole width, the trailer under it -->
                     <Button Text="{Binding PlayLabel}" Command="{Binding PlayCommand}" IsEnabled="{Binding CanPlay}" FontSize="16" HeightRequest="52"
@@ -50,11 +50,16 @@
                             ImageSource="{controls:Icon smart_display, Size=20}" ContentLayout="Left,8"
                             Command="{Binding PlayTrailerCommand}" IsVisible="{Binding Show.TrailerUrl, Converter={StaticResource HasValue}}" />
                     <ProgressBar Progress="{Binding NextProgress}" IsVisible="{Binding NextProgress, Converter={StaticResource HasValue}}" />
-                    <Grid ColumnDefinitions="*,*" ColumnSpacing="8">
+                    <!-- As on a movie's page. Download and Save on server ask which season (or all of them). -->
+                    <Grid ColumnDefinitions="*,*" RowDefinitions="Auto,Auto" ColumnSpacing="8" RowSpacing="8">
                         <controls:ActionTile Glyph="{Binding WatchlistGlyph}" Text="{Binding WatchlistLabel}" IsActive="{Binding IsOnWatchlist}"
                                              Command="{Binding ToggleWatchlistCommand}" />
                         <controls:ActionTile Grid.Column="1" Glyph="check_circle" Text="{Binding WatchedLabel}" IsActive="{Binding IsWatched}"
                                              Command="{Binding ToggleWatchedCommand}" />
+                        <controls:ActionTile Grid.Row="1" Glyph="download" Text="Download" IsActive="{Binding HasDownloads}"
+                                             Command="{Binding DownloadShowCommand}" />
+                        <controls:ActionTile Grid.Row="1" Grid.Column="1" Glyph="cloud_download" Text="Save on server"
+                                             Command="{Binding SaveShowOnServerCommand}" />
                     </Grid>
                 </VerticalStackLayout>
 
@@ -73,20 +78,16 @@
 
                 <!-- Seasons and their episodes -->
                 <VerticalStackLayout Padding="16,0" Spacing="10" IsVisible="{Binding Seasons.Count, Converter={StaticResource HasValue}}">
-                    <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="10">
+                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
                         <Label Text="Episodes" Style="{StaticResource H2}" VerticalOptions="Center" />
                         <Picker Grid.Column="1" ItemsSource="{Binding Seasons}" SelectedItem="{Binding SelectedSeason}" MinimumWidthRequest="140"
                                 ItemDisplayBinding="{Binding Title, x:DataType=dto:SeasonDto}" SemanticProperties.Description="Season" />
-                        <!-- The season: to this device, or saved on the server -->
-                        <ImageButton Grid.Column="2" VerticalOptions="Center" Style="{StaticResource IconButton}"
-                                     Source="{controls:Icon download, Size=24}" Command="{Binding DownloadSeasonCommand}"
-                                     SemanticProperties.Description="Download season" ToolTipProperties.Text="Download season" />
                     </Grid>
                     <VerticalStackLayout BindableLayout.ItemsSource="{Binding Episodes}" Spacing="12">
                         <BindableLayout.ItemTemplate>
                             <DataTemplate x:DataType="dto:EpisodeDto">
                                 <!-- Not found yet: shown faded, and says so -->
-                                <Grid ColumnDefinitions="150,*,Auto,Auto" ColumnSpacing="12">
+                                <Grid ColumnDefinitions="128,*,Auto,Auto,Auto" ColumnSpacing="10">
                                     <Grid.Triggers>
                                         <DataTrigger TargetType="Grid" Binding="{Binding Available}" Value="False">
                                             <Setter Property="Opacity" Value="0.45" />
@@ -132,8 +133,14 @@
                                             </DataTrigger>
                                         </ImageButton.Triggers>
                                     </ImageButton>
-                                    <!-- Download (to this device or the server), play from the start, mark -->
-                                    <ImageButton Grid.Column="3" VerticalOptions="Center" Style="{StaticResource IconButton}" Margin="-8,0,0,0"
+                                    <!-- Just this episode to this device, in one tap; its icon shows how the download is doing -->
+                                    <controls:EpisodeDownloadButton Grid.Column="3" VerticalOptions="Center" Style="{StaticResource IconButton}" Margin="-8,0,0,0"
+                                                 EpisodeId="{Binding Id}" IsVisible="{Binding Available}"
+                                                 Downloads="{Binding Source={RelativeSource AncestorType={x:Type vm:ShowDetailViewModel}}, Path=Downloads, x:DataType=vm:ShowDetailViewModel}"
+                                                 Command="{Binding Source={RelativeSource AncestorType={x:Type vm:ShowDetailViewModel}}, Path=DownloadEpisodeCommand, x:DataType=vm:ShowDetailViewModel}"
+                                                 CommandParameter="{Binding .}" />
+                                    <!-- Save on the server, play from the start, mark -->
+                                    <ImageButton Grid.Column="4" VerticalOptions="Center" Style="{StaticResource IconButton}" Margin="-8,0,0,0"
                                                  Source="{StaticResource EpisodeMoreIcon}"
                                                  Command="{Binding Source={RelativeSource AncestorType={x:Type vm:ShowDetailViewModel}}, Path=EpisodeOptionsCommand, x:DataType=vm:ShowDetailViewModel}"
                                                  CommandParameter="{Binding .}"

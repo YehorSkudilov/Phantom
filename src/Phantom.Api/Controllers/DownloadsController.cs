@@ -49,8 +49,11 @@ public class DownloadsController(PhantomDbContext db, TorrentEngine engine) : Co
         }
         if (release is null) return NotFound();
 
+        // One download per movie release, and per episode: each episode saved from a season (or whole-show) pack is a
+        // download of its own, and only its file is fetched.
         var existing = await db.ServerDownloads.Include(d => d.Movie).Include(d => d.Release).Include(d => d.Episode).ThenInclude(e => e!.Show)
-            .FirstOrDefaultAsync(d => d.ReleaseId == release.Id && d.Status != DownloadStatus.Cancelled && d.Status != DownloadStatus.Failed, ct);
+            .FirstOrDefaultAsync(d => (episode == null ? d.ReleaseId == release.Id && d.EpisodeId == null : d.EpisodeId == episode.Id)
+                                      && d.Status != DownloadStatus.Cancelled && d.Status != DownloadStatus.Failed, ct);
         if (existing is not null) return ToDto(existing);
 
         var download = new ServerDownload
@@ -70,7 +73,10 @@ public class DownloadsController(PhantomDbContext db, TorrentEngine engine) : Co
         var d = await db.ServerDownloads.Include(x => x.Release).FirstOrDefaultAsync(x => x.Id == id, ct);
         if (d is null) return NotFound();
         if (d.Status is DownloadStatus.Completed or DownloadStatus.Cancelled) return BadRequest("Download is not active.");
-        await engine.PauseAsync(d.Release!.InfoHash);
+        // Other episodes being saved from the same pack carry on; only this one's file stops (see ServerDownloadService).
+        var sharesTorrent = await db.ServerDownloads.AnyAsync(x => x.ReleaseId == d.ReleaseId && x.Id != d.Id
+            && (x.Status == DownloadStatus.Queued || x.Status == DownloadStatus.FetchingMetadata || x.Status == DownloadStatus.Downloading), ct);
+        if (!sharesTorrent) await engine.PauseAsync(d.Release!.InfoHash);
         d.Status = DownloadStatus.Paused;
         await db.SaveChangesAsync(ct);
         return NoContent();
@@ -94,26 +100,9 @@ public class DownloadsController(PhantomDbContext db, TorrentEngine engine) : Co
     [HttpDelete("{id:int}")]
     public async Task<IActionResult> Delete(int id, [FromQuery] bool deleteFiles, CancellationToken ct)
     {
-        var d = await db.ServerDownloads.Include(x => x.Release).FirstOrDefaultAsync(x => x.Id == id, ct);
+        var d = await db.ServerDownloads.Include(x => x.Release).Include(x => x.Episode).FirstOrDefaultAsync(x => x.Id == id, ct);
         if (d is null) return NotFound();
-        var release = d.Release!;
-
-        if (d.Status != DownloadStatus.Completed || deleteFiles)
-        {
-            await engine.RemoveAsync(release.InfoHash, deleteData: deleteFiles || d.Status != DownloadStatus.Completed);
-            if (deleteFiles && release.LocalFilePath is { } path)
-            {
-                var dir = Path.GetDirectoryName(path);
-                if (dir is not null && Directory.Exists(dir)) Directory.Delete(dir, recursive: true);
-                release.LocalFilePath = null;
-            }
-        }
-        else
-        {
-            engine.Unpin(release.InfoHash);
-        }
-        db.ServerDownloads.Remove(d);
-        await db.SaveChangesAsync(ct);
+        await ServerDownloadService.RemoveAsync(db, engine, d, deleteFiles, ct);
         return NoContent();
     }
 
@@ -122,13 +111,9 @@ public class DownloadsController(PhantomDbContext db, TorrentEngine engine) : Co
     private ServerDownloadDto ToDto(ServerDownload d)
     {
         var stats = d.Status is DownloadStatus.Downloading or DownloadStatus.FetchingMetadata or DownloadStatus.Completed
-            ? engine.Stats(d.Release!.InfoHash)
+            ? engine.Stats(d.Release!.InfoHash, ServerDownloadService.Choice(d), d.Release.SeasonNumber)
             : null;
-        var title = d.Episode is { } e
-            ? d.Release is { EpisodeNumber: null, SeasonNumber: { } season }
-                ? $"{e.Show?.Title} · Season {season}"
-                : d.Release is { SeasonNumber: null } ? $"{e.Show?.Title} · Several seasons" : $"{e.Show?.Title} · S{e.SeasonNumber:00}E{e.EpisodeNumber:00}"
-            : d.Movie?.Title ?? "";
+        var title = d.Episode is { } e ? $"{e.Show?.Title} · S{e.SeasonNumber:00}E{e.EpisodeNumber:00}" : d.Movie?.Title ?? "";
         return new ServerDownloadDto(
             d.Id, d.MovieId ?? 0, title, d.ReleaseId, d.Release?.Name ?? "", d.Status, d.Progress,
             stats?.DownloadRate ?? 0, stats?.UploadRate ?? 0, stats?.Peers ?? 0,
