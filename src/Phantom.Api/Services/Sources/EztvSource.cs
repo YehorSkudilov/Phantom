@@ -35,40 +35,59 @@ public class EztvSource(HttpClient http, IOptions<PhantomOptions> options, ILogg
     {
         var baseUrl = string.IsNullOrWhiteSpace(source.BaseUrl) ? DefaultBaseUrl : source.BaseUrl.TrimEnd('/');
         var results = new List<SourceRelease>();
+        Exception? failure = null;
 
-        for (var page = 1; page <= NewestPages; page++)
+        try
         {
-            var batch = await PageAsync(baseUrl, page, ct);
-            results.AddRange(batch.Releases);
-            if (batch.Count < PageSize) return results;
+            for (var page = 1; page <= NewestPages; page++)
+            {
+                var batch = await PageAsync(baseUrl, page, ct);
+                results.AddRange(batch.Releases);
+                if (batch.Count < PageSize) return results;
+            }
+        }
+        catch (Exception ex) when (SourceRequests.IsTransient(ex, ct))
+        {
+            log.LogWarning("EZTV newest: {Error}", ex.Message);
+            failure = ex;
         }
 
+        // A page that won't load ends this stretch of the catalogue there, to be tried again next time.
         var crawl = Crawl(source);
         if (crawl.Next() is var (step, _))
         {
             var next = Math.Max(step, NewestPages + 1);
             var finished = false;
-            for (var i = 0; i < BackfillPages; i++, next++)
+            try
             {
-                await Task.Delay(300, ct); // be polite
-                var batch = await PageAsync(baseUrl, next, ct);
-                results.AddRange(batch.Releases);
-                if (batch.Count < PageSize)
+                for (var i = 0; i < BackfillPages; i++, next++)
                 {
-                    finished = true;
-                    break;
+                    await Task.Delay(300, ct); // be polite
+                    var batch = await PageAsync(baseUrl, next, ct);
+                    results.AddRange(batch.Releases);
+                    if (batch.Count < PageSize)
+                    {
+                        finished = true;
+                        break;
+                    }
                 }
+            }
+            catch (Exception ex) when (SourceRequests.IsTransient(ex, ct))
+            {
+                log.LogWarning("EZTV catalogue page {Page}: {Error}", next, ex.Message);
+                failure = ex;
             }
             if (finished) crawl.Finish();
             else crawl.Save(next, 0);
             log.LogDebug("EZTV catalogue at page {Page}", next);
         }
+        if (results.Count == 0 && failure is not null) throw failure;
         return results.DistinctBy(r => r.InfoHash).ToList();
     }
 
     private async Task<(IReadOnlyList<SourceRelease> Releases, int Count)> PageAsync(string baseUrl, int page, CancellationToken ct)
     {
-        var json = await http.GetStringAsync($"{baseUrl}/api/get-torrents?limit={PageSize}&page={page}", ct);
+        var json = await SourceRequests.RetryAsync(token => http.GetStringAsync($"{baseUrl}/api/get-torrents?limit={PageSize}&page={page}", token), log, $"EZTV page {page}", ct);
         using (var doc = JsonDocument.Parse(json))
             if (doc.RootElement.TryGetProperty("torrents_count", out var tc) && tc.TryGetInt(out var total))
                 _totalPages = (total + PageSize - 1) / PageSize;
