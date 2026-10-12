@@ -237,7 +237,10 @@ public record StreamInfoDto(
     string? ThumbnailUrl = null,
     int? EpisodeId = null,
     // All the seek previews made so far in one download (see StreamControllerBase.Thumbnails).
-    string? ThumbnailPackUrl = null);
+    string? ThumbnailPackUrl = null,
+    // The conversion as HLS, for Apple's player, which can't play the piped one at TranscodeUrl. "{session}" is for the
+    // client to fill in with a new GUID each time it starts converting (see HlsSessions on the server).
+    string? HlsUrl = null);
 
 /// <summary>
 /// What the server is doing to get a movie playing, for the player's loading screen: <see cref="Message"/> in words,

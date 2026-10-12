@@ -37,6 +37,33 @@ public class Transcoder(IOptions<PhantomOptions> options, ILogger<Transcoder> lo
 
     public static IReadOnlyList<string> BuildArguments(string input, double startSeconds, int? maxVideoKbps, int? maxHeight)
     {
+        var args = EncodeArguments(input, startSeconds, maxVideoKbps, maxHeight);
+        args.AddRange(["-movflags", "frag_keyframe+empty_moov+default_base_moof", "-f", "mp4", "pipe:1"]);
+        return args;
+    }
+
+    /// <summary>Seconds of video in each HLS segment.</summary>
+    public const int HlsSegmentSeconds = 4;
+
+    /// <summary>
+    /// The same conversion as <see cref="BuildArguments"/>, written as HLS into <paramref name="folder"/>: a playlist
+    /// (<see cref="HlsSessions.Playlist"/>) that grows a segment at a time, for Apple's player (see <see cref="HlsSessions"/>).
+    /// A keyframe every segment's length lets each segment start cleanly.
+    /// </summary>
+    public static IReadOnlyList<string> HlsArguments(string input, double startSeconds, int? maxVideoKbps, int? maxHeight, string folder)
+    {
+        var args = EncodeArguments(input, startSeconds, maxVideoKbps, maxHeight);
+        args.Insert(0, "-nostdin");
+        args.AddRange(["-force_key_frames", $"expr:gte(t,n_forced*{HlsSegmentSeconds})"]);
+        args.AddRange(["-f", "hls", "-hls_time", HlsSegmentSeconds.ToString(CultureInfo.InvariantCulture), "-hls_list_size", "0",
+            "-hls_playlist_type", "event", "-hls_flags", "independent_segments+temp_file", "-hls_segment_type", "mpegts",
+            "-start_number", "0", "-hls_segment_filename", Path.Combine(folder, "seg%d.ts"), Path.Combine(folder, HlsSessions.Playlist)]);
+        return args;
+    }
+
+    /// <summary>Input, H.264 video and stereo AAC: what every player can decode.</summary>
+    private static List<string> EncodeArguments(string input, double startSeconds, int? maxVideoKbps, int? maxHeight)
+    {
         var args = new List<string> { "-hide_banner", "-loglevel", "error" };
         if (startSeconds > 0) args.AddRange(["-ss", startSeconds.ToString("0.###", CultureInfo.InvariantCulture)]);
         args.AddRange(["-i", input, "-map", "0:v:0", "-map", "0:a:0?", "-sn"]);
@@ -47,7 +74,6 @@ public class Transcoder(IOptions<PhantomOptions> options, ILogger<Transcoder> lo
             args.AddRange(["-crf", "21"]);
         if (maxHeight is > 0) args.AddRange(["-vf", $"scale=-2:'min({maxHeight},ih)'"]);
         args.AddRange(["-c:a", "aac", "-ac", "2", "-b:a", "160k"]);
-        args.AddRange(["-movflags", "frag_keyframe+empty_moov+default_base_moof", "-f", "mp4", "pipe:1"]);
         return args;
     }
 

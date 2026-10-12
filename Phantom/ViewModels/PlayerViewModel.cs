@@ -356,7 +356,7 @@ public partial class PlayerViewModel(PhantomApi api, SettingsService settings, D
         if (IsTranscoding)
         {
             TranscodeOffset = start;
-            var url = $"{Stream.TranscodeUrl}&start={start.TotalSeconds:0.###}";
+            var url = $"{ConversionUrl(Stream)}&start={start.TotalSeconds:0.###}";
             if (quality.MaxKbps is { } kbps) url += $"&maxKbps={kbps}";
             if (quality.MaxHeight is { } h) url += $"&maxHeight={h}";
             SourceUrl = url;
@@ -369,6 +369,19 @@ public partial class PlayerViewModel(PhantomApi api, SettingsService settings, D
             ResumePosition = start;
         }
         SourceChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>
+    /// Where the server's conversion is played from. Apple's player only plays HTTP video it can fetch in byte ranges,
+    /// which the piped conversion hasn't got, so iOS and macOS take it as HLS instead, in a session of its own each time
+    /// (a seek restarts the conversion). Older servers have no HLS: the piped one is all there is.
+    /// </summary>
+    private static string ConversionUrl(StreamInfoDto stream)
+    {
+#if IOS || MACCATALYST
+        if (stream.HlsUrl is { } hls) return hls.Replace("{session}", Guid.NewGuid().ToString("N"));
+#endif
+        return stream.TranscodeUrl!;
     }
 
     /// <summary>Seeking a transcode means restarting ffmpeg at the new offset.</summary>

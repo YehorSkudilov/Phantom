@@ -33,6 +33,8 @@ builder.Services.AddSingleton<PasswordService>();
 builder.Services.AddSingleton<SessionTracker>();
 builder.Services.AddSingleton<PlaybackActivity>();
 builder.Services.AddSingleton<Transcoder>();
+builder.Services.AddSingleton<HlsSessions>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<HlsSessions>());
 builder.Services.AddSingleton<TrickplayService>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<TrickplayService>());
 builder.Services.AddScoped<LibraryService>();

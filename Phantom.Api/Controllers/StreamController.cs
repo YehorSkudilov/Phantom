@@ -24,8 +24,9 @@ public class StreamController(
     LibraryService library,
     TorrentEngine engine,
     Transcoder transcoder,
+    HlsSessions hls,
     TrickplayService trickplay,
-    ILogger<StreamController> log) : StreamControllerBase(db, engine, transcoder, trickplay, log)
+    ILogger<StreamController> log) : StreamControllerBase(db, engine, transcoder, hls, trickplay, log)
 {
     protected override string RouteBase(int id) => $"/api/stream/{id}";
 
@@ -49,8 +50,9 @@ public class EpisodeStreamController(
     ShowLibraryService shows,
     TorrentEngine engine,
     Transcoder transcoder,
+    HlsSessions hls,
     TrickplayService trickplay,
-    ILogger<EpisodeStreamController> log) : StreamControllerBase(db, engine, transcoder, trickplay, log)
+    ILogger<EpisodeStreamController> log) : StreamControllerBase(db, engine, transcoder, hls, trickplay, log)
 {
     protected override string RouteBase(int id) => $"/api/stream/episode/{id}";
 
@@ -81,6 +83,7 @@ public abstract class StreamControllerBase(
     PhantomDbContext db,
     TorrentEngine engine,
     Transcoder transcoder,
+    HlsSessions hls,
     TrickplayService trickplay,
     ILogger log) : ControllerBase
 {
@@ -181,7 +184,8 @@ public abstract class StreamControllerBase(
             target.ResumePositionMs,
             transcoder.IsAvailable ? $"{baseUrl}/thumbnail?{auth}" : null,
             target.EpisodeId,
-            transcoder.IsAvailable ? $"{baseUrl}/thumbnails?{auth}" : null);
+            transcoder.IsAvailable ? $"{baseUrl}/thumbnails?{auth}" : null,
+            transcoder.IsAvailable ? $"{baseUrl}/hls/{{session}}/{HlsSessions.Playlist}?{auth}" : null);
 
         SubtitleTrackDto Subtitle(int index, string path)
         {
@@ -261,6 +265,55 @@ public abstract class StreamControllerBase(
             await Response.WriteAsync($"The server couldn't convert this video: {ex.Message}", CancellationToken.None);
         }
     }
+
+    /// <summary>
+    /// The same conversion as <see cref="Transcode"/> as HLS, for Apple's player (see <see cref="HlsSessions"/>). The
+    /// client names the session: the player rereading the playlist as it grows asks with the same one and gets the
+    /// conversion that's already running. Answers once the first segment is ready.
+    /// </summary>
+    [HttpGet("hls/{session}/" + HlsSessions.Playlist)]
+    public async Task<IActionResult> HlsPlaylist(int id, string session, [FromQuery] int? releaseId, [FromQuery] double start,
+        [FromQuery] int? maxKbps, [FromQuery] int? maxHeight, CancellationToken ct)
+    {
+        if (!transcoder.IsAvailable) return StatusCode(StatusCodes.Status501NotImplemented);
+        if (!HlsSessions.IsSessionId(session)) return BadRequest();
+        var owner = HlsOwner(id);
+        var running = hls.Find(session, owner);
+        if (running is null)
+        {
+            var target = await ResolveAsync(id, releaseId, ct);
+            if (target is null) return NotFound();
+            var input = Local(target) is { } local ? Path.GetFullPath(local) : Loopback(id, target);
+            running = hls.Start(session, owner, input, start, maxKbps, maxHeight);
+        }
+
+        string playlist;
+        try
+        {
+            playlist = await hls.PlaylistAsync(running, ct);
+        }
+        catch (TranscodeFailedException ex)
+        {
+            return StatusCode(StatusCodes.Status502BadGateway, $"The server couldn't convert this video: {ex.Message}");
+        }
+        // The player resolves each segment next to the playlist but doesn't carry its query along: the token goes on each.
+        var auth = $"?access_token={Uri.EscapeDataString(Token())}";
+        var lines = playlist.Split('\n').Select(l => l.Length > 0 && !l.StartsWith('#') ? l.TrimEnd('\r') + auth : l);
+        Response.Headers.CacheControl = "no-cache";
+        return Content(string.Join('\n', lines), "application/vnd.apple.mpegurl");
+    }
+
+    /// <summary>One segment of an HLS conversion, from its session's folder.</summary>
+    [HttpGet("hls/{session}/{segment}")]
+    public IActionResult HlsSegment(int id, string session, string segment)
+    {
+        if (!HlsSessions.IsSegment(segment) || hls.Find(session, HlsOwner(id)) is not { } running) return NotFound();
+        var path = Path.Combine(running.Folder, segment);
+        return System.IO.File.Exists(path) ? PhysicalFile(Path.GetFullPath(path), "video/mp2t", enableRangeProcessing: true) : NotFound();
+    }
+
+    /// <summary>Whose HLS sessions are whose: this viewer, this video.</summary>
+    private string HlsOwner(int id) => $"{User.UserId()}:{RouteBase(id)}";
 
     /// <summary>
     /// What's happening to get this video playing, for the player's loading screen. Answers straight away, even while
