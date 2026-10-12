@@ -93,5 +93,31 @@ public class EpisodeDownloadButton : Button
         }
         if (Text != text) Text = text;
         SemanticProperties.SetDescription(this, $"Download to this device: {text}");
+        ShowProgress(this, _item is { CanPause: true } running ? running.Progress : null, ref _running);
+    }
+
+    private bool _running;
+
+    /// <summary>
+    /// A button's progress look (see ProgressLook): filled to <paramref name="progress"/> with a pulsing border while
+    /// something runs, its usual look once it's done (null).
+    /// </summary>
+    internal static void ShowProgress(Button button, double? progress, ref bool running)
+    {
+        var resources = Application.Current!.Resources;
+        if (progress is { } p)
+        {
+            button.Background = ProgressLook.Fill(p, (Color)resources["SurfaceRaised"]);
+            button.BorderWidth = 1.5;
+            if (!running) ProgressLook.Pulse(button, c => button.BorderColor = c, on: true);
+            running = true;
+        }
+        else if (running)
+        {
+            button.ClearValue(BackgroundProperty);
+            button.BorderWidth = 0;
+            ProgressLook.Pulse(button, _ => { }, on: false);
+            running = false;
+        }
     }
 }

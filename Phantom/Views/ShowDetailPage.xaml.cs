@@ -19,6 +19,13 @@ public partial class ShowDetailPage : ContentPage
         // Coming back from the player: refresh what's next and what's been watched.
         if (_loadedOnce) _vm.LoadCommand.Execute(null);
         _loadedOnce = true;
+        _vm.WatchServer(true);
+    }
+
+    protected override void OnDisappearing()
+    {
+        base.OnDisappearing();
+        _vm.WatchServer(false);
     }
 
     private void OnRelatedSelected(object? sender, SelectionChangedEventArgs e)

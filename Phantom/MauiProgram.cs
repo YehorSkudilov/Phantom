@@ -38,6 +38,7 @@ public static class MauiProgram
         builder.Services.AddSingleton<PhantomApi>();
         builder.Services.AddSingleton<DownloadManager>();
         builder.Services.AddTransient<PlaylistMembership>();
+        builder.Services.AddSingleton<ServerDownloadTracker>();
 
         // Tab pages keep their state; pushed pages are created per navigation.
         builder.Services.AddSingleton<HomeViewModel>();

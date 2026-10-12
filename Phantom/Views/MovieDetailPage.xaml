@@ -70,9 +70,12 @@
                                              Command="{Binding RateCommand}" />
                         <controls:ActionTile Grid.Row="1" Glyph="playlist_add" Text="{Binding PlaylistLabel}" IsActive="{Binding IsInPlaylist}"
                                              Command="{Binding AddToPlaylistCommand}" />
+                        <!-- Both fill like a progress bar while they run, their border pulsing -->
                         <controls:ActionTile Grid.Row="1" Grid.Column="1" Glyph="download" Text="Download" Command="{Binding DownloadToDeviceCommand}"
-                                             IsActive="{Binding OfflineItem, Converter={StaticResource HasValue}}" />
-                        <controls:ActionTile Grid.Row="1" Grid.Column="2" Glyph="cloud_download" Text="Save on server" Command="{Binding DownloadOnServerCommand}" />
+                                             IsActive="{Binding OfflineItem, Converter={StaticResource HasValue}}"
+                                             IsRunning="{Binding OfflineItem.CanPause, FallbackValue=False}" Progress="{Binding OfflineItem.Progress, FallbackValue=0}" />
+                        <controls:ActionTile Grid.Row="1" Grid.Column="2" Glyph="cloud_download" Text="{Binding ServerLabel}" Command="{Binding DownloadOnServerCommand}"
+                                             IsActive="{Binding IsOnServer}" IsRunning="{Binding IsSavingOnServer}" Progress="{Binding ServerProgress}" />
                     </Grid>
 
                     <!-- Device download status -->
@@ -82,6 +85,14 @@
                             <Label Grid.Column="1" Text="{Binding OfflineItem.DownloadedBytes, Converter={StaticResource Bytes}}" Style="{StaticResource Muted}" />
                             <ProgressBar Grid.Row="1" Grid.ColumnSpan="2" Progress="{Binding OfflineItem.Progress}" />
                         </Grid>
+                    </Border>
+
+                    <!-- The server's copy, while it's being saved -->
+                    <Border Style="{StaticResource Card}" Padding="12" IsVisible="{Binding IsSavingOnServer}">
+                        <VerticalStackLayout Spacing="6">
+                            <Label Text="{Binding ServerStatusText}" FontSize="13" />
+                            <ProgressBar Progress="{Binding ServerProgress}" />
+                        </VerticalStackLayout>
                     </Border>
 
                 </VerticalStackLayout>

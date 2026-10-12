@@ -8,7 +8,8 @@ using Phantom.Shared;
 namespace Phantom.ViewModels;
 
 /// <summary>A show's page: its details, Play (the next episode), and a season's episodes to pick from.</summary>
-public partial class ShowDetailViewModel(PhantomApi api, SettingsService settings, DownloadManager downloads, PlaylistMembership playlists)
+public partial class ShowDetailViewModel(PhantomApi api, SettingsService settings, DownloadManager downloads, PlaylistMembership playlists,
+    ServerDownloadTracker server)
     : BaseViewModel, IQueryAttributable
 {
     protected override bool ShowsOfflineState => true;
@@ -173,6 +174,7 @@ public partial class ShowDetailViewModel(PhantomApi api, SettingsService setting
         if (SelectedSeason?.Number != season) return; // another season was picked meanwhile
         if (Episodes.Count > 0 && Episodes[0].SeasonNumber == season) Episodes.Sync(episodes);
         else Episodes.ReplaceAll(episodes);
+        OnServerChanged(this, EventArgs.Empty); // another season's copies on the server
     }
 
     /// <summary>Plays the next episode for this profile, from where it was left off.</summary>
@@ -238,7 +240,10 @@ public partial class ShowDetailViewModel(PhantomApi api, SettingsService setting
     /// <summary>Some of the show's episodes are on this device (highlights the Download tile).</summary>
     public bool HasDownloads => downloads.Items.Any(i => i.ShowId == _id);
 
-    /// <summary>An episode's Save on server button: the server downloads and keeps just that episode.</summary>
+    /// <summary>
+    /// An episode's Save on server button: the server downloads and keeps just that episode. Pressed again once it's
+    /// there (or on its way), an admin can stop or remove it.
+    /// </summary>
     [RelayCommand]
     private async Task SaveEpisodeOnServer(EpisodeDto? episode)
     {
@@ -248,8 +253,85 @@ public partial class ShowDetailViewModel(PhantomApi api, SettingsService setting
             await ToastAsync("No copy of this episode has been found yet.");
             return;
         }
-        await SaveOnServerAsync([episode], $"S{episode.SeasonNumber}:E{episode.EpisodeNumber}");
+        if (server.ForEpisode(episode.Id) is { } d) await RemoveFromServerAsync([d], EpisodeName(episode));
+        else await SaveOnServerAsync([episode], $"S{episode.SeasonNumber}:E{episode.EpisodeNumber}");
     }
+
+    // ---------- What's on the server ----------
+
+    /// <summary>The server's saved (or saving) copies, which the Save on server buttons show.</summary>
+    public ServerDownloadTracker Server => server;
+
+    private IDisposable? _serverWatch;
+
+    /// <summary>The season's episodes on the server (or on their way there).</summary>
+    private List<ServerDownloadDto> SeasonOnServer() =>
+        SeasonEpisodes().Select(e => server.ForEpisode(e.Id)).OfType<ServerDownloadDto>().ToList();
+
+    /// <summary>All of the season is on the server, or on its way.</summary>
+    public bool IsSeasonOnServer => SeasonEpisodes() is { Count: > 0 } eps && SeasonOnServer().Count == eps.Count;
+    public bool IsSeasonSavingOnServer => SeasonOnServer().Any(ServerDownloadTracker.IsRunning);
+
+    /// <summary>How far the season's copies on the server have got, all together (0 to 1).</summary>
+    public double SeasonServerProgress => SeasonOnServer() is { Count: > 0 } d
+        ? d.Sum(x => x.Status == DownloadStatus.Completed ? 100 : x.Progress) / 100 / SeasonEpisodes().Count
+        : 0;
+
+    public string SeasonServerLabel => IsSeasonSavingOnServer ? $"Saving {SeasonServerProgress:0%}"
+        : IsSeasonOnServer ? "On server"
+        : "Save on server";
+
+    /// <summary>Some of the show is on the server (highlights the show's Save on server tile).</summary>
+    public bool HasOnServer => Episodes.Any(e => server.ForEpisode(e.Id) is not null);
+
+    /// <summary>Follows what's on the server while the page is on screen (the page starts and stops it).</summary>
+    public void WatchServer(bool on)
+    {
+        if (on && _serverWatch is null)
+        {
+            server.Changed += OnServerChanged;
+            _serverWatch = server.Watch();
+        }
+        else if (!on && _serverWatch is not null)
+        {
+            server.Changed -= OnServerChanged;
+            _serverWatch.Dispose();
+            _serverWatch = null;
+        }
+    }
+
+    private void OnServerChanged(object? sender, EventArgs e)
+    {
+        OnPropertyChanged(nameof(IsSeasonOnServer));
+        OnPropertyChanged(nameof(IsSeasonSavingOnServer));
+        OnPropertyChanged(nameof(SeasonServerProgress));
+        OnPropertyChanged(nameof(SeasonServerLabel));
+        OnPropertyChanged(nameof(HasOnServer));
+    }
+
+    /// <summary>
+    /// Copies on the server, pressed again: an admin can stop them (while saving) or remove them, after saying so;
+    /// anyone else hears how they're doing.
+    /// </summary>
+    private Task RemoveFromServerAsync(IReadOnlyList<ServerDownloadDto> copies, string name) => RunAsync(async () =>
+    {
+        var running = copies.Any(ServerDownloadTracker.IsRunning);
+        if (settings.User?.IsAdmin != true)
+        {
+            await ToastAsync(running ? $"Saving on the server ({copies.Average(c => c.Progress) / 100:0%})" : "Saved on the server");
+            return;
+        }
+        var what = copies.Count == 1 ? name : $"{name} ({copies.Count} episodes)";
+        var confirmed = running
+            ? await Dialog.ConfirmAsync("Stop saving on the server?", $"The server stops downloading {what} and deletes what it has of it so far.",
+                "Stop saving", destructive: true)
+            : await Dialog.ConfirmAsync("Remove from the server?", $"Delete the server's copy of {what}? It can still be streamed.",
+                "Remove", destructive: true);
+        if (!confirmed) return;
+        foreach (var c in copies) await api.DeleteServerDownloadAsync(c.Id, deleteFiles: true);
+        await ToastAsync(running ? "Stopped" : "Removed from the server");
+        await server.RefreshAsync();
+    }, showBusy: false);
 
     /// <summary>The season on screen's episodes that can be played.</summary>
     private List<EpisodeDto> SeasonEpisodes() => SelectedSeason is { } season
@@ -300,8 +382,16 @@ public partial class ShowDetailViewModel(PhantomApi api, SettingsService setting
             return;
         }
         var name = SeasonName;
-        if (!await ConfirmManyAsync($"Save {name} on the server?", episodes.Count, "on the server, where everyone can play them", "Save")) return;
-        await SaveOnServerAsync(episodes, char.ToUpper(name[0]) + name[1..]);
+        var title = char.ToUpper(name[0]) + name[1..];
+        // All of it there (or on its way): pressed again, it's stopped or removed. Otherwise the rest is saved.
+        var missing = episodes.Where(e => server.ForEpisode(e.Id) is null).ToList();
+        if (missing.Count == 0)
+        {
+            await RemoveFromServerAsync(SeasonOnServer(), title);
+            return;
+        }
+        if (!await ConfirmManyAsync($"Save {name} on the server?", missing.Count, "on the server, where everyone can play them", "Save")) return;
+        await SaveOnServerAsync(missing, title);
     }
 
     private static string EpisodeName(EpisodeDto e) => $"S{e.SeasonNumber}:E{e.EpisodeNumber} {e.Title}".Trim();
@@ -434,6 +524,7 @@ public partial class ShowDetailViewModel(PhantomApi api, SettingsService setting
         foreach (var e in episodes)
             if ((await api.QueueServerDownloadAsync(0, null, e.Id)).Status == DownloadStatus.Completed) already++;
         await ToastAsync(already == episodes.Count ? $"{name} is already on the server" : $"Saving {name} on the server");
+        await server.RefreshAsync();
     }, showBusy: false);
 
     /// <summary>

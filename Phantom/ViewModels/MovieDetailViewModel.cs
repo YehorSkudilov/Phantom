@@ -7,7 +7,8 @@ using Phantom.Shared;
 
 namespace Phantom.ViewModels;
 
-public partial class MovieDetailViewModel(PhantomApi api, SettingsService settings, DownloadManager downloads, PlaylistMembership playlists)
+public partial class MovieDetailViewModel(PhantomApi api, SettingsService settings, DownloadManager downloads, PlaylistMembership playlists,
+    ServerDownloadTracker server)
     : BaseViewModel, IQueryAttributable
 {
     protected override bool ShowsOfflineState => true;
@@ -234,9 +235,75 @@ public partial class MovieDetailViewModel(PhantomApi api, SettingsService settin
     [RelayCommand]
     private Task DownloadOnServer() => RunAsync(async () =>
     {
-        var d = await api.QueueServerDownloadAsync(_id, SelectedRelease?.Id);
-        await ToastAsync(d.Status == DownloadStatus.Completed ? "Already on the server" : "Queued on the server");
+        if (Movie is not { } movie) return;
+        // Not there yet: saved. There (or on its way): an admin may stop or remove it; anyone else hears how it's doing.
+        if (ServerItem is not { } d)
+        {
+            var queued = await api.QueueServerDownloadAsync(_id, SelectedRelease?.Id);
+            await ToastAsync(queued.Status == DownloadStatus.Completed ? "Already on the server" : "Saving on the server");
+        }
+        else if (!IsAdmin)
+        {
+            await ToastAsync(ServerDownloadTracker.IsRunning(d) ? $"{ServerLabel} on the server" : "Saved on the server");
+            return;
+        }
+        else if (ServerDownloadTracker.IsRunning(d))
+        {
+            if (!await Dialog.ConfirmAsync("Stop saving on the server?",
+                    $"The server stops downloading {movie.Title} and deletes what it has of it so far.", "Stop saving", destructive: true)) return;
+            await api.DeleteServerDownloadAsync(d.Id, deleteFiles: true);
+            await ToastAsync("Stopped");
+        }
+        else
+        {
+            if (!await Dialog.ConfirmAsync("Remove from the server?",
+                    $"Delete the server's copy of {movie.Title}? It can still be streamed.", "Remove", destructive: true)) return;
+            await api.DeleteServerDownloadAsync(d.Id, deleteFiles: true);
+            await ToastAsync("Removed from the server");
+        }
+        await server.RefreshAsync();
     }, showBusy: false);
+
+    // ---------- The copy on the server ----------
+
+    private IDisposable? _serverWatch;
+
+    /// <summary>The server's copy of this movie (saved, or being saved), if any.</summary>
+    public ServerDownloadDto? ServerItem => server.ForMovie(_id);
+    public string ServerLabel => ServerDownloadTracker.Label(ServerItem);
+    public bool IsOnServer => ServerItem is not null;
+    public bool IsSavingOnServer => ServerDownloadTracker.IsRunning(ServerItem);
+    public double ServerProgress => (ServerItem?.Progress ?? 0) / 100;
+
+    /// <summary>"Downloading · 42% · 3.1 MB/s", under the buttons while the server saves it.</summary>
+    public string ServerStatusText => ServerItem is not { } d ? ""
+        : $"On the server: {ServerDownloadTracker.Label(d)}" + (d.DownloadRate > 0 ? $"  ·  {BytesConverter.Format(d.DownloadRate)}/s" : "");
+
+    /// <summary>Follows the server's copy while the page is on screen (the page starts and stops it).</summary>
+    public void WatchServer(bool on)
+    {
+        if (on && _serverWatch is null)
+        {
+            server.Changed += OnServerChanged;
+            _serverWatch = server.Watch();
+        }
+        else if (!on && _serverWatch is not null)
+        {
+            server.Changed -= OnServerChanged;
+            _serverWatch.Dispose();
+            _serverWatch = null;
+        }
+    }
+
+    private void OnServerChanged(object? sender, EventArgs e)
+    {
+        OnPropertyChanged(nameof(ServerItem));
+        OnPropertyChanged(nameof(ServerLabel));
+        OnPropertyChanged(nameof(IsOnServer));
+        OnPropertyChanged(nameof(IsSavingOnServer));
+        OnPropertyChanged(nameof(ServerProgress));
+        OnPropertyChanged(nameof(ServerStatusText));
+    }
 
     [RelayCommand]
     private Task PlayTrailer()
