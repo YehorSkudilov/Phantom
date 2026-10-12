@@ -37,9 +37,9 @@ jobs:
             # The lock keeps deploys running side by side from resetting it at the same time.
             flock /tmp/phantom-deploy-git.lock -c "git fetch origin && git reset --hard origin/main"
 
-            cd src/Phantom.Api
+            cd Phantom.Api
 
-            # Every API setting lives here (there are no appsettings files) - see src/Phantom.Api/.env.example.
+            # Every API setting lives here (there are no appsettings files) - see Phantom.Api/.env.example.
             # The data volume, torrent port and trusted proxy network are set by docker-compose.yml itself.
             echo "Writing .env..."
             cat > .env <<'ENVEOF'

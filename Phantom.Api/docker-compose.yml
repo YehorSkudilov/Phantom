@@ -1,0 +1,32 @@
+# The Phantom API. Settings come from .env next to this file (copy .env.example); on the server the Publish API
+# workflow writes it.
+#
+#   docker compose up -d --build
+name: phantom
+
+services:
+  api:
+    build:
+      context: ..
+      dockerfile: Phantom.Api/Dockerfile
+    restart: unless-stopped
+    # Plain HTTP on every interface; the reverse proxy terminates TLS in front of it.
+    ports:
+      - "${API_PORT:?API_PORT is not set}:8080"
+      # BitTorrent peers and DHT
+      - "${TORRENT_PORT:-55125}:${TORRENT_PORT:-55125}/tcp"
+      - "${TORRENT_PORT:-55125}:${TORRENT_PORT:-55125}/udp"
+    env_file:
+      - .env
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Production
+      - Phantom__DataDirectory=/data
+      - Phantom__TorrentListenPort=${TORRENT_PORT:-55125}
+      # The proxy reaches the container through Docker's bridge network, so trust X-Forwarded-* from there;
+      # otherwise stream URLs would point at the container instead of the public address.
+      - ReverseProxy__KnownNetworks=172.16.0.0/12
+    volumes:
+      - phantom_data:/data
+
+volumes:
+  phantom_data:

@@ -4,9 +4,9 @@ permissions:
   contents: write
 
 env:
-  # The build jobs check Phantom out into its own folder next to AppSkeleton (referenced as ..\..\..\AppSkeleton).
-  PROJECT_PATH: Phantom/src/Phantom.Client/Phantom.csproj
-  VERSION_BUMP_PROJECT_PATH: src/Phantom.Client/Phantom.csproj
+  # The build jobs check Phantom out into its own folder next to AppSkeleton (referenced as ..\..\AppSkeleton).
+  PROJECT_PATH: Phantom/Phantom/Phantom.csproj
+  VERSION_BUMP_PROJECT_PATH: Phantom/Phantom.csproj
   PACKAGE_NAME: com.yehorskudilov.phantom
 
 on:
@@ -431,7 +431,7 @@ jobs:
             }
           }
 
-          $file = Resolve-Path "Phantom/src/Phantom.Client/Platforms/Windows/Package.appxmanifest"
+          $file = Resolve-Path "Phantom/Phantom/Platforms/Windows/Package.appxmanifest"
           [xml]$xml = Get-Content $file -Raw
 
           $xml.Package.Identity.Name = $env:MSSTORE_PACKAGE_NAME

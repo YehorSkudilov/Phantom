@@ -59,7 +59,7 @@ TestResult.xml
 nunit-*.xml
 
 # Phantom runtime data. DataDirectory defaults to "data" relative to wherever the API was started; on Windows that
-# is the same folder as the src/Phantom.Api/Data source folder, so list what the server writes instead of ignoring
+# is the same folder as the Phantom.Api/Data source folder, so list what the server writes instead of ignoring
 # the whole folder (that would silently skip new entity files).
 **/[Dd]ata/phantom.db*
 **/[Dd]ata/jwt.key
@@ -84,4 +84,4 @@ nunit-*.xml
 *.p8
 *.mobileprovision
 *.pfx
-/Publish/
+Publish/

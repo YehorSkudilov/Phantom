@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/brand/app-icon.svg" alt="Phantom logo" width="120">
+  <img src="Phantom/Resources/Images/logo_mark.svg" alt="Phantom logo" width="120">
 </p>
 
 <h1 align="center">Phantom</h1>
@@ -12,7 +12,7 @@ The **client** (.NET MAUI) gives you a Plex-like experience on Android, iOS, mac
 
 ```
 ┌────────────────────┐   REST + HTTP range streams   ┌──────────────────────────────────┐
-│  Phantom.Client    │ ────────────────────────────▶ │  Phantom.Api                     │
+│  Phantom           │ ────────────────────────────▶ │  Phantom.Api                     │
 │  .NET MAUI app     │                               │  Controllers · EF Core (SQLite)  │
 │  offline downloads │ ◀──────────────────────────── │  MonoTorrent engine · ffmpeg      │
 └────────────────────┘                               │  Source sync · TMDB metadata     │
@@ -25,11 +25,10 @@ The **client** (.NET MAUI) gives you a Plex-like experience on Android, iOS, mac
 
 | Path | What it is |
 | --- | --- |
-| `src/Phantom.Api` | ASP.NET Core Web API with controllers: library, streaming, server downloads, sources, users |
-| `src/Phantom.Client` | .NET MAUI client (MVVM with CommunityToolkit) |
-| `src/Phantom.Shared` | DTOs shared by both |
-| `tests/Phantom.Api.Tests` | xUnit unit and integration tests |
-| `docs/brand` | Logo, icon, palette |
+| `Phantom.Api` | ASP.NET Core Web API with controllers: library, streaming, server downloads, sources, users |
+| `Phantom` | .NET MAUI client (MVVM with CommunityToolkit) |
+| `Phantom.Shared` | DTOs shared by both |
+| `Phantom.Api.Tests` | xUnit unit and integration tests |
 
 ## Content sources (read this)
 
@@ -117,12 +116,12 @@ with copyright law where you live.
 Requirements: .NET 10 SDK. Optional: `ffmpeg` on `PATH` (transcoding), a TMDB API key (metadata).
 
 ```bash
-cd src/Phantom.Api
+cd Phantom.Api
 cp .env.example .env           # then set at least SwaggerAuth__Password
 dotnet run                     # http://0.0.0.0:5180, Swagger UI at /swagger (basic auth)
 ```
 
-Every setting lives in `src/Phantom.Api/.env` (there are no appsettings files). The API loads it itself under
+Every setting lives in `Phantom.Api/.env` (there are no appsettings files). The API loads it itself under
 `dotnet run`, and `docker-compose.yml` passes it to the container. See `.env.example` for all keys; the main ones:
 
 | Key | Default | Meaning |
@@ -141,7 +140,7 @@ The first account created becomes the administrator. `GET /health` returns 200 o
 ### Docker
 
 ```bash
-cd src/Phantom.Api
+cd Phantom.Api
 docker compose up -d --build   # builds from the repo root, data in the phantom_data volume
 ```
 
@@ -152,7 +151,7 @@ The image includes ffmpeg and runs as a non-root user. Put a TLS-terminating rev
 Requirements: .NET 10 SDK with the MAUI workload (`dotnet workload install maui`).
 
 ```bash
-cd src/Phantom.Client
+cd Phantom
 cp .env.example .env           # required: set API_BASE_URL to your server
 dotnet build -t:Run -f net10.0-android        # Android device or emulator
 dotnet build -t:Run -f net10.0-ios            # macOS only
@@ -168,7 +167,7 @@ Deployment works the same way as GymBook's: everything is started by hand from t
 (`.github/workflows/Publish.yml`), which calls two reusable workflows.
 
 **API (`PublishApi.yml`)**, from `main` only: SSH to the server, `git reset --hard origin/main` in `/opt/Phantom`,
-write `src/Phantom.Api/.env` from repository variables and secrets, `docker compose build --pull && up -d`, wait
+write `Phantom.Api/.env` from repository variables and secrets, `docker compose build --pull && up -d`, wait
 for `/health`, prune old images. One-time server setup: install Docker, `git clone` this repository to
 `/opt/Phantom`, and open `TORRENT_PORT` (TCP and UDP) in the firewall.
 
@@ -199,7 +198,7 @@ Repository **secrets**:
 ## Tests
 
 ```bash
-dotnet test tests/Phantom.Api.Tests
+dotnet test Phantom.Api.Tests
 ```
 
 ## API overview
@@ -224,7 +223,7 @@ can't send headers. Put the server behind HTTPS if you expose it beyond your LAN
 ## Known limitations
 
 - Schema changes need an EF Core migration: change the entities, then run `dotnet ef migrations add <Name>` in
-  `src/Phantom.Api`. The server applies pending migrations at startup (redeploys keep the `phantom_data` volume, so
+  `Phantom.Api`. The server applies pending migrations at startup (redeploys keep the `phantom_data` volume, so
   never edit a migration that has shipped). Databases from before migrations are upgraded in place.
 - Device downloads, playlists and collections are for movies only; episodes stream, or can be saved on the server.
 - Device downloads run while the app is alive; there is no Android foreground download service yet.

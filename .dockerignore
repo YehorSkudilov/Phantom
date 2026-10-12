@@ -1,12 +1,12 @@
-# Docker builds use the repository root as context (see src/Phantom.Api/Dockerfile); only the API and Shared are needed.
+# Docker builds use the repository root as context (see Phantom.Api/Dockerfile); only the API and Shared are needed.
 **/bin/
 **/obj/
 **/.vs/
 .git/
 .github/
 docs/
-src/Phantom.Client/
-src/Phantom.Api/data/
-tests/
+Phantom/
+Phantom.Api/data/
+Phantom.Api.Tests/
 **/*.user
 **/.env

@@ -1,0 +1,223 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<views:TabView xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:controls="clr-namespace:Phantom.Controls"
+             xmlns:views="clr-namespace:Phantom.Views"
+             xmlns:vm="clr-namespace:Phantom.ViewModels"
+             x:Class="Phantom.Views.LibraryPage"
+             x:DataType="vm:LibraryViewModel">
+    <Grid RowDefinitions="Auto,Auto,*">
+        <Grid ColumnDefinitions="*,Auto,Auto" Padding="16,18,8,0" MinimumHeightRequest="62">
+            <Label Text="Search" Style="{StaticResource H1}" VerticalOptions="Center" />
+            <!-- Filters (and sort) live in one popup; a dot shows while any filter narrows the library -->
+            <Grid Grid.Column="1">
+                <ImageButton Style="{StaticResource IconButton}" Source="{controls:Icon tune}" Command="{Binding ToggleFiltersCommand}"
+                             SemanticProperties.Description="Filters and sort" ToolTipProperties.Text="Filters and sort" />
+                <Border WidthRequest="9" HeightRequest="9" StrokeShape="RoundRectangle 4.5" BackgroundColor="{StaticResource Primary}"
+                        HorizontalOptions="End" VerticalOptions="Start" Margin="0,9,9,0" InputTransparent="True"
+                        IsVisible="{Binding HasActiveFilters}" />
+            </Grid>
+            <Grid Grid.Column="2">
+                <ImageButton Style="{StaticResource IconButton}" Source="{controls:Icon view_list}" Command="{Binding ToggleViewCommand}" IsVisible="{Binding IsGrid}"
+                             SemanticProperties.Description="Show as list" ToolTipProperties.Text="Show as list" />
+                <ImageButton Style="{StaticResource IconButton}" Source="{controls:Icon grid_view}" Command="{Binding ToggleViewCommand}" IsVisible="{Binding IsGrid, Converter={StaticResource Not}}"
+                             SemanticProperties.Description="Show as grid" ToolTipProperties.Text="Show as grid" />
+            </Grid>
+        </Grid>
+
+        <!-- Search: typing swaps the library below for results across titles, cast and genres. -->
+        <SearchBar Grid.Row="1" x:Name="Box" Text="{Binding Search.Query}" Placeholder="Search movies, shows, actors, genres"
+                   SearchCommand="{Binding Search.SearchCommand}" Margin="8,6,8,0" />
+
+        <Grid Grid.Row="2" RowDefinitions="Auto,*" IsVisible="{Binding Search.Query, Converter={StaticResource HasValue}, ConverterParameter=invert}">
+        <!-- One compact row above the list: All / Movies / TV shows, and how many there are. Sort and filters are in the
+             popup behind the Filters button. -->
+        <Grid ColumnDefinitions="Auto,*" Padding="16,6,16,6" ColumnSpacing="10">
+            <HorizontalStackLayout Spacing="6">
+                <Button Text="All" Command="{Binding ShowAllCommand}" Style="{StaticResource SecondaryButton}" Padding="12,0" HeightRequest="32" MinimumHeightRequest="32" FontSize="13">
+                    <Button.Triggers>
+                        <DataTrigger TargetType="Button" Binding="{Binding IsAll}" Value="True">
+                            <Setter Property="BackgroundColor" Value="{StaticResource Primary}" />
+                            <Setter Property="TextColor" Value="{StaticResource White}" />
+                        </DataTrigger>
+                    </Button.Triggers>
+                </Button>
+                <Button Text="Movies" Command="{Binding ShowMoviesCommand}" Style="{StaticResource SecondaryButton}" Padding="12,0" HeightRequest="32" MinimumHeightRequest="32" FontSize="13">
+                    <Button.Triggers>
+                        <DataTrigger TargetType="Button" Binding="{Binding IsMovies}" Value="True">
+                            <Setter Property="BackgroundColor" Value="{StaticResource Primary}" />
+                            <Setter Property="TextColor" Value="{StaticResource White}" />
+                        </DataTrigger>
+                    </Button.Triggers>
+                </Button>
+                <Button Text="TV shows" Command="{Binding ShowTvCommand}" Style="{StaticResource SecondaryButton}" Padding="12,0" HeightRequest="32" MinimumHeightRequest="32" FontSize="13">
+                    <Button.Triggers>
+                        <DataTrigger TargetType="Button" Binding="{Binding IsShows}" Value="True">
+                            <Setter Property="BackgroundColor" Value="{StaticResource Primary}" />
+                            <Setter Property="TextColor" Value="{StaticResource White}" />
+                        </DataTrigger>
+                    </Button.Triggers>
+                </Button>
+            </HorizontalStackLayout>
+            <Label Grid.Column="1" Text="{Binding Summary}" Style="{StaticResource Muted}" FontSize="12" VerticalOptions="Center"
+                   HorizontalOptions="End" HorizontalTextAlignment="End" LineBreakMode="TailTruncation" />
+        </Grid>
+
+        <!-- One RefreshView per view: on iOS a RefreshView only hooks onto the first list inside it, which left the list
+             view (the second) without pull-to-refresh. -->
+        <Grid Grid.Row="1">
+            <RefreshView IsRefreshing="{Binding IsRefreshing}" Command="{Binding ReloadCommand}" IsVisible="{Binding IsGrid}">
+                <CollectionView x:Name="Grid" ItemsSource="{Binding Movies}" Scrolled="OnListScrolled"
+                                ItemTemplate="{StaticResource PosterGridCard}" SelectionMode="Single"
+                                SelectionChanged="OnSelected"
+                                RemainingItemsThreshold="45" RemainingItemsThresholdReachedCommand="{Binding LoadMoreCommand}">
+                    <CollectionView.ItemsLayout>
+                        <GridItemsLayout x:Name="GridLayout" Orientation="Vertical" Span="3" HorizontalItemSpacing="10" VerticalItemSpacing="6" />
+                    </CollectionView.ItemsLayout>
+                    <CollectionView.Footer>
+                        <VerticalStackLayout Padding="0,8,0,0">
+                            <ActivityIndicator IsRunning="{Binding IsLoadingMore}" IsVisible="{Binding IsLoadingMore}" HorizontalOptions="Center" />
+                            <BoxView HeightRequest="{x:Static views:TabView.NavBarInset}" Color="Transparent" />
+                        </VerticalStackLayout>
+                    </CollectionView.Footer>
+                </CollectionView>
+            </RefreshView>
+            <RefreshView IsRefreshing="{Binding IsRefreshing}" Command="{Binding ReloadCommand}" IsVisible="{Binding IsGrid, Converter={StaticResource Not}}">
+                <CollectionView ItemsSource="{Binding Movies}" Scrolled="OnListScrolled"
+                                ItemTemplate="{StaticResource MovieRow}" SelectionMode="Single" SelectionChanged="OnSelected"
+                                RemainingItemsThreshold="45" RemainingItemsThresholdReachedCommand="{Binding LoadMoreCommand}">
+                    <CollectionView.Footer>
+                        <VerticalStackLayout Padding="0,8,0,0">
+                            <ActivityIndicator IsRunning="{Binding IsLoadingMore}" IsVisible="{Binding IsLoadingMore}" HorizontalOptions="Center" />
+                            <BoxView HeightRequest="{x:Static views:TabView.NavBarInset}" Color="Transparent" />
+                        </VerticalStackLayout>
+                    </CollectionView.Footer>
+                </CollectionView>
+            </RefreshView>
+            <!-- Loading the first page, offline, or nothing matches (outside the lists: Windows never shows a list's
+                 EmptyView when it has a footer) -->
+            <controls:StateView Skeleton="Grid" HasContent="{Binding Movies.Count, Converter={StaticResource HasValue}}"
+                                HasLoaded="{Binding HasLoaded}" IsOffline="{Binding IsOffline}" RetryCommand="{Binding ReloadCommand}"
+                                Glyph="{Binding EmptyGlyph}" Title="{Binding EmptyTitle}" Message="{Binding EmptyMessage}"
+                                ActionText="{Binding EmptyActionText}" ActionCommand="{Binding ClearFiltersCommand}" />
+        </Grid>
+        </Grid>
+
+        <!-- Search results -->
+        <ScrollView Grid.Row="2" x:DataType="vm:LibraryViewModel" IsVisible="{Binding Search.Query, Converter={StaticResource HasValue}}">
+            <VerticalStackLayout BindingContext="{Binding Search}" x:DataType="vm:SearchViewModel">
+            <VerticalStackLayout Spacing="10" Padding="0,8,0,108">
+                <controls:StateView HasContent="{Binding NoResults, Converter={StaticResource Not}}" Margin="0,24,0,0"
+                                    Glyph="travel_explore" Title="No matches"
+                                    Message="Nothing in the library by that title, person or genre. Check the spelling, or try fewer words." />
+
+                <!-- People: a heading to tap open (folded by default, so titles come first) -->
+                <Grid ColumnDefinitions="*,Auto" Margin="16,8,8,0" IsVisible="{Binding People.Count, Converter={StaticResource HasValue}}">
+                    <Grid.GestureRecognizers>
+                        <TapGestureRecognizer Command="{Binding TogglePeopleCommand}" />
+                    </Grid.GestureRecognizers>
+                    <Label Style="{StaticResource H2}" VerticalOptions="Center">
+                        <Label.FormattedText>
+                            <FormattedString>
+                                <Span Text="People" />
+                                <Span Text="{Binding People.Count, StringFormat='  {0}'}" TextColor="{StaticResource TextSecondary}" FontSize="15" />
+                            </FormattedString>
+                        </Label.FormattedText>
+                    </Label>
+                    <ImageButton Grid.Column="1" Style="{StaticResource IconButton}" Source="{controls:Icon expand_more}" Command="{Binding TogglePeopleCommand}"
+                                 SemanticProperties.Description="Show or hide people">
+                        <ImageButton.Triggers>
+                            <DataTrigger TargetType="ImageButton" Binding="{Binding ShowPeople}" Value="True">
+                                <Setter Property="Source" Value="{controls:Icon expand_less}" />
+                            </DataTrigger>
+                        </ImageButton.Triggers>
+                    </ImageButton>
+                </Grid>
+                <FlexLayout BindableLayout.ItemsSource="{Binding People}" Wrap="Wrap" Margin="12,0" IsVisible="{Binding ShowPeople}">
+                    <BindableLayout.ItemTemplate>
+                        <DataTemplate x:DataType="x:String">
+                            <Button Text="{Binding .}" Style="{StaticResource SecondaryButton}" Margin="4"
+                                    ImageSource="{controls:Icon person, Size=18}" ContentLayout="Left,6"
+                                    Command="{Binding Source={RelativeSource AncestorType={x:Type vm:SearchViewModel}}, Path=OpenPersonCommand, x:DataType=vm:SearchViewModel}"
+                                    CommandParameter="{Binding .}" />
+                        </DataTemplate>
+                    </BindableLayout.ItemTemplate>
+                </FlexLayout>
+
+                <Label Text="Genres" Style="{StaticResource H2}" Margin="16,8,16,0" IsVisible="{Binding Genres.Count, Converter={StaticResource HasValue}}" />
+                <FlexLayout BindableLayout.ItemsSource="{Binding Genres}" Wrap="Wrap" Margin="12,0">
+                    <BindableLayout.ItemTemplate>
+                        <DataTemplate x:DataType="x:String">
+                            <Button Text="{Binding .}" Style="{StaticResource SecondaryButton}" Margin="4"
+                                    Command="{Binding Source={RelativeSource AncestorType={x:Type vm:SearchViewModel}}, Path=OpenGenreCommand, x:DataType=vm:SearchViewModel}"
+                                    CommandParameter="{Binding .}" />
+                        </DataTemplate>
+                    </BindableLayout.ItemTemplate>
+                </FlexLayout>
+
+                <Label Text="Movies" Style="{StaticResource H2}" Margin="16,8,16,0" IsVisible="{Binding Movies.Count, Converter={StaticResource HasValue}}" />
+                <VerticalStackLayout BindableLayout.ItemsSource="{Binding Movies}" BindableLayout.ItemTemplate="{StaticResource MovieRow}" x:Name="SearchMovies" />
+            </VerticalStackLayout>
+            </VerticalStackLayout>
+        </ScrollView>
+
+        <!-- Filters and sort: a card at the bottom, just as tall as what's in it, clear of the floating nav bar (84 =
+             TabView.NavBarInset). Tapping outside it or Close shuts it; changes apply as they're made. -->
+        <Grid Grid.RowSpan="3" IsVisible="{Binding ShowFilters}">
+            <BoxView Color="{StaticResource Scrim}" controls:RemoteFocus.Skip="True">
+                <BoxView.GestureRecognizers>
+                    <TapGestureRecognizer Command="{Binding CloseFiltersCommand}" />
+                </BoxView.GestureRecognizers>
+            </BoxView>
+            <Border Style="{StaticResource Card}" Padding="16,8,16,16" Margin="8,0,8,92"
+                    VerticalOptions="End" MaximumWidthRequest="480" BackgroundColor="{StaticResource Surface}">
+                <Border.Shadow>
+                    <Shadow Brush="Black" Opacity="0.45" Radius="24" Offset="0,8" />
+                </Border.Shadow>
+                <VerticalStackLayout Spacing="10">
+                    <Grid ColumnDefinitions="*,Auto">
+                        <Label Text="Sort and filter" Style="{StaticResource H2}" VerticalOptions="Center" />
+                        <ImageButton Grid.Column="1" Style="{StaticResource IconButton}" Source="{controls:Icon close}" Margin="0,0,-10,0"
+                                     Command="{Binding CloseFiltersCommand}" SemanticProperties.Description="Close" ToolTipProperties.Text="Close" />
+                    </Grid>
+
+                    <Grid ColumnDefinitions="*,*" RowDefinitions="Auto,Auto,Auto,Auto" ColumnSpacing="10" RowSpacing="8">
+                        <VerticalStackLayout Grid.ColumnSpan="2" Spacing="0">
+                            <Label Text="Sort by" Style="{StaticResource Muted}" FontSize="12" />
+                            <Picker ItemsSource="{Binding SortOptions}" SelectedItem="{Binding SelectedSort}" SemanticProperties.Description="Sort by" />
+                        </VerticalStackLayout>
+                        <VerticalStackLayout Grid.Row="1" Spacing="0">
+                            <Label Text="Genre" Style="{StaticResource Muted}" FontSize="12" />
+                            <Picker ItemsSource="{Binding Genres}" SelectedItem="{Binding SelectedGenre}" SemanticProperties.Description="Genre" />
+                        </VerticalStackLayout>
+                        <VerticalStackLayout Grid.Row="1" Grid.Column="1" Spacing="0">
+                            <Label Text="Decade" Style="{StaticResource Muted}" FontSize="12" />
+                            <Picker ItemsSource="{Binding Decades}" SelectedItem="{Binding SelectedDecade}" SemanticProperties.Description="Decade" />
+                        </VerticalStackLayout>
+                        <VerticalStackLayout Grid.Row="2" Spacing="0">
+                            <Label Text="Watched" Style="{StaticResource Muted}" FontSize="12" />
+                            <Picker ItemsSource="{Binding WatchStates}" SelectedItem="{Binding SelectedWatchState}" SemanticProperties.Description="Watched" />
+                        </VerticalStackLayout>
+                        <VerticalStackLayout Grid.Row="2" Grid.Column="1" Spacing="0">
+                            <Label Text="Content rating" Style="{StaticResource Muted}" FontSize="12" />
+                            <Picker ItemsSource="{Binding Ratings}" SelectedItem="{Binding SelectedRating}" SemanticProperties.Description="Content rating" />
+                        </VerticalStackLayout>
+                        <!-- Shows have no quality -->
+                        <VerticalStackLayout Grid.Row="3" Spacing="0" IsVisible="{Binding IsShows, Converter={StaticResource Not}}">
+                            <Label Text="Quality" Style="{StaticResource Muted}" FontSize="12" />
+                            <Picker ItemsSource="{Binding Qualities}" SelectedItem="{Binding SelectedQuality}" SemanticProperties.Description="Quality" />
+                        </VerticalStackLayout>
+                        <VerticalStackLayout Grid.Row="3" Grid.Column="1" Spacing="0">
+                            <Label Text="Starts with" Style="{StaticResource Muted}" FontSize="12" />
+                            <Picker ItemsSource="{Binding Letters}" SelectedItem="{Binding SelectedLetter}" SemanticProperties.Description="Title starts with" />
+                        </VerticalStackLayout>
+                    </Grid>
+
+                    <Button Text="{Binding ClearFiltersText}" Style="{StaticResource SecondaryButton}" Margin="0,4,0,0"
+                            ImageSource="{controls:Icon filter_alt_off, Size=18}" ContentLayout="Left,8"
+                            Command="{Binding ClearFiltersCommand}" IsEnabled="{Binding HasActiveFilters}" />
+                </VerticalStackLayout>
+            </Border>
+        </Grid>
+    </Grid>
+</views:TabView>
