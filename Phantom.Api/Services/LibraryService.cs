@@ -20,15 +20,24 @@ public class LibraryService(PhantomDbContext db)
         return q;
     }
 
+    public const string LikeEscape = "\\";
+
+    /// <summary>
+    /// A LIKE pattern matching text that contains <paramref name="search"/>. SQLite's LIKE ignores case (ASCII, as its
+    /// lower() does) without lowering every row first; % and _ typed in a search are matched as themselves.
+    /// </summary>
+    public static string ContainsPattern(string search) =>
+        "%" + search.Trim().Replace("\\", "\\\\").Replace("%", "\\%").Replace("_", "\\_") + "%";
+
     /// <param name="sort">False for the filters alone (the library's "All" sorts movies and shows together).</param>
     public IQueryable<Movie> Apply(IQueryable<Movie> q, MovieQuery query, int userId, bool sort = true)
     {
         if (!string.IsNullOrWhiteSpace(query.Search))
         {
-            var s = query.Search.Trim().ToLower();
-            q = q.Where(m => m.Title.ToLower().Contains(s)
-                             || (m.OriginalTitle != null && m.OriginalTitle.ToLower().Contains(s))
-                             || m.Credits.Any(c => c.Name.ToLower().Contains(s)));
+            var s = ContainsPattern(query.Search);
+            q = q.Where(m => EF.Functions.Like(m.Title, s, LikeEscape)
+                             || (m.OriginalTitle != null && EF.Functions.Like(m.OriginalTitle, s, LikeEscape))
+                             || m.Credits.Any(c => EF.Functions.Like(c.Name, s, LikeEscape)));
         }
         if (!string.IsNullOrWhiteSpace(query.Genre)) q = q.Where(m => m.Genres.Any(g => g.Name == query.Genre));
         if (query.Year is { } year) q = q.Where(m => m.Year == year);

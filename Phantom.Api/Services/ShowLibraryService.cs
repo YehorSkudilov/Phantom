@@ -25,10 +25,11 @@ public class ShowLibraryService(PhantomDbContext db)
     {
         if (!string.IsNullOrWhiteSpace(query.Search))
         {
-            var s = query.Search.Trim().ToLower();
-            q = q.Where(x => x.Title.ToLower().Contains(s)
-                             || (x.OriginalTitle != null && x.OriginalTitle.ToLower().Contains(s))
-                             || x.Credits.Any(c => c.Name.ToLower().Contains(s)));
+            var s = LibraryService.ContainsPattern(query.Search);
+            const string escape = LibraryService.LikeEscape;
+            q = q.Where(x => EF.Functions.Like(x.Title, s, escape)
+                             || (x.OriginalTitle != null && EF.Functions.Like(x.OriginalTitle, s, escape))
+                             || x.Credits.Any(c => EF.Functions.Like(c.Name, s, escape)));
         }
         if (!string.IsNullOrWhiteSpace(query.Genre)) q = q.Where(x => x.Genres.Any(g => g.Name == query.Genre));
         if (query.Year is { } year) q = q.Where(x => x.Year == year);

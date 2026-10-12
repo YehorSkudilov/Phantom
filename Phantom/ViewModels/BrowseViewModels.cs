@@ -395,14 +395,22 @@ public partial class SearchViewModel(PhantomApi api) : BaseViewModel
     protected override bool ShowsOfflineState => true;
 
     private CancellationTokenSource? _debounce;
+    // The search in flight: a newer one cancels it, so the server stops working on words that were typed over.
+    private CancellationTokenSource? _request;
 
     public ObservableList<MovieSummaryDto> Movies { get; } = [];
     public ObservableList<string> People { get; } = [];
     public ObservableList<string> Genres { get; } = [];
 
     [ObservableProperty] private string query = "";
-    [ObservableProperty] private bool hasResults;
+    [ObservableProperty, NotifyPropertyChangedFor(nameof(ShowSkeleton))] private bool hasResults;
     [ObservableProperty] private bool noResults;
+
+    /// <summary>From typing until the results for what's in the box are in (the bar under the box sweeps meanwhile).</summary>
+    [ObservableProperty, NotifyPropertyChangedFor(nameof(ShowSkeleton))] private bool isSearching;
+
+    /// <summary>Searching with nothing on screen yet: rows' outlines pulse where the results will be.</summary>
+    public bool ShowSkeleton => IsSearching && !HasResults;
 
     /// <summary>The People section is folded away until opened: names can push the titles off screen.</summary>
     [ObservableProperty] private bool showPeople;
@@ -415,6 +423,9 @@ public partial class SearchViewModel(PhantomApi api) : BaseViewModel
         _debounce?.Cancel();
         _debounce = new CancellationTokenSource();
         var ct = _debounce.Token;
+        // Searching shows straight away, not after the pause; "No matches" for the old words goes with it.
+        IsSearching = value.Trim().Length >= 2;
+        if (IsSearching) NoResults = false;
         _ = Task.Delay(300, ct).ContinueWith(t =>
         {
             if (!t.IsCanceled) MainThread.BeginInvokeOnMainThread(() => SearchCommand.Execute(null));
@@ -428,22 +439,37 @@ public partial class SearchViewModel(PhantomApi api) : BaseViewModel
     private Task Search() => RunAsync(async () =>
     {
         var q = Query.Trim();
+        _request?.Cancel();
         if (q.Length < 2)
         {
             Movies.Clear();
             People.Clear();
             Genres.Clear();
-            HasResults = NoResults = false;
+            HasResults = NoResults = IsSearching = false;
             return;
         }
-        var result = await api.SearchAsync(q);
-        if (q != Query.Trim()) return; // stale
-        // Typing one more letter usually keeps most results: those rows (and their posters) stay put.
-        Movies.Sync(result.Movies);
-        People.Sync(result.People);
-        Genres.Sync(result.Genres);
-        HasResults = Movies.Count + People.Count + Genres.Count > 0;
-        NoResults = !HasResults;
+        var request = _request = new CancellationTokenSource();
+        IsSearching = true;
+        try
+        {
+            var result = await api.SearchAsync(q, request.Token);
+            if (q != Query.Trim()) return; // stale
+            // Typing one more letter usually keeps most results: those rows (and their posters) stay put.
+            Movies.Sync(result.Movies);
+            People.Sync(result.People);
+            Genres.Sync(result.Genres);
+            HasResults = Movies.Count + People.Count + Genres.Count > 0;
+            NoResults = !HasResults;
+        }
+        catch (OperationCanceledException) when (request.IsCancellationRequested)
+        {
+            // A newer search took over: it ends the searching state.
+        }
+        finally
+        {
+            // Words typed meanwhile have their own search coming (after the pause): it's still searching till then.
+            if (request == _request && q == Query.Trim()) IsSearching = false;
+        }
     }, showBusy: false);
 
     [RelayCommand]

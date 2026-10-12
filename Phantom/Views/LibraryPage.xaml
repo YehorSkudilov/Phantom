@@ -28,6 +28,8 @@
         <!-- Search: typing swaps the library below for results across titles, cast and genres. -->
         <SearchBar Grid.Row="1" x:Name="Box" Text="{Binding Search.Query}" Placeholder="Search movies, shows, actors, genres"
                    SearchCommand="{Binding Search.SearchCommand}" Margin="8,6,8,0" />
+        <!-- Sweeps along under the box while a search is on its way -->
+        <controls:LoadingBar Grid.Row="1" IsRunning="{Binding Search.IsSearching}" VerticalOptions="End" Margin="16,0" />
 
         <Grid Grid.Row="2" RowDefinitions="Auto,*" IsVisible="{Binding Search.Query, Converter={StaticResource HasValue}, ConverterParameter=invert}">
         <!-- One compact row above the list: All / Movies / TV shows, and how many there are. Sort and filters are in the
@@ -107,6 +109,8 @@
         <ScrollView Grid.Row="2" x:DataType="vm:LibraryViewModel" IsVisible="{Binding Search.Query, Converter={StaticResource HasValue}}">
             <VerticalStackLayout BindingContext="{Binding Search}" x:DataType="vm:SearchViewModel">
             <VerticalStackLayout Spacing="10" Padding="0,8,0,108">
+                <!-- The first results on their way: the rows they'll fill, pulsing -->
+                <controls:StateView Skeleton="List" IsLoading="True" HasContent="{Binding ShowSkeleton, Converter={StaticResource Not}}" />
                 <controls:StateView HasContent="{Binding NoResults, Converter={StaticResource Not}}" Margin="0,24,0,0"
                                     Glyph="travel_explore" Title="No matches"
                                     Message="Nothing in the library by that title, person or genre. Check the spelling, or try fewer words." />

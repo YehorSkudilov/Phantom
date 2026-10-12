@@ -234,20 +234,24 @@ public class LibraryController(PhantomDbContext db, LibraryService library, Show
     {
         if (string.IsNullOrWhiteSpace(q)) return new SearchResultDto([], [], []);
         var userId = User.UserId();
-        var term = q.Trim().ToLower();
+        var pattern = LibraryService.ContainsPattern(q);
+        const string escape = LibraryService.LikeEscape;
         var visible = library.Visible(User);
+        var visibleShows = shows.Visible(User);
 
         var query = new MovieQuery { Search = q, Sort = MovieSort.Rating };
         var movies = await library.SummariesAsync(library.Apply(visible, query, userId).Take(40), userId, ct);
-        var showItems = await shows.SummariesAsync(shows.Apply(shows.Visible(User), query, userId).Take(20), userId, ct);
+        var showItems = await shows.SummariesAsync(shows.Apply(visibleShows, query, userId).Take(20), userId, ct);
         // Title matches first, then by rating, movies and shows together.
         var titles = movies.Concat(showItems)
             .OrderByDescending(i => i.Title.Contains(q.Trim(), StringComparison.OrdinalIgnoreCase))
             .ThenByDescending(i => i.Rating ?? 0).Take(40).ToList();
-        var people = await visible.SelectMany(m => m.Credits).Where(c => c.Name.ToLower().Contains(term)).Select(c => c.Name)
-            .Union(shows.Visible(User).SelectMany(s => s.Credits).Where(c => c.Name.ToLower().Contains(term)).Select(c => c.Name))
-            .Distinct().Take(20).ToListAsync(ct);
-        var genres = await db.Genres.Where(g => g.Name.ToLower().Contains(term)).Select(g => g.Name).Take(10).ToListAsync(ct);
+        // One pass over the credits, matching names first and only then checking what they're in is visible.
+        var people = await db.Credits.AsNoTracking()
+            .Where(c => EF.Functions.Like(c.Name, pattern, escape))
+            .Where(c => visible.Any(m => m.Id == c.MovieId) || visibleShows.Any(s => s.Id == c.ShowId))
+            .Select(c => c.Name).Distinct().Take(20).ToListAsync(ct);
+        var genres = await db.Genres.Where(g => EF.Functions.Like(g.Name, pattern, escape)).Select(g => g.Name).Take(10).ToListAsync(ct);
         return new SearchResultDto(titles, people, genres);
     }
 }
