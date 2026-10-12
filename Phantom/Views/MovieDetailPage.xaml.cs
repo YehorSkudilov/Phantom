@@ -20,6 +20,13 @@ public partial class MovieDetailPage : ContentPage
         // Coming back from the player: refresh resume point / watched state.
         if (_loadedOnce) _vm.LoadCommand.Execute(null);
         _loadedOnce = true;
+        _vm.WatchServer(true);
+    }
+
+    protected override void OnDisappearing()
+    {
+        base.OnDisappearing();
+        _vm.WatchServer(false);
     }
 
     private void OnRelatedSelected(object? sender, SelectionChangedEventArgs e)

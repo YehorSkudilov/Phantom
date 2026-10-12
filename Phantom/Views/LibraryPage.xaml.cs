@@ -18,9 +18,39 @@ public partial class LibraryPage : TabView
             if (e.Element is View view)
                 view.GestureRecognizers.Add(new TapGestureRecognizer
                 {
-                    Command = new Command(() => _vm.Search.OpenMovieCommand.Execute(view.BindingContext as MovieSummaryDto)),
+                    Command = new Command(() =>
+                    {
+                        HideKeyboard();
+                        _vm.Search.OpenMovieCommand.Execute(view.BindingContext as MovieSummaryDto);
+                    }),
                 });
         };
+        // The keyboard's Search key closes it (on iOS there's no other key to), as does opening the filters.
+        Box.SearchButtonPressed += (_, _) => HideKeyboard();
+        _vm.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(LibraryViewModel.ShowFilters) && _vm.ShowFilters) HideKeyboard();
+        };
+    }
+
+    /// <summary>
+    /// Puts the keyboard away. Neither iOS nor Android closes it for a tap outside the search box, which left it covering
+    /// the results.
+    /// </summary>
+    private void HideKeyboard()
+    {
+        if (!Box.IsFocused && !Box.IsSoftInputShowing()) return;
+        Box.Unfocus();
+        _ = Box.HideSoftInputAsync(CancellationToken.None);
+    }
+
+    // Scrolling the results or the library means reading them: the keyboard goes.
+    private void OnResultsScrolled(object? sender, ScrolledEventArgs e) => HideKeyboard();
+
+    public override void Unload()
+    {
+        base.Unload();
+        HideKeyboard();
     }
 
     /// <summary>Back closes the filters popup when it's open.</summary>
@@ -40,12 +70,14 @@ public partial class LibraryPage : TabView
     // doesn't always fire (grids on Windows and iOS), which left the library stuck at its first page.
     private void OnListScrolled(object? sender, ItemsViewScrolledEventArgs e)
     {
+        if (Math.Abs(e.VerticalDelta) > 4) HideKeyboard();
         if (e.VerticalDelta > 0 && e.LastVisibleItemIndex >= _vm.Movies.Count - LibraryViewModel.LoadAhead && _vm.HasMore)
             _vm.LoadMoreCommand.Execute(null);
     }
 
     private void OnSelected(object? sender, SelectionChangedEventArgs e)
     {
+        HideKeyboard();
         if (e.CurrentSelection.FirstOrDefault() is MovieSummaryDto movie) _vm.OpenMovieCommand.Execute(movie);
         Dispatcher.Dispatch(() => HomePage.ClearSelection(sender));
     }

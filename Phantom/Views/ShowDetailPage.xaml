@@ -73,7 +73,7 @@
                                              Command="{Binding AddToPlaylistCommand}" />
                         <controls:ActionTile Grid.Row="1" Grid.Column="1" Glyph="download" Text="Download" IsActive="{Binding HasDownloads}"
                                              Command="{Binding DownloadShowCommand}" />
-                        <controls:ActionTile Grid.Row="1" Grid.Column="2" Glyph="cloud_download" Text="Save on server"
+                        <controls:ActionTile Grid.Row="1" Grid.Column="2" Glyph="cloud_download" Text="Save on server" IsActive="{Binding HasOnServer}"
                                              Command="{Binding SaveShowOnServerCommand}" />
                     </Grid>
                 </VerticalStackLayout>
@@ -107,7 +107,9 @@
                          show's own above, right under the season they act on. -->
                     <Grid ColumnDefinitions="*,*,*,*" ColumnSpacing="8">
                         <controls:ActionTile Glyph="download" Text="Download" Command="{Binding DownloadSeasonCommand}" />
-                        <controls:ActionTile Grid.Column="1" Glyph="cloud_download" Text="Save on server" Command="{Binding SaveSeasonOnServerCommand}" />
+                        <!-- Fills like a progress bar while the server saves the season -->
+                        <controls:ActionTile Grid.Column="1" Glyph="cloud_download" Text="{Binding SeasonServerLabel}" Command="{Binding SaveSeasonOnServerCommand}"
+                                             IsActive="{Binding IsSeasonOnServer}" IsRunning="{Binding IsSeasonSavingOnServer}" Progress="{Binding SeasonServerProgress}" />
                         <controls:ActionTile Grid.Column="2" Glyph="playlist_add" Text="{Binding SeasonPlaylistLabel}" IsActive="{Binding IsSeasonInPlaylist}"
                                              Command="{Binding AddSeasonToPlaylistCommand}" />
                         <controls:ActionTile Grid.Column="3" Glyph="check_circle" Text="{Binding SeasonWatchedLabel}" IsActive="{Binding IsSeasonWatched}"
@@ -177,10 +179,10 @@
                                                  Downloads="{Binding Source={RelativeSource AncestorType={x:Type vm:ShowDetailViewModel}}, Path=Downloads, x:DataType=vm:ShowDetailViewModel}"
                                                  Command="{Binding Source={RelativeSource AncestorType={x:Type vm:ShowDetailViewModel}}, Path=DownloadEpisodeCommand, x:DataType=vm:ShowDetailViewModel}"
                                                  CommandParameter="{Binding .}" />
-                                        <Button Grid.Column="1" Text="Save on server" Style="{StaticResource EpisodeActionButton}"
-                                                ImageSource="{StaticResource EpisodeServerIcon}"
-                                                Command="{Binding Source={RelativeSource AncestorType={x:Type vm:ShowDetailViewModel}}, Path=SaveEpisodeOnServerCommand, x:DataType=vm:ShowDetailViewModel}"
-                                                CommandParameter="{Binding .}" SemanticProperties.Description="Save this episode on the server" />
+                                        <controls:EpisodeServerButton Grid.Column="1" Style="{StaticResource EpisodeActionButton}" EpisodeId="{Binding Id}"
+                                                 Tracker="{Binding Source={RelativeSource AncestorType={x:Type vm:ShowDetailViewModel}}, Path=Server, x:DataType=vm:ShowDetailViewModel}"
+                                                 Command="{Binding Source={RelativeSource AncestorType={x:Type vm:ShowDetailViewModel}}, Path=SaveEpisodeOnServerCommand, x:DataType=vm:ShowDetailViewModel}"
+                                                 CommandParameter="{Binding .}" />
                                         <controls:EpisodePlaylistButton Grid.Column="2" Style="{StaticResource EpisodeActionButton}" EpisodeId="{Binding Id}"
                                                  Membership="{Binding Source={RelativeSource AncestorType={x:Type vm:ShowDetailViewModel}}, Path=Playlists, x:DataType=vm:ShowDetailViewModel}"
                                                  Command="{Binding Source={RelativeSource AncestorType={x:Type vm:ShowDetailViewModel}}, Path=AddEpisodeToPlaylistCommand, x:DataType=vm:ShowDetailViewModel}"

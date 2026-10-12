@@ -153,7 +153,7 @@ public static class Recommender
 public sealed record DiscoverRow(string Key, string Title, IReadOnlyList<TitleRef> Titles);
 
 /// <summary>Loads the library and a profile's history for <see cref="Recommender"/>, and makes Discover's rows from them.</summary>
-public class DiscoverService(PhantomDbContext db, LibraryService library, ShowLibraryService shows)
+public class DiscoverService(PhantomDbContext db, LibraryService library, ShowLibraryService shows, IServiceScopeFactory scopes)
 {
     /// <summary>How far back "lately" goes for what's popular on this server.</summary>
     public static readonly TimeSpan RecentWindow = TimeSpan.FromDays(14);
@@ -166,8 +166,53 @@ public class DiscoverService(PhantomDbContext db, LibraryService library, ShowLi
         return Recommender.MoreLike(item, all, DateTime.UtcNow, take).Select(c => c.Ref).ToList();
     }
 
-    /// <summary>Every title this profile may see, with what the recommender needs to know about it.</summary>
+    /// <summary>How long the library's candidates are kept between loads: loading them reads the whole library.</summary>
+    public static readonly TimeSpan CacheFor = TimeSpan.FromMinutes(10);
+
+    // By content limit (what a profile may see): profiles with the same limit share the list.
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, (DateTime At, List<Candidate> Items)> Cache = new();
+
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, byte> Refreshing = new();
+
+    /// <summary>
+    /// Every title this profile may see, with what the recommender needs to know about it. Read from the library once
+    /// per content limit and kept: reading it on each visit made Discover slow to open. Once it's older than
+    /// <see cref="CacheFor"/> it's read again in the background, the kept one served meanwhile.
+    /// </summary>
     private async Task<List<Candidate>> CandidatesAsync(ClaimsPrincipal user, DateTime now, CancellationToken ct)
+    {
+        var key = user.MaxContentRating() ?? "";
+        if (Cache.TryGetValue(key, out var cached))
+        {
+            if (now - cached.At >= CacheFor && Refreshing.TryAdd(key, 0)) _ = RefreshAsync(user, key);
+            return cached.Items;
+        }
+        var items = await LoadCandidatesAsync(user, now, ct);
+        Cache[key] = (now, items);
+        return items;
+    }
+
+    /// <summary>Reads the candidates again in a scope of its own (the request that noticed they were old has moved on).</summary>
+    private async Task RefreshAsync(ClaimsPrincipal user, string key)
+    {
+        try
+        {
+            using var scope = scopes.CreateScope();
+            var fresh = scope.ServiceProvider.GetRequiredService<DiscoverService>();
+            var items = await fresh.LoadCandidatesAsync(user, DateTime.UtcNow, CancellationToken.None);
+            Cache[key] = (DateTime.UtcNow, items);
+        }
+        catch (Exception)
+        {
+            // The kept list goes on being served; the next visit tries again.
+        }
+        finally
+        {
+            Refreshing.TryRemove(key, out _);
+        }
+    }
+
+    private async Task<List<Candidate>> LoadCandidatesAsync(ClaimsPrincipal user, DateTime now, CancellationToken ct)
     {
         var since = now - RecentWindow;
 

@@ -15,6 +15,14 @@ public class ActionTile : ContentView
     public static readonly BindableProperty IsActiveProperty =
         BindableProperty.Create(nameof(IsActive), typeof(bool), typeof(ActionTile), false, propertyChanged: (b, _, _) => ((ActionTile)b).Update());
 
+    /// <summary>Something it started is running (a download): the tile fills as <see cref="Progress"/> goes, its border pulsing.</summary>
+    public static readonly BindableProperty IsRunningProperty =
+        BindableProperty.Create(nameof(IsRunning), typeof(bool), typeof(ActionTile), false, propertyChanged: (b, _, _) => ((ActionTile)b).UpdateProgress());
+
+    /// <summary>How far along, 0 to 1, while <see cref="IsRunning"/>.</summary>
+    public static readonly BindableProperty ProgressProperty =
+        BindableProperty.Create(nameof(Progress), typeof(double), typeof(ActionTile), 0.0, propertyChanged: (b, _, _) => ((ActionTile)b).UpdateProgress());
+
     public static readonly BindableProperty CommandProperty =
         BindableProperty.Create(nameof(Command), typeof(ICommand), typeof(ActionTile));
 
@@ -26,7 +34,7 @@ public class ActionTile : ContentView
     {
         _label.SetBinding(Label.TextProperty, static (ActionTile t) => t.Text, source: this);
         var stack = new VerticalStackLayout { Spacing = 6, Padding = new Thickness(4, 10), Children = { _icon, _label } };
-        var border = new Border
+        var border = _border = new Border
         {
             Content = stack,
             BackgroundColor = (Color)Application.Current!.Resources["Surface"],
@@ -38,7 +46,24 @@ public class ActionTile : ContentView
         }) });
         border.SetBinding(SemanticProperties.DescriptionProperty, static (ActionTile t) => t.Text, source: this);
         Content = border;
+        Loaded += (_, _) => UpdateProgress(restart: true);
         Update();
+    }
+
+    private readonly Border _border;
+    private bool _wasRunning;
+
+    public bool IsRunning { get => (bool)GetValue(IsRunningProperty); set => SetValue(IsRunningProperty, value); }
+    public double Progress { get => (double)GetValue(ProgressProperty); set => SetValue(ProgressProperty, value); }
+
+    private void UpdateProgress(bool restart = false)
+    {
+        var surface = (Color)Application.Current!.Resources["Surface"];
+        _border.Background = IsRunning ? ProgressLook.Fill(Progress, surface) : new SolidColorBrush(surface);
+        _border.StrokeThickness = IsRunning ? 1.5 : 0;
+        if (IsRunning != _wasRunning || restart)
+            ProgressLook.Pulse(this, c => _border.Stroke = c, IsRunning);
+        _wasRunning = IsRunning;
     }
 
     public string Glyph { get => (string)GetValue(GlyphProperty); set => SetValue(GlyphProperty, value); }

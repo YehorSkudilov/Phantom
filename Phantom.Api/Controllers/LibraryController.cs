@@ -234,8 +234,6 @@ public class LibraryController(PhantomDbContext db, LibraryService library, Show
     {
         if (string.IsNullOrWhiteSpace(q)) return new SearchResultDto([], [], []);
         var userId = User.UserId();
-        var pattern = LibraryService.ContainsPattern(q);
-        const string escape = LibraryService.LikeEscape;
         var visible = library.Visible(User);
         var visibleShows = shows.Visible(User);
 
@@ -246,12 +244,13 @@ public class LibraryController(PhantomDbContext db, LibraryService library, Show
         var titles = movies.Concat(showItems)
             .OrderByDescending(i => i.Title.Contains(q.Trim(), StringComparison.OrdinalIgnoreCase))
             .ThenByDescending(i => i.Rating ?? 0).Take(40).ToList();
-        // One pass over the credits, matching names first and only then checking what they're in is visible.
-        var people = await db.Credits.AsNoTracking()
-            .Where(c => EF.Functions.Like(c.Name, pattern, escape))
+        // People in one pass over the credits (rather than one over movies' and another over shows'), most credited first.
+        var like = Like.Contains(q);
+        // Only names from what this profile may see: a restricted profile isn't shown who's in what it can't watch.
+        var people = await db.Credits.Where(c => EF.Functions.Like(c.Name, like, Like.Escape))
             .Where(c => visible.Any(m => m.Id == c.MovieId) || visibleShows.Any(s => s.Id == c.ShowId))
-            .Select(c => c.Name).Distinct().Take(20).ToListAsync(ct);
-        var genres = await db.Genres.Where(g => EF.Functions.Like(g.Name, pattern, escape)).Select(g => g.Name).Take(10).ToListAsync(ct);
+            .GroupBy(c => c.Name).OrderByDescending(g => g.Count()).Select(g => g.Key).Take(20).ToListAsync(ct);
+        var genres = await db.Genres.Where(g => EF.Functions.Like(g.Name, like, Like.Escape)).Select(g => g.Name).Take(10).ToListAsync(ct);
         return new SearchResultDto(titles, people, genres);
     }
 }

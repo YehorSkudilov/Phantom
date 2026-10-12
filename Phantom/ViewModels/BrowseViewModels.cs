@@ -357,15 +357,38 @@ public partial class LibraryViewModel(PhantomApi api, SettingsService settings, 
     private async Task LoadFiltersAsync()
     {
         var filters = await api.FiltersAsync(Kind == LibraryKind.Shows ? MediaKind.Show : MediaKind.Movie, all: Kind == LibraryKind.All);
-        Genres.Sync(["All genres", .. filters.Genres]);
-        Decades.Sync(["Any decade", .. filters.Years.Select(y => $"{y / 10 * 10}s").Distinct()]);
-        Qualities.Sync(["Any quality", .. filters.Qualities]);
-        Ratings.Sync(["Any rating", .. filters.ContentRatings]);
+        // The choices made stay chosen (a picker can drop its choice while its list changes), without reloading the list.
+        var (genre, decade, quality, rating) = (SelectedGenre, SelectedDecade, SelectedQuality, SelectedRating);
+        var suspended = _suspendReload;
+        _suspendReload = true;
+        try
+        {
+            Genres.Sync(["All genres", .. filters.Genres]);
+            Decades.Sync(["Any decade", .. filters.Years.Select(y => $"{y / 10 * 10}s").Distinct()]);
+            Qualities.Sync(["Any quality", .. filters.Qualities]);
+            Ratings.Sync(["Any rating", .. filters.ContentRatings]);
+            SelectedGenre = Genres.Contains(genre) ? genre : Genres[0];
+            SelectedDecade = Decades.Contains(decade) ? decade : Decades[0];
+            SelectedQuality = Qualities.Contains(quality) ? quality : Qualities[0];
+            SelectedRating = Ratings.Contains(rating) ? rating : Ratings[0];
+        }
+        finally
+        {
+            _suspendReload = suspended;
+        }
         _filtersLoaded = true;
     }
 
+    /// <summary>
+    /// Opens (or closes) the filters. Opening fetches their choices again: genres and the rest change as the library
+    /// grows and its details are refreshed (a new genre used to show only after restarting the app).
+    /// </summary>
     [RelayCommand]
-    private void ToggleFilters() => ShowFilters = !ShowFilters;
+    private void ToggleFilters()
+    {
+        ShowFilters = !ShowFilters;
+        if (ShowFilters) _ = RunAsync(LoadFiltersAsync, showBusy: false);
+    }
 
     [RelayCommand]
     private void CloseFilters() => ShowFilters = false;

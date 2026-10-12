@@ -198,7 +198,7 @@ public class DownloadManager
         {
             await _api.QueueServerDownloadAsync(item.MovieId, item.ReleaseId, item.EpisodeId);
         }
-        catch (Exception ex) when (ex is HttpRequestException or ApiException or TaskCanceledException)
+        catch (Exception ex) when (ex is HttpRequestException or ApiException or TaskCanceledException || NetworkState.IsConnectionError(ex))
         {
             // The device download still works without it, streaming the torrent through the server as it goes.
         }
@@ -256,7 +256,7 @@ public class DownloadManager
                     PlayerState.Stopped, _settings.ClientName, item.EpisodeId));
                 item.PendingSync = false;
             }
-            catch (Exception ex) when (ex is HttpRequestException or ApiException or TaskCanceledException)
+            catch (Exception ex) when (ex is HttpRequestException or ApiException or TaskCanceledException || NetworkState.IsConnectionError(ex))
             {
                 return; // still offline; try again later
             }
@@ -311,7 +311,7 @@ public class DownloadManager
         {
             // Paused or deleted.
         }
-        catch (Exception ex) when (ex is HttpRequestException or IOException or ApiException or TimeoutException)
+        catch (Exception ex) when (ex is HttpRequestException or IOException or ApiException or TimeoutException || NetworkState.IsConnectionError(ex))
         {
             int attempt;
             lock (_queueLock)

@@ -24,6 +24,14 @@ public partial class App : Application
         var shell = new AppShell(_settings);
         // If the app crashed last time, say so once it's up, with the details to copy into feedback.
         shell.Loaded += async (_, _) => await CrashLog.OfferLastAsync();
-        return new Window(shell) { Title = "Phantom" };
+        var window = new Window(shell) { Title = "Phantom" };
+        // Whether it's on screen: requests cut off while it's away aren't errors to show (see NetworkState).
+        window.Stopped += (_, _) => NetworkState.InBackground = true;
+        window.Resumed += (_, _) =>
+        {
+            NetworkState.InBackground = false;
+            NetworkState.ResumedAt = DateTime.UtcNow;
+        };
+        return window;
     }
 }

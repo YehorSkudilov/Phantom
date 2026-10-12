@@ -83,12 +83,15 @@ public abstract partial class BaseViewModel : ObservableObject
         {
             ErrorMessage = ex.Message;
         }
-        catch (HttpRequestException)
+        catch (Exception ex) when (NetworkState.IsConnectionError(ex))
         {
-            // Said once, not on every retry (some pages poll).
+            // No connection, or one cut off (Android's own errors included: "Software caused connection abort" when the
+            // app is minimised, "No address associated with hostname" with no network). Said once, not on every retry
+            // (some pages poll), and not at all while the app is away: it'll load again when it's back.
             var wasOffline = IsOffline;
             IsOffline = true;
-            if (ShowsOfflineState) { if (!wasOffline) await ToastAsync("Can't reach the Phantom server"); }
+            if (NetworkState.JustAway) { }
+            else if (ShowsOfflineState) { if (!wasOffline) await ToastAsync("Can't reach the Phantom server"); }
             else ErrorMessage = "Can't reach the Phantom server. Check your connection.";
         }
         catch (OperationCanceledException ex) when (ex.InnerException is TimeoutException)
@@ -96,7 +99,8 @@ public abstract partial class BaseViewModel : ObservableObject
             // A request that really ran out of time: the server is down or unreachable, said as being offline is.
             var wasOffline = IsOffline;
             IsOffline = true;
-            if (ShowsOfflineState) { if (!wasOffline) await ToastAsync("The Phantom server isn't answering"); }
+            if (NetworkState.JustAway) { }
+            else if (ShowsOfflineState) { if (!wasOffline) await ToastAsync("The Phantom server isn't answering"); }
             else ErrorMessage = "The Phantom server isn't answering. Check your connection and try again.";
         }
         catch (OperationCanceledException)
