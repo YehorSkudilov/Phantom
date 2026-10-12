@@ -38,7 +38,12 @@ public sealed class SharedTorrentStream(Stream inner, string filePath, Action? o
     }
 }
 
-public sealed class TorrentReadStream(SharedTorrentStream shared) : Stream
+/// <param name="downloaded">
+/// For a reader that mustn't wait on the swarm (a seek preview): whether a range is downloaded already. A read of one
+/// that isn't fails at once instead of holding the shared stream (everyone else's reads wait behind it) and pointing
+/// the download at its part of the file, away from what's being watched.
+/// </param>
+public sealed class TorrentReadStream(SharedTorrentStream shared, Func<long, int, bool>? downloaded = null) : Stream
 {
     private long _position;
 
@@ -56,6 +61,8 @@ public sealed class TorrentReadStream(SharedTorrentStream shared) : Stream
     public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
     {
         if (_position >= Length) return 0;
+        if (downloaded is not null && !downloaded(_position, buffer.Length))
+            throw new IOException("That part of the video isn't downloaded yet.");
         var read = await shared.ReadAtAsync(_position, buffer, cancellationToken);
         _position += read;
         return read;

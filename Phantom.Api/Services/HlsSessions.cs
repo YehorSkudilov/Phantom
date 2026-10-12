@@ -20,6 +20,9 @@ public partial class HlsSessions(IOptions<PhantomOptions> options, ILogger<HlsSe
 {
     public const string Playlist = "index.m3u8";
 
+    /// <summary>The fragmented MP4 header every segment follows (the playlist points to it with #EXT-X-MAP).</summary>
+    public const string InitSegment = "init.mp4";
+
     private static readonly TimeSpan Idle = TimeSpan.FromMinutes(1);
 
     /// <summary>How long a playlist request waits for ffmpeg's first segment (from a slow torrent, it can be a while).</summary>
@@ -30,7 +33,7 @@ public partial class HlsSessions(IOptions<PhantomOptions> options, ILogger<HlsSe
 
     private string Root => Path.Combine(options.Value.CacheDirectory, "hls");
 
-    [GeneratedRegex(@"^seg\d+\.ts$")]
+    [GeneratedRegex(@"^(seg\d+\.m4s|init\.mp4)$")]
     private static partial Regex SegmentName();
 
     /// <summary>A file a session's playlist names (and nothing else, so a request can't reach outside its folder).</summary>
@@ -51,7 +54,8 @@ public partial class HlsSessions(IOptions<PhantomOptions> options, ILogger<HlsSe
     /// Session <paramref name="id"/>, started now if it isn't running. <paramref name="owner"/> is the viewer and the
     /// video: an older session of theirs for it is stopped.
     /// </summary>
-    public HlsSession Start(string id, string owner, string input, double startSeconds, int? maxVideoKbps, int? maxHeight)
+    public HlsSession Start(string id, string owner, string input, double startSeconds, int? maxVideoKbps, int? maxHeight,
+        MediaCodecs? codecs = null)
     {
         lock (_starting)
         {
@@ -62,7 +66,7 @@ public partial class HlsSessions(IOptions<PhantomOptions> options, ILogger<HlsSe
             if (Directory.Exists(folder)) Directory.Delete(folder, recursive: true);
             Directory.CreateDirectory(folder);
             var psi = new ProcessStartInfo(options.Value.FfmpegPath) { RedirectStandardError = true, UseShellExecute = false };
-            foreach (var a in Transcoder.HlsArguments(input, startSeconds, maxVideoKbps, maxHeight, folder)) psi.ArgumentList.Add(a);
+            foreach (var a in Transcoder.HlsArguments(input, startSeconds, maxVideoKbps, maxHeight, folder, codecs)) psi.ArgumentList.Add(a);
             var process = Process.Start(psi) ?? throw new InvalidOperationException("Could not start ffmpeg.");
             var session = new HlsSession(id, owner, folder, process);
             _sessions[id] = session;

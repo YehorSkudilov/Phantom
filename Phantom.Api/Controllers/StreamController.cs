@@ -128,8 +128,10 @@ public abstract class StreamControllerBase(
     }
 
     /// <summary>Our own direct endpoint, for ffmpeg to read a video that's still a torrent.</summary>
-    private string Loopback(int id, StreamTarget target) =>
-        $"http://127.0.0.1:{HttpContext.Connection.LocalPort}{RouteBase(id)}/direct?releaseId={target.Release.Id}&access_token={Uri.EscapeDataString(Token())}";
+    /// <param name="preview">For a seek preview: only what's downloaded, never waiting on the swarm (see <see cref="Direct"/>).</param>
+    private string Loopback(int id, StreamTarget target, bool preview = false) =>
+        $"http://127.0.0.1:{HttpContext.Connection.LocalPort}{RouteBase(id)}/direct?releaseId={target.Release.Id}&access_token={Uri.EscapeDataString(Token())}"
+        + (preview ? "&preview=true" : "");
 
     /// <summary>Starts the torrent (if needed) and tells the client how to play it.</summary>
     [HttpGet("info")]
@@ -209,10 +211,14 @@ public abstract class StreamControllerBase(
                               || ReleaseNameParser.EpisodeOfFile(s, target.Choice.Season) == (target.Choice.Season, target.Choice.Episode)).ToList();
     }
 
-    /// <summary>Direct play with HTTP range support; pieces are fetched on demand while seeking.</summary>
+    /// <summary>
+    /// Direct play with HTTP range support; pieces are fetched on demand while seeking. <paramref name="preview"/> (our own
+    /// seek previews, through <see cref="Loopback"/>) reads only what's downloaded already: a preview of a part that isn't
+    /// fails rather than stalling the playback beside it.
+    /// </summary>
     [HttpGet("direct")]
     [HttpHead("direct")]
-    public async Task<IActionResult> Direct(int id, [FromQuery] int? releaseId, [FromQuery] bool download, CancellationToken ct)
+    public async Task<IActionResult> Direct(int id, [FromQuery] int? releaseId, [FromQuery] bool download, [FromQuery] bool preview, CancellationToken ct)
     {
         var target = await ResolveAsync(id, releaseId, ct);
         if (target is null) return NotFound();
@@ -220,7 +226,7 @@ public abstract class StreamControllerBase(
         if (Local(target) is { } local)
             return PhysicalFile(Path.GetFullPath(local), VideoFiles.ContentType(local), download ? Path.GetFileName(local) : null, enableRangeProcessing: true);
 
-        var media = await engine.OpenAsync(target.Release, ct, target.Choice);
+        var media = await engine.OpenAsync(target.Release, ct, target.Choice, wait: !preview);
         if (media is null) return NotFound();
         engine.Touch(target.Release.InfoHash);
         var name = Path.GetFileName(media.FileName);
@@ -246,7 +252,7 @@ public abstract class StreamControllerBase(
         }
 
         // ffmpeg reads either the finished file or our own range-capable direct endpoint.
-        var input = Local(target) is { } local ? Path.GetFullPath(local) : Loopback(id, target);
+        var input = CompleteFile(target) is { } complete ? Path.GetFullPath(complete) : Loopback(id, target);
 
         Response.ContentType = "video/mp4";
         try
@@ -270,10 +276,14 @@ public abstract class StreamControllerBase(
     /// The same conversion as <see cref="Transcode"/> as HLS, for Apple's player (see <see cref="HlsSessions"/>). The
     /// client names the session: the player rereading the playlist as it grows asks with the same one and gets the
     /// conversion that's already running. Answers once the first segment is ready.
+    /// <para>
+    /// <paramref name="remux"/>: the client could play the picture and sound, only not the file they're in (an MKV on
+    /// iOS). Those that Apple decodes are then copied rather than re-encoded (see <see cref="Transcoder.HlsArguments"/>).
+    /// </para>
     /// </summary>
     [HttpGet("hls/{session}/" + HlsSessions.Playlist)]
     public async Task<IActionResult> HlsPlaylist(int id, string session, [FromQuery] int? releaseId, [FromQuery] double start,
-        [FromQuery] int? maxKbps, [FromQuery] int? maxHeight, CancellationToken ct)
+        [FromQuery] int? maxKbps, [FromQuery] int? maxHeight, [FromQuery] bool remux, CancellationToken ct)
     {
         if (!transcoder.IsAvailable) return StatusCode(StatusCodes.Status501NotImplemented);
         if (!HlsSessions.IsSessionId(session)) return BadRequest();
@@ -283,8 +293,10 @@ public abstract class StreamControllerBase(
         {
             var target = await ResolveAsync(id, releaseId, ct);
             if (target is null) return NotFound();
-            var input = Local(target) is { } local ? Path.GetFullPath(local) : Loopback(id, target);
-            running = hls.Start(session, owner, input, start, maxKbps, maxHeight);
+            // A whole file on the server's disk is read straight from there, not through the torrent.
+            var input = CompleteFile(target) is { } complete ? Path.GetFullPath(complete) : Loopback(id, target);
+            var codecs = remux ? await transcoder.ProbeAsync(input, ct) : null;
+            running = hls.Start(session, owner, input, start, maxKbps, maxHeight, codecs);
         }
 
         string playlist;
@@ -298,7 +310,8 @@ public abstract class StreamControllerBase(
         }
         // The player resolves each segment next to the playlist but doesn't carry its query along: the token goes on each.
         var auth = $"?access_token={Uri.EscapeDataString(Token())}";
-        var lines = playlist.Split('\n').Select(l => l.Length > 0 && !l.StartsWith('#') ? l.TrimEnd('\r') + auth : l);
+        var lines = playlist.Split('\n').Select(l => l.Length > 0 && !l.StartsWith('#') ? l.TrimEnd('\r') + auth
+            : l.Replace($"URI=\"{HlsSessions.InitSegment}\"", $"URI=\"{HlsSessions.InitSegment}{auth}\""));
         Response.Headers.CacheControl = "no-cache";
         return Content(string.Join('\n', lines), "application/vnd.apple.mpegurl");
     }
@@ -309,7 +322,8 @@ public abstract class StreamControllerBase(
     {
         if (!HlsSessions.IsSegment(segment) || hls.Find(session, HlsOwner(id)) is not { } running) return NotFound();
         var path = Path.Combine(running.Folder, segment);
-        return System.IO.File.Exists(path) ? PhysicalFile(Path.GetFullPath(path), "video/mp2t", enableRangeProcessing: true) : NotFound();
+        var type = segment == HlsSessions.InitSegment ? "video/mp4" : "video/iso.segment";
+        return System.IO.File.Exists(path) ? PhysicalFile(Path.GetFullPath(path), type, enableRangeProcessing: true) : NotFound();
     }
 
     /// <summary>Whose HLS sessions are whose: this viewer, this video.</summary>
@@ -325,7 +339,7 @@ public abstract class StreamControllerBase(
         var target = await ResolveAsync(id, releaseId, ct);
         if (target is null) return NotFound();
         var release = target.Release;
-        if (Local(target) is not null) return new StreamStatusDto("Ready", 0, 100, 0, true);
+        if (Local(target) is not null) return new StreamStatusDto("Ready", 0, 100, 0, true, AvailableTo: 1);
 
         var manager = engine.Find(release.InfoHash);
         // The loading screen polls this: still wanted, even before the player reads anything.
@@ -338,7 +352,7 @@ public abstract class StreamControllerBase(
             return new StreamStatusDto(peers > 0 ? $"Getting the {what}'s details from {peers} peers…" : $"Looking for people sharing this {what}…", peers, 0, 0, false);
 
         var stats = engine.Stats(release.InfoHash)!;
-        if (stats.Complete) return new StreamStatusDto("Ready", stats.Peers, 100, 0, true);
+        if (stats.Complete) return new StreamStatusDto("Ready", stats.Peers, 100, 0, true, AvailableTo: 1);
 
         // Playback starts once about StartBuffer of video is downloaded from where it starts (the bitrate comes from
         // the file's size over the video's length).
@@ -348,8 +362,10 @@ public abstract class StreamControllerBase(
         int? secondsToStart = null;
         var tooSlow = false;
         long neededRate = 0;
+        double? availableTo = null;
         if (buffer is var (buffered, length) && length > 0)
         {
+            availableTo = Math.Clamp(position / runtime.TotalSeconds + (double)buffered / length, 0, 1);
             neededRate = (long)(length / runtime.TotalSeconds);
             var bufferTarget = Math.Max(4L << 20, (long)(neededRate * StartBuffer.TotalSeconds));
             bufferProgress = Math.Clamp((double)buffered / bufferTarget, 0, 1);
@@ -363,7 +379,7 @@ public abstract class StreamControllerBase(
             ? "Connecting to peers…"
             : bufferProgress >= 1 ? "Almost ready…" : $"Downloading from {stats.Peers} peers · {FormatRate(stats.DownloadRate)}";
         return new StreamStatusDto(message, stats.Peers, Math.Round(stats.Progress, 1), stats.DownloadRate, false,
-            bufferProgress, secondsToStart, tooSlow, neededRate);
+            bufferProgress, secondsToStart, tooSlow, neededRate, availableTo);
 
         static string FormatRate(long bytesPerSecond) => bytesPerSecond >= 1 << 20
             ? $"{bytesPerSecond / (double)(1 << 20):0.#} MB/s"
@@ -385,7 +401,7 @@ public abstract class StreamControllerBase(
         var cache = Path.Combine(trickplay.Folder(target.CacheKey), $"{step}.jpg");
         if (System.IO.File.Exists(cache)) return PhysicalFile(Path.GetFullPath(cache), "image/jpeg");
 
-        var input = Local(target) is { } local ? Path.GetFullPath(local) : Loopback(id, target);
+        var input = CompleteFile(target) is { } complete ? Path.GetFullPath(complete) : Loopback(id, target, preview: true);
 
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
         timeout.CancelAfter(TimeSpan.FromSeconds(30));

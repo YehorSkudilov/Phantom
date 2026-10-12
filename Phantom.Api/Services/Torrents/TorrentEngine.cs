@@ -293,7 +293,8 @@ public sealed class TorrentEngine : IHostedService, IAsyncDisposable
     /// A torrent can only stream one file at a time, so opening another episode of a pack ends the stream of the one
     /// before (someone else watching it from the same pack is cut off).
     /// </remarks>
-    public async Task<TorrentMedia?> OpenAsync(Release release, CancellationToken ct, VideoChoice choice = default)
+    /// <param name="wait">False for a reader that only wants what's downloaded already (see <see cref="TorrentReadStream"/>).</param>
+    public async Task<TorrentMedia?> OpenAsync(Release release, CancellationToken ct, VideoChoice choice = default, bool wait = true)
     {
         Interlocked.Exchange(ref _lastStreamTicks, DateTime.UtcNow.Ticks);
         var manager = await EnsureStartedAsync(release, keep: _pinned.ContainsKey(release.InfoHash), ct, choice);
@@ -319,7 +320,21 @@ public sealed class TorrentEngine : IHostedService, IAsyncDisposable
                 _addLock.Release();
             }
         }
-        return new TorrentMedia(file.Path, null, new TorrentReadStream(shared));
+        return new TorrentMedia(file.Path, null, new TorrentReadStream(shared, wait ? null : (position, count) => IsDownloaded(manager, file, position, count)));
+    }
+
+    /// <summary>Whether every piece holding <paramref name="count"/> bytes of the file from <paramref name="position"/> is downloaded.</summary>
+    private static bool IsDownloaded(TorrentManager manager, ITorrentManagerFile file, long position, int count)
+    {
+        if (manager.Torrent is not { } torrent) return false;
+        var pieceLength = (long)torrent.PieceLength;
+        var end = Math.Min(file.Length, position + Math.Max(1, count)) - 1;
+        var first = (int)((file.OffsetInTorrent + position) / pieceLength) - file.StartPieceIndex;
+        var last = (int)((file.OffsetInTorrent + end) / pieceLength) - file.StartPieceIndex;
+        var pieces = file.BitField;
+        for (var i = Math.Max(0, first); i <= Math.Min(last, pieces.Length - 1); i++)
+            if (!pieces[i]) return false;
+        return true;
     }
 
     private void DropStream(string infoHash)

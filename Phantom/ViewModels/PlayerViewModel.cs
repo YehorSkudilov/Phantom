@@ -30,6 +30,9 @@ public partial class PlayerViewModel(PhantomApi api, SettingsService settings, D
 
     // Direct play failed on this device, so the server converts it whatever the quality setting says.
     private bool _forceConvert;
+    // Converting by copying the picture and sound into another file type (see ConversionUrl), and whether that
+    // already failed to play here, so it's converted in full instead.
+    private bool _remuxing, _remuxFailed;
 
     public ObservableCollection<SubtitleChoice> SubtitleChoices { get; } = [];
     public IReadOnlyList<QualityOption> Qualities => QualityOption.All;
@@ -124,6 +127,58 @@ public partial class PlayerViewModel(PhantomApi api, SettingsService settings, D
                 return;
             }
             try { await Task.Delay(TimeSpan.FromSeconds(1.5), ct); } catch (OperationCanceledException) { return; }
+        }
+    }
+
+    /// <summary>
+    /// How far into the video (0-1) it's there to play, for the second shade on the timeline: all of it for a file the
+    /// server (or this device) has whole, otherwise as far as the torrent has downloaded unbroken from where it's playing.
+    /// </summary>
+    [ObservableProperty] private double bufferedTo;
+
+    private CancellationTokenSource? _bufferWatch;
+    private TimeSpan _playedTo;
+
+    /// <summary>Keeps <see cref="BufferedTo"/> up to date while playing; stops by itself once the server has it all.</summary>
+    public void StartBufferWatch()
+    {
+        _bufferWatch?.Cancel();
+        if (_offline)
+        {
+            BufferedTo = 1;
+            return;
+        }
+        BufferedTo = 0;
+        var cts = _bufferWatch = new CancellationTokenSource();
+        _ = WatchBufferAsync(cts.Token);
+    }
+
+    public void StopBufferWatch()
+    {
+        _bufferWatch?.Cancel();
+        _bufferWatch = null;
+    }
+
+    private async Task WatchBufferAsync(CancellationToken ct)
+    {
+        while (!ct.IsCancellationRequested)
+        {
+            try
+            {
+                var status = await api.StreamStatusAsync(MovieId, _releaseId, _playedTo, ct, EpisodeId);
+                if (ct.IsCancellationRequested) return;
+                if (status.AvailableTo is { } available) BufferedTo = available;
+                if (status.Ready) return; // the whole file is on the server: nothing more to watch
+            }
+            catch (Exception ex) when (ex is HttpRequestException or ApiException)
+            {
+                // The shade keeps its last figure.
+            }
+            catch (OperationCanceledException)
+            {
+                return;
+            }
+            try { await Task.Delay(TimeSpan.FromSeconds(4), ct); } catch (OperationCanceledException) { return; }
         }
     }
 
@@ -251,7 +306,7 @@ public partial class PlayerViewModel(PhantomApi api, SettingsService settings, D
     [RelayCommand]
     private Task Load() => RunAsync(async () =>
     {
-        _forceConvert = false;
+        _forceConvert = _remuxFailed = false;
         LoadingText = "Opening…";
         LoadingDetail = null;
         LoadingProgress = -1;
@@ -338,6 +393,13 @@ public partial class PlayerViewModel(PhantomApi api, SettingsService settings, D
 
     public bool TryConvertAfterFailure(TimeSpan position)
     {
+        if (_remuxing && !_remuxFailed && !_offline)
+        {
+            // The copy wouldn't play (a codec this device can't decode after all): the full conversion will.
+            _remuxFailed = true;
+            ApplySource(position);
+            return true;
+        }
         if (IsTranscoding || _forceConvert || Stream?.TranscodeUrl is null || _offline) return false;
         _forceConvert = true;
         ApplySource(position);
@@ -356,7 +418,8 @@ public partial class PlayerViewModel(PhantomApi api, SettingsService settings, D
         if (IsTranscoding)
         {
             TranscodeOffset = start;
-            var url = $"{ConversionUrl(Stream)}&start={start.TotalSeconds:0.###}";
+            // Only the file type in the way: the server can copy the picture and sound across instead of re-encoding.
+            var url = $"{ConversionUrl(Stream, remux: quality.IsOriginal && !_forceConvert && !_remuxFailed)}&start={start.TotalSeconds:0.###}";
             if (quality.MaxKbps is { } kbps) url += $"&maxKbps={kbps}";
             if (quality.MaxHeight is { } h) url += $"&maxHeight={h}";
             SourceUrl = url;
@@ -365,6 +428,7 @@ public partial class PlayerViewModel(PhantomApi api, SettingsService settings, D
         else
         {
             TranscodeOffset = TimeSpan.Zero;
+            _remuxing = false;
             SourceUrl = Stream.DirectUrl;
             ResumePosition = start;
         }
@@ -375,11 +439,18 @@ public partial class PlayerViewModel(PhantomApi api, SettingsService settings, D
     /// Where the server's conversion is played from. Apple's player only plays HTTP video it can fetch in byte ranges,
     /// which the piped conversion hasn't got, so iOS and macOS take it as HLS instead, in a session of its own each time
     /// (a seek restarts the conversion). Older servers have no HLS: the piped one is all there is.
+    /// <paramref name="remux"/> lets the server copy what Apple can decode rather than re-encode it, which starts and
+    /// seeks almost at once.
     /// </summary>
-    private static string ConversionUrl(StreamInfoDto stream)
+    private string ConversionUrl(StreamInfoDto stream, bool remux)
     {
+        _remuxing = false;
 #if IOS || MACCATALYST
-        if (stream.HlsUrl is { } hls) return hls.Replace("{session}", Guid.NewGuid().ToString("N"));
+        if (stream.HlsUrl is { } hls)
+        {
+            _remuxing = remux;
+            return hls.Replace("{session}", Guid.NewGuid().ToString("N")) + (remux ? "&remux=true" : "");
+        }
 #endif
         return stream.TranscodeUrl!;
     }
@@ -427,6 +498,7 @@ public partial class PlayerViewModel(PhantomApi api, SettingsService settings, D
     public void OnPosition(TimeSpan elementPosition, TimeSpan duration, bool playing)
     {
         var position = elementPosition + TranscodeOffset;
+        _playedTo = position;
         if (_cues.Count > 0) SubtitleText = SubtitleParser.CueAt(_cues, position)?.Text;
         if (DateTime.UtcNow - _lastReport > TimeSpan.FromSeconds(10))
             _ = ReportAsync(position, duration, playing ? PlayerState.Playing : PlayerState.Paused);

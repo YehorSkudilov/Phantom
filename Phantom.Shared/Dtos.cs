@@ -258,7 +258,10 @@ public record StreamStatusDto(
     int? SecondsToStart = null,
     // Downloading slower than the movie plays, so it would keep pausing: worth saving on the server instead.
     bool TooSlow = false,
-    long NeededRate = 0);
+    long NeededRate = 0,
+    // How far into the video (0-1) it's there to play without waiting, unbroken from the position asked about: all of
+    // it once the server has the whole file. The player shows it on its timeline.
+    double? AvailableTo = null);
 
 public record SubtitleTrackDto(string Id, string Language, string Label, string Url);
 

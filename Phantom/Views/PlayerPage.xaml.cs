@@ -20,6 +20,11 @@ public partial class PlayerPage : ContentPage
         InitializeComponent();
         BindingContext = _vm = vm;
         _vm.SourceChanged += (_, _) => Dispatcher.Dispatch(LoadSource);
+        _vm.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(PlayerViewModel.BufferedTo)) Dispatcher.Dispatch(UpdateBufferedTrack);
+        };
+        SeekTrack.SizeChanged += (_, _) => UpdateBufferedTrack();
 
         Media.MediaOpened += (_, _) => Dispatcher.Dispatch(OnOpened);
         Media.PositionChanged += (_, e) => Dispatcher.Dispatch(() => OnPositionChanged(e.Position));
@@ -277,7 +282,11 @@ public partial class PlayerPage : ContentPage
         SetLoading(true);
         Media.Source = url.StartsWith("http", StringComparison.OrdinalIgnoreCase) ? MediaSource.FromUri(url) : MediaSource.FromFile(url);
         ShowControls();
+        _vm.StartBufferWatch();
     }
+
+    /// <summary>The timeline's second shade: how far the video is there to play (see PlayerViewModel.BufferedTo).</summary>
+    private void UpdateBufferedTrack() => BufferedTrack.WidthRequest = Math.Max(0, SeekTrack.Width) * Math.Clamp(_vm.BufferedTo, 0, 1);
 
     // The loading panel stays until it's Playing (see OnStateChanged): on iOS this fires as soon as the file's header is
     // read, well before the first frame.
@@ -630,6 +639,9 @@ public partial class PlayerPage : ContentPage
     private void OnSeekTapped(object? sender, TappedEventArgs e)
     {
         var total = _vm.TotalDuration(Media.Duration);
+        // Some platforms also call the end of a drag a tap: the drag has seeked already, and a second seek would start
+        // loading all over again (restarting a conversion, even).
+        if (DateTime.UtcNow - _dragEnded < TimeSpan.FromMilliseconds(500)) return;
         if (_seeking || total <= TimeSpan.Zero || Seek.Width <= 0 || e.GetPosition(Seek) is not { } at) return;
         var fraction = Math.Clamp(at.X / Seek.Width, 0, 1);
         Seek.Value = fraction;
@@ -707,9 +719,12 @@ public partial class PlayerPage : ContentPage
         SeekPreviewImage.Source = ImageSource.FromStream(() => new MemoryStream(jpeg));
     }
 
+    private DateTime _dragEnded;
+
     private void OnSeekCompleted(object? sender, EventArgs e)
     {
         _seeking = false;
+        _dragEnded = DateTime.UtcNow;
         _preview?.Cancel();
         _previewUrl = null;
         SeekPreview.IsVisible = false;
@@ -777,6 +792,7 @@ public partial class PlayerPage : ContentPage
         _preview?.Cancel();
         _vm.StopLoadingStatus();
         _vm.StopPreviewFrames();
+        _vm.StopBufferWatch();
         SetFullscreen(false);
         SetSystemBarsHidden(false);
 #if WINDOWS

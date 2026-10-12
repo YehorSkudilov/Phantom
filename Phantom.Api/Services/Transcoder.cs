@@ -46,19 +46,99 @@ public class Transcoder(IOptions<PhantomOptions> options, ILogger<Transcoder> lo
     public const int HlsSegmentSeconds = 4;
 
     /// <summary>
-    /// The same conversion as <see cref="BuildArguments"/>, written as HLS into <paramref name="folder"/>: a playlist
-    /// (<see cref="HlsSessions.Playlist"/>) that grows a segment at a time, for Apple's player (see <see cref="HlsSessions"/>).
-    /// A keyframe every segment's length lets each segment start cleanly.
+    /// The video written as HLS into <paramref name="folder"/>: a playlist (<see cref="HlsSessions.Playlist"/>) that grows a
+    /// segment at a time, for Apple's player (see <see cref="HlsSessions"/>). Segments are fragmented MP4, the only kind
+    /// Apple's HLS takes HEVC in.
+    /// <para>
+    /// With <paramref name="codecs"/> saying the file's picture and sound are ones Apple plays (and no lower quality
+    /// asked for), they're copied as they are, only repackaged: that goes at the disk's speed, so playing and seeking
+    /// start almost at once, where re-encoding a big file can fall behind playback and keep it buffering. Otherwise
+    /// it's the full conversion of <see cref="BuildArguments"/>, with a keyframe at each segment's start.
+    /// </para>
     /// </summary>
-    public static IReadOnlyList<string> HlsArguments(string input, double startSeconds, int? maxVideoKbps, int? maxHeight, string folder)
+    public static IReadOnlyList<string> HlsArguments(string input, double startSeconds, int? maxVideoKbps, int? maxHeight, string folder,
+        MediaCodecs? codecs = null)
     {
-        var args = EncodeArguments(input, startSeconds, maxVideoKbps, maxHeight);
+        List<string> args;
+        if (codecs?.CanCopyVideoForApple == true && maxVideoKbps is null && maxHeight is null)
+        {
+            args = ["-hide_banner", "-loglevel", "error"];
+            if (startSeconds > 0) args.AddRange(["-ss", startSeconds.ToString("0.###", CultureInfo.InvariantCulture)]);
+            args.AddRange(["-i", input, "-map", "0:v:0", "-map", "0:a:0?", "-sn", "-c:v", "copy"]);
+            // Apple only recognises HEVC in MP4 by this tag (MKVs carry the other one, hev1).
+            if (codecs.Video == "hevc") args.AddRange(["-tag:v", "hvc1"]);
+            if (codecs.CanCopyAudioForApple) args.AddRange(["-c:a", "copy"]);
+            else args.AddRange(["-c:a", "aac", "-ac", "2", "-b:a", "160k"]);
+        }
+        else
+        {
+            args = EncodeArguments(input, startSeconds, maxVideoKbps, maxHeight);
+            args.AddRange(["-force_key_frames", $"expr:gte(t,n_forced*{HlsSegmentSeconds})"]);
+        }
         args.Insert(0, "-nostdin");
-        args.AddRange(["-force_key_frames", $"expr:gte(t,n_forced*{HlsSegmentSeconds})"]);
         args.AddRange(["-f", "hls", "-hls_time", HlsSegmentSeconds.ToString(CultureInfo.InvariantCulture), "-hls_list_size", "0",
-            "-hls_playlist_type", "event", "-hls_flags", "independent_segments+temp_file", "-hls_segment_type", "mpegts",
-            "-start_number", "0", "-hls_segment_filename", Path.Combine(folder, "seg%d.ts"), Path.Combine(folder, HlsSessions.Playlist)]);
+            "-hls_playlist_type", "event", "-hls_flags", "independent_segments+temp_file", "-hls_segment_type", "fmp4",
+            "-hls_fmp4_init_filename", HlsSessions.InitSegment, "-start_number", "0",
+            "-hls_segment_filename", Path.Combine(folder, "seg%d.m4s"), Path.Combine(folder, HlsSessions.Playlist)]);
         return args;
+    }
+
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, MediaCodecs> _probed = new();
+
+    /// <summary>
+    /// The codecs of a video's first picture and sound streams, by ffprobe (which comes with ffmpeg). Null when it can't
+    /// tell, in which case the video is converted in full. Remembered per file on the server's disk.
+    /// </summary>
+    public async Task<MediaCodecs?> ProbeAsync(string input, CancellationToken ct)
+    {
+        var isFile = !input.StartsWith("http", StringComparison.OrdinalIgnoreCase);
+        if (isFile && _probed.TryGetValue(input, out var known)) return known;
+
+        var ffmpeg = options.Value.FfmpegPath;
+        var name = Path.GetFileName(ffmpeg).Replace("ffmpeg", "ffprobe", StringComparison.OrdinalIgnoreCase);
+        var dir = Path.GetDirectoryName(ffmpeg);
+        var psi = new ProcessStartInfo(string.IsNullOrEmpty(dir) ? name : Path.Combine(dir, name))
+        {
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+        };
+        foreach (var a in new[] { "-v", "error", "-show_entries", "stream=codec_type,codec_name", "-of", "csv=p=0", input })
+            psi.ArgumentList.Add(a);
+        try
+        {
+            using var process = Process.Start(psi);
+            if (process is null) return null;
+            _ = process.StandardError.ReadToEndAsync(CancellationToken.None);
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            timeout.CancelAfter(TimeSpan.FromSeconds(15));
+            try
+            {
+                var output = await process.StandardOutput.ReadToEndAsync(timeout.Token);
+                await process.WaitForExitAsync(timeout.Token);
+                // One line per stream, "codec_name,codec_type" (an attachment can have no codec name).
+                var streams = output.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                    .Select(l => l.Split(','))
+                    .Where(p => p.Length >= 2)
+                    .ToList();
+                var codecs = new MediaCodecs(
+                    streams.FirstOrDefault(p => p[1] == "video")?[0],
+                    streams.FirstOrDefault(p => p[1] == "audio")?[0]);
+                if (codecs.Video is null) return null;
+                if (isFile) _probed[input] = codecs;
+                return codecs;
+            }
+            finally
+            {
+                if (!process.HasExited) process.Kill(entireProcessTree: true);
+            }
+        }
+        catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException or OperationCanceledException)
+        {
+            if (ct.IsCancellationRequested) throw;
+            log.LogDebug(ex, "ffprobe couldn't read the codecs");
+            return null;
+        }
     }
 
     /// <summary>Input, H.264 video and stereo AAC: what every player can decode.</summary>
@@ -215,6 +295,16 @@ public class Transcoder(IOptions<PhantomOptions> options, ILogger<Transcoder> lo
         var i = input.IndexOf("access_token=", StringComparison.Ordinal);
         return i < 0 ? input : input[..i] + "access_token=…";
     }
+}
+
+/// <summary>A video's picture and sound codecs, as ffmpeg names them ("h264", "hevc", "aac", "dts"...).</summary>
+public record MediaCodecs(string? Video, string? Audio)
+{
+    /// <summary>Picture Apple's player decodes, so it can be repackaged without re-encoding.</summary>
+    public bool CanCopyVideoForApple => Video is "h264" or "hevc";
+
+    /// <summary>Sound Apple's player decodes (no sound at all counts: there's nothing to convert).</summary>
+    public bool CanCopyAudioForApple => Audio is null or "aac" or "ac3" or "eac3";
 }
 
 /// <summary>ffmpeg couldn't convert a video: its own last word on why.</summary>
