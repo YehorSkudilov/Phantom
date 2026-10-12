@@ -80,6 +80,14 @@ public class StateView : ContentView
             _onScreen = false;
             this.AbortAnimation(nameof(StateView));
         };
+        // A skeleton is sized to its space (a wide window gets more columns, a tall one more rows), so rebuild it when that
+        // changes enough to need a different number of tiles.
+        SizeChanged += (_, _) =>
+        {
+            if (_mode != Mode.Loading || SkeletonFit(Skeleton) == _skeletonFit) return;
+            Content = BuildSkeleton(Skeleton);
+            Animate();
+        };
         Update();
     }
 
@@ -128,27 +136,49 @@ public class StateView : ContentView
         HeightRequest = height, BackgroundColor = Res("SurfaceRaised"), StrokeThickness = 0, StrokeShape = new RoundRectangle { CornerRadius = radius },
     };
 
+    private (int Across, int Down) _skeletonFit;
+
+    /// <summary>
+    /// How many tiles across and rows down a skeleton needs to fill this view: at least a phone's worth, more on a wide
+    /// or tall window (Windows). Before the first layout there's no size yet, so it's the phone's.
+    /// </summary>
+    private (int Across, int Down) SkeletonFit(SkeletonKind kind)
+    {
+        var width = Width > 0 ? Width - 32 : 0;
+        var height = Height > 0 ? Height - 16 : 0;
+        return kind switch
+        {
+            // Posters 120 wide plus 12 between; rows of a title and a poster under a 200-high banner.
+            SkeletonKind.Rows => (Math.Max(6, (int)Math.Ceiling(width / 132)), Math.Max(3, (int)Math.Ceiling((height - 216) / 230))),
+            // Columns as the real grid picks them (MovieGridView: one per 140); rows of a poster and its caption.
+            SkeletonKind.Grid => (Math.Max(3, (int)(Math.Max(Width, 0) / 140)),Math.Max(4, (int)Math.Ceiling(height / 202))),
+            SkeletonKind.List => (1, Math.Max(6, (int)Math.Ceiling(height / 82))),
+            _ => (0, 0),
+        };
+    }
+
     private View BuildSkeleton(SkeletonKind kind)
     {
         var stack = new VerticalStackLayout { Spacing = 16, Padding = new Thickness(16, 8) };
+        var (across, down) = _skeletonFit = SkeletonFit(kind);
         switch (kind)
         {
             case SkeletonKind.Rows:
                 stack.Add(Bar(200, 16));
-                for (var row = 0; row < 3; row++)
+                for (var row = 0; row < down; row++)
                 {
                     stack.Add(Box(150, 18, 5));
                     var posters = new HorizontalStackLayout { Spacing = 12 };
-                    for (var i = 0; i < 6; i++) posters.Add(Box(120, 180, 10));
+                    for (var i = 0; i < across; i++) posters.Add(Box(120, 180, 10));
                     stack.Add(posters);
                 }
                 break;
             case SkeletonKind.Grid:
                 var grid = new Grid { ColumnSpacing = 10, RowSpacing = 14 };
-                for (var c = 0; c < 3; c++) grid.ColumnDefinitions.Add(new ColumnDefinition(GridLength.Star));
-                for (var i = 0; i < 12; i++)
+                for (var c = 0; c < across; c++) grid.ColumnDefinitions.Add(new ColumnDefinition(GridLength.Star));
+                for (var i = 0; i < across * down; i++)
                 {
-                    // A poster's shape at a phone's three-across width (sized up front: sizing it from the column's width once
+                    // A poster's shape as the real grid draws it (sized up front: sizing it from the column's width once
                     // laid out left it a thin line), with its title under it, as on Discover.
                     var poster = new VerticalStackLayout { Spacing = 8 };
                     poster.Add(Bar(170, 10));
@@ -156,13 +186,13 @@ public class StateView : ContentView
                     caption.WidthRequest = 70;
                     caption.HorizontalOptions = LayoutOptions.Start;
                     poster.Add(caption);
-                    grid.Add(poster, i % 3, i / 3);
-                    if (i % 3 == 0) grid.RowDefinitions.Add(new RowDefinition(GridLength.Auto));
+                    grid.Add(poster, i % across, i / across);
+                    if (i % across == 0) grid.RowDefinitions.Add(new RowDefinition(GridLength.Auto));
                 }
                 stack.Add(grid);
                 break;
             case SkeletonKind.List:
-                for (var i = 0; i < 6; i++)
+                for (var i = 0; i < down; i++)
                 {
                     var line = new Grid { ColumnSpacing = 12 };
                     line.ColumnDefinitions.Add(new ColumnDefinition(new GridLength(112)));

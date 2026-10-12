@@ -28,9 +28,11 @@ public class ObservableList<T> : ObservableCollection<T>
     /// <summary>
     /// Makes the list equal to <paramref name="items"/>, touching only what differs: unchanged rows stay as they are
     /// (no redraw), changed ones are replaced one by one. A list that has little in common with the new one is reset
-    /// in one go instead.
+    /// in one go instead (which scrolls it back to the top). With <paramref name="key"/>, rows are "in common" when
+    /// they're the same thing (by id, say) even if their values changed: a list whose every row ticks along (download
+    /// progress) is then updated row by row rather than reset each time.
     /// </summary>
-    public void Sync(IReadOnlyList<T> items, IEqualityComparer<T>? comparer = null)
+    public void Sync(IReadOnlyList<T> items, IEqualityComparer<T>? comparer = null, Func<T, object?>? key = null)
     {
         comparer ??= EqualityComparer<T>.Default;
         if (Count == 0)
@@ -42,7 +44,7 @@ public class ObservableList<T> : ObservableCollection<T>
         var common = Math.Min(Count, items.Count);
         var same = 0;
         for (var i = 0; i < common; i++)
-            if (comparer.Equals(this[i], items[i])) same++;
+            if (key is not null ? Equals(key(this[i]), key(items[i])) : comparer.Equals(this[i], items[i])) same++;
         if (same * 2 < common)
         {
             ReplaceAll(items);

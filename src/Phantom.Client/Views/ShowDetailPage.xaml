@@ -16,6 +16,10 @@
         <Style x:Key="EpisodeActionButton" TargetType="Button" BasedOn="{StaticResource SecondaryButton}">
             <Setter Property="FontSize" Value="12" />
             <Setter Property="HeightRequest" Value="34" />
+            <!-- Pinned: on Windows a button with its icon set in XAML grew past the request, so the three didn't match -->
+            <Setter Property="MinimumHeightRequest" Value="34" />
+            <Setter Property="MaximumHeightRequest" Value="34" />
+            <Setter Property="VerticalOptions" Value="Center" />
             <Setter Property="Padding" Value="12,0" />
             <Setter Property="CornerRadius" Value="17" />
             <Setter Property="ContentLayout" Value="Left,6" />
@@ -90,13 +94,14 @@
                 <!-- Seasons and their episodes: the season (picked like a title) and its buttons, then "Episodes", each
                      with its own buttons -->
                 <VerticalStackLayout Padding="16,0" Spacing="10" IsVisible="{Binding Seasons.Count, Converter={StaticResource HasValue}}">
-                    <!-- The season picker, shown as a heading with a drop-down arrow so it reads as something to tap -->
+                    <!-- The season picker, shown as a heading with a drop-down arrow so it reads as something to tap
+                         (not on Windows: its picker draws its own arrow) -->
                     <Grid ColumnDefinitions="Auto,Auto" ColumnSpacing="2" HorizontalOptions="Start">
                         <Picker ItemsSource="{Binding Seasons}" SelectedItem="{Binding SelectedSeason}" MinimumWidthRequest="120"
                                 ItemDisplayBinding="{Binding Title, x:DataType=dto:SeasonDto}" SemanticProperties.Description="Season"
                                 FontFamily="OpenSansSemibold" FontSize="24" BackgroundColor="Transparent" />
                         <Image Grid.Column="1" Source="{controls:Icon expand_more, Size=28}" WidthRequest="28" HeightRequest="28"
-                               VerticalOptions="Center" InputTransparent="True" />
+                               VerticalOptions="Center" InputTransparent="True" IsVisible="{OnPlatform True, WinUI=False}" />
                     </Grid>
                     <!-- The season: to this device, kept on the server, into a playlist, marked watched. Equal tiles, like the
                          show's own above, right under the season they act on. -->

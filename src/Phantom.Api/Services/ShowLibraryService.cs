@@ -223,14 +223,14 @@ public class ShowLibraryService(PhantomDbContext db)
         if (playable.Count == 0) return null;
         EpisodeWatchState? State(Episode e) => states.GetValueOrDefault(e.Id);
 
-        var inProgress = playable.Where(e => State(e) is { Watched: false, PositionMs: > 0 })
-            .MaxBy(e => State(e)!.LastViewedAt);
-        if (inProgress is not null) return (inProgress, State(inProgress));
-
-        var lastWatched = playable.Where(e => State(e) is { Watched: true }).MaxBy(e => State(e)!.LastViewedAt);
-        if (lastWatched is not null)
+        // Whichever was watched last decides: if it's unfinished it's the one, if finished the one after it. (An old
+        // half-watched episode used to win over newer finished ones, sending the page back to its season.)
+        var last = playable.Where(e => State(e) is { Watched: true } or { PositionMs: > 0 })
+            .MaxBy(e => State(e)!.LastViewedAt ?? DateTime.MinValue);
+        if (last is not null)
         {
-            var after = playable.SkipWhile(e => e != lastWatched).Skip(1).FirstOrDefault();
+            if (State(last) is { Watched: false }) return (last, State(last));
+            var after = playable.SkipWhile(e => e != last).Skip(1).FirstOrDefault();
             if (after is not null) return (after, State(after));
         }
 

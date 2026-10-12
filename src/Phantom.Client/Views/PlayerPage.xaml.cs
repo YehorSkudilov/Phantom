@@ -342,6 +342,9 @@ public partial class PlayerPage : ContentPage
                 _started = true;
                 SetLoading(false);
                 _ = TryResumeAsync();
+#if WINDOWS
+                CheckForPicture();
+#endif
                 break;
             case MediaElementState.Paused or MediaElementState.Stopped when _started:
                 SetLoading(false);
@@ -350,6 +353,30 @@ public partial class PlayerPage : ContentPage
         PlayPause.Source = IconExtension.Create(state == MediaElementState.Playing ? "pause" : "play_arrow", Colors.White, size: 40);
         if (state == MediaElementState.Paused) _ = Report(PlayerState.Paused);
     }
+
+#if WINDOWS
+    private string? _pictureChecked;
+
+    /// <summary>
+    /// Windows plays a file whose sound it can decode but whose picture it can't (10-bit HEVC without the paid extension,
+    /// say) without failing: the poster stays up while the timeline ticks. So a moment into playback, no picture means
+    /// the same as a failure: the server converts it from here.
+    /// </summary>
+    private void CheckForPicture()
+    {
+        var source = _vm.SourceUrl;
+        if (source is null || _pictureChecked == source) return;
+        _pictureChecked = source;
+        Dispatcher.DispatchDelayed(TimeSpan.FromSeconds(2), () =>
+        {
+            if (_vm.SourceUrl != source || Media.CurrentState != MediaElementState.Playing || Media.MediaWidth > 0) return;
+            if (_vm.TryConvertAfterFailure(_vm.ActualPosition(Media.Position)))
+                Flash("Converting it on the server…");
+            else if (!_vm.IsTranscoding)
+                Flash("Windows can't show this video's picture (try installing HEVC Video Extensions)");
+        });
+    }
+#endif
 
     private void OnEnded() => Guard(async () =>
     {

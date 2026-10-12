@@ -178,14 +178,19 @@ public static class Dialog
                 Stroke = Res("Outline"),
                 StrokeThickness = 1,
                 StrokeShape = new RoundRectangle { CornerRadius = 18 },
-                MaximumWidthRequest = 460,
                 Margin = sheet ? new Thickness(8, 0, 8, 12) : new Thickness(24),
                 VerticalOptions = sheet ? LayoutOptions.End : LayoutOptions.Center,
-                HorizontalOptions = LayoutOptions.Fill,
+                HorizontalOptions = LayoutOptions.Center,
                 Opacity = 0,
                 TranslationY = sheet ? 60 : 16,
             };
             Content = new Grid { Children = { _scrim, _card } };
+            // The card's width, set outright: filling the page with a maximum width laid its text and buttons out for the
+            // whole window and then cut them off at the maximum (on Windows, where the window is wide).
+            SizeChanged += (_, _) =>
+            {
+                if (Width > 0) _card.WidthRequest = Math.Min(460, Width - _card.Margin.HorizontalThickness);
+            };
         }
 
         protected override async void OnAppearing()

@@ -23,8 +23,9 @@ public partial class ServerDownloadsViewModel(PhantomApi api, SettingsService se
     {
         IsAdmin = settings.User?.IsAdmin == true;
         var items = await api.ServerDownloadsAsync();
-        // Polled every couple of seconds: only rows whose progress or state changed are redrawn.
-        Items.Sync(items);
+        // Polled every couple of seconds: only rows whose progress or state changed are redrawn, and matched by id so
+        // the list isn't reset (losing its scroll) when most of them have moved on.
+        Items.Sync(items, key: d => d.Id);
         IsEmpty = Items.Count == 0;
         Totals = $"↓ {BytesConverter.Format(items.Sum(d => d.DownloadRate))}/s   ↑ {BytesConverter.Format(items.Sum(d => d.UploadRate))}/s   ·   {items.Count(d => d.Status == DownloadStatus.Completed)} completed";
     }, showBusy: false);
