@@ -34,7 +34,7 @@ public class TmdbMetadataProvider(HttpClient http, IOptions<PhantomOptions> opti
             var tmdbId = movie.TmdbId ?? await FindIdAsync(movie, ct);
             if (tmdbId is null) return;
 
-            using var doc = await GetAsync($"/movie/{tmdbId}?append_to_response=credits,videos,release_dates", ct);
+            using var doc = await GetAsync($"/movie/{tmdbId}?append_to_response=credits,videos,release_dates,keywords", ct);
             var r = doc.RootElement;
 
             movie.TmdbId = tmdbId;
@@ -112,6 +112,23 @@ public class TmdbMetadataProvider(HttpClient http, IOptions<PhantomOptions> opti
         return null;
     }
 
+    /// <summary>The genre given to films and shows TMDB tags as erotic (it has no genre of its own for them).</summary>
+    public const string EroticGenre = "Erotic";
+
+    /// <summary>
+    /// Whether TMDB's keywords (fetched with the details) mark this as erotic: an erotic movie, thriller or drama,
+    /// erotica, softcore. Not porn, which TMDB leaves out: films with sexual content as their subject.
+    /// </summary>
+    public static bool IsErotic(JsonElement r)
+    {
+        if (!r.TryGetProperty("keywords", out var k)) return false;
+        // A movie's are under "keywords", a show's under "results".
+        var list = k.TryGetProperty("keywords", out var m) ? m : k.TryGetProperty("results", out var t) ? t : default;
+        if (list.ValueKind != JsonValueKind.Array) return false;
+        return list.EnumerateArray().Select(w => Str(w, "name")?.ToLowerInvariant()).OfType<string>()
+            .Any(w => w.Contains("erotic") || w is "softcore" or "sexploitation");
+    }
+
     private static async Task ApplyGenresAsync(PhantomDbContext db, List<Genre> into, JsonElement r, CancellationToken ct)
     {
         if (!r.TryGetProperty("genres", out var genres)) return;
@@ -119,6 +136,8 @@ public class TmdbMetadataProvider(HttpClient http, IOptions<PhantomOptions> opti
         var names = genres.EnumerateArray().Select(g => Str(g, "name")).OfType<string>()
             .SelectMany(n => n.Split(" & ", StringSplitOptions.TrimEntries))
             .Select(n => n == "Sci-Fi" ? "Science Fiction" : n)
+            // Films about sex get a genre for it, to find (or filter) them by.
+            .Concat(IsErotic(r) ? [EroticGenre] : [])
             .Distinct();
         foreach (var name in names)
         {
@@ -182,7 +201,7 @@ public class TmdbMetadataProvider(HttpClient http, IOptions<PhantomOptions> opti
             var tmdbId = show.TmdbId ?? await FindShowIdAsync(show, ct);
             if (tmdbId is null) return;
 
-            using var doc = await GetAsync($"/tv/{tmdbId}?append_to_response=credits,videos,content_ratings,external_ids", ct);
+            using var doc = await GetAsync($"/tv/{tmdbId}?append_to_response=credits,videos,content_ratings,external_ids,keywords", ct);
             var r = doc.RootElement;
 
             show.TmdbId = tmdbId;

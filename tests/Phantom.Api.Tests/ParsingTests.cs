@@ -228,3 +228,18 @@ public class SubtitleConverterTests
         Assert.Equal("pipe:1", args[^1]);
     }
 }
+
+public class EroticGenreTests
+{
+    [Theory]
+    [InlineData("""{"keywords":{"keywords":[{"id":1,"name":"erotic movie"}]}}""", true)]
+    [InlineData("""{"keywords":{"results":[{"id":1,"name":"Erotic Thriller"}]}}""", true)]
+    [InlineData("""{"keywords":{"keywords":[{"id":1,"name":"softcore"}]}}""", true)]
+    [InlineData("""{"keywords":{"keywords":[{"id":1,"name":"heist"},{"id":2,"name":"based on novel"}]}}""", false)]
+    [InlineData("""{"title":"No keywords"}""", false)]
+    public void Tmdb_keywords_mark_erotic_films(string json, bool erotic)
+    {
+        using var doc = System.Text.Json.JsonDocument.Parse(json);
+        Assert.Equal(erotic, Phantom.Api.Services.Metadata.TmdbMetadataProvider.IsErotic(doc.RootElement));
+    }
+}
