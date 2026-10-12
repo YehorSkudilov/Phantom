@@ -27,7 +27,7 @@ public static class DpadFocus
 
     public static void Register()
     {
-        Microsoft.Maui.Handlers.ViewHandler.ViewMapper.AppendToMapping("DpadFocus", (_, view) =>
+        Microsoft.Maui.Handlers.ViewHandler.ViewMapper.AppendToMapping("DpadFocus", (handler, view) =>
         {
             if (view is not View control) return;
             Update(control);
