@@ -234,7 +234,6 @@ public class LibraryController(PhantomDbContext db, LibraryService library, Show
     {
         if (string.IsNullOrWhiteSpace(q)) return new SearchResultDto([], [], []);
         var userId = User.UserId();
-        var term = q.Trim().ToLower();
         var visible = library.Visible(User);
 
         var query = new MovieQuery { Search = q, Sort = MovieSort.Rating };
@@ -244,10 +243,11 @@ public class LibraryController(PhantomDbContext db, LibraryService library, Show
         var titles = movies.Concat(showItems)
             .OrderByDescending(i => i.Title.Contains(q.Trim(), StringComparison.OrdinalIgnoreCase))
             .ThenByDescending(i => i.Rating ?? 0).Take(40).ToList();
-        var people = await visible.SelectMany(m => m.Credits).Where(c => c.Name.ToLower().Contains(term)).Select(c => c.Name)
-            .Union(shows.Visible(User).SelectMany(s => s.Credits).Where(c => c.Name.ToLower().Contains(term)).Select(c => c.Name))
-            .Distinct().Take(20).ToListAsync(ct);
-        var genres = await db.Genres.Where(g => g.Name.ToLower().Contains(term)).Select(g => g.Name).Take(10).ToListAsync(ct);
+        // People in one pass over the credits (rather than one over movies' and another over shows'), most credited first.
+        var like = Like.Contains(q);
+        var people = await db.Credits.Where(c => EF.Functions.Like(c.Name, like, Like.Escape))
+            .GroupBy(c => c.Name).OrderByDescending(g => g.Count()).Select(g => g.Key).Take(20).ToListAsync(ct);
+        var genres = await db.Genres.Where(g => EF.Functions.Like(g.Name, like, Like.Escape)).Select(g => g.Name).Take(10).ToListAsync(ct);
         return new SearchResultDto(titles, people, genres);
     }
 }

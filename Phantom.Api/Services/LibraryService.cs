@@ -25,10 +25,11 @@ public class LibraryService(PhantomDbContext db)
     {
         if (!string.IsNullOrWhiteSpace(query.Search))
         {
-            var s = query.Search.Trim().ToLower();
-            q = q.Where(m => m.Title.ToLower().Contains(s)
-                             || (m.OriginalTitle != null && m.OriginalTitle.ToLower().Contains(s))
-                             || m.Credits.Any(c => c.Name.ToLower().Contains(s)));
+            // LIKE is already case-insensitive in SQLite: lower-casing every title and name first made searches slow.
+            var s = Like.Contains(query.Search);
+            q = q.Where(m => EF.Functions.Like(m.Title, s, Like.Escape)
+                             || (m.OriginalTitle != null && EF.Functions.Like(m.OriginalTitle, s, Like.Escape))
+                             || m.Credits.Any(c => EF.Functions.Like(c.Name, s, Like.Escape)));
         }
         if (!string.IsNullOrWhiteSpace(query.Genre)) q = q.Where(m => m.Genres.Any(g => g.Name == query.Genre));
         if (query.Year is { } year) q = q.Where(m => m.Year == year);
@@ -132,4 +133,14 @@ public class LibraryService(PhantomDbContext db)
                ?? list.Where(r => preferredQuality != null && r.Quality == preferredQuality).OrderByDescending(r => r.Seeders).FirstOrDefault()
                ?? list.OrderByDescending(r => r.Seeders > 0).ThenByDescending(r => ReleaseNameParser.QualityRank(r.Quality)).ThenByDescending(r => r.Seeders).FirstOrDefault();
     }
+}
+
+/// <summary>SQL LIKE patterns from what someone typed: its % and _ taken literally.</summary>
+public static class Like
+{
+    public const string Escape = "\\";
+
+    /// <summary>"%text%", for "contains".</summary>
+    public static string Contains(string text) =>
+        "%" + text.Trim().Replace("\\", "\\\\").Replace("%", "\\%").Replace("_", "\\_") + "%";
 }

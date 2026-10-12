@@ -104,7 +104,8 @@
         </Grid>
 
         <!-- Search results -->
-        <ScrollView Grid.Row="2" x:DataType="vm:LibraryViewModel" IsVisible="{Binding Search.Query, Converter={StaticResource HasValue}}">
+        <ScrollView Grid.Row="2" x:DataType="vm:LibraryViewModel" IsVisible="{Binding Search.Query, Converter={StaticResource HasValue}}"
+                    Scrolled="OnResultsScrolled">
             <VerticalStackLayout BindingContext="{Binding Search}" x:DataType="vm:SearchViewModel">
             <VerticalStackLayout Spacing="10" Padding="0,8,0,108">
                 <controls:StateView HasContent="{Binding NoResults, Converter={StaticResource Not}}" Margin="0,24,0,0"
