@@ -122,10 +122,27 @@ public partial class MovieDetailViewModel(PhantomApi api, SettingsService settin
     [RelayCommand]
     private Task PlayFromStart() => StartPlayback(resume: false);
 
-    /// <summary>Plays the best copy there is: this device's download, then the server's saved copy, then streaming.</summary>
+    /// <summary>
+    /// Plays the source picked under Play: from this device if that's the version downloaded here, else from the
+    /// server (its saved copy of that source if it has one, else streamed). The source picked at first is the best
+    /// copy there is (the server lists saved ones first).
+    /// </summary>
     private Task StartPlayback(bool resume) =>
-        OfflineItem is { IsComplete: true } ? Open(resume, offline: true, SelectedRelease)
-        : Open(resume, offline: false, Releases.FirstOrDefault(r => r.AvailableOffline) ?? SelectedRelease);
+        SourceDownload is { IsComplete: true } ? Open(resume, offline: true, SelectedRelease)
+        : Open(resume, offline: false, SelectedRelease);
+
+    /// <summary>
+    /// This device's download, if it's of the source picked (one made before sources were recorded counts for any).
+    /// The Download tile and its status follow the source: another version downloaded isn't this one.
+    /// </summary>
+    public OfflineDownload? SourceDownload =>
+        OfflineItem is { } d && (d.ReleaseId is null || SelectedRelease is null || d.ReleaseId == SelectedRelease.Id) ? d : null;
+
+    partial void OnSelectedReleaseChanged(ReleaseDto? value)
+    {
+        OnPropertyChanged(nameof(SourceDownload));
+        OnServerChanged(this, EventArgs.Empty);
+    }
 
     private Task Open(bool resume, bool offline, ReleaseDto? release) =>
         GoToAsync($"{nameof(Views.PlayerPage)}?id={Movie!.Id}&resume={resume}"
@@ -137,7 +154,11 @@ public partial class MovieDetailViewModel(PhantomApi api, SettingsService settin
     /// <summary>More than one way to play: a downloaded or server-saved copy as well as streaming.</summary>
     public bool HasPlayChoices => OfflineItem is { IsComplete: true } || Releases.Any(r => r.AvailableOffline);
 
-    partial void OnOfflineItemChanged(OfflineDownload? value) => OnPropertyChanged(nameof(HasPlayChoices));
+    partial void OnOfflineItemChanged(OfflineDownload? value)
+    {
+        OnPropertyChanged(nameof(HasPlayChoices));
+        OnPropertyChanged(nameof(SourceDownload));
+    }
 
     [RelayCommand]
     private async Task ChoosePlaySource()
@@ -216,7 +237,15 @@ public partial class MovieDetailViewModel(PhantomApi api, SettingsService settin
     private async Task DownloadToDevice()
     {
         if (Movie is null) return;
-        if (OfflineItem is { } existing)
+        // Another version is on this device (it holds one per movie): this one can take its place.
+        if (OfflineItem is { } other && SourceDownload is null)
+        {
+            var swap = await Dialog.ChooseAsync(Movie.Title, null, "Download this version instead", "Go to Downloads");
+            if (swap == "Go to Downloads") await Views.MainPage.ShowDeviceDownloads();
+            if (swap != "Download this version instead") return;
+            await downloads.DeleteAsync(other);
+        }
+        else if (OfflineItem is { } existing)
         {
             var action = await Dialog.ChooseAsync(Movie.Title, "Delete download",
                 existing.Status is OfflineStatus.Paused or OfflineStatus.Failed ? "Resume download" : "Go to Downloads");
@@ -269,7 +298,7 @@ public partial class MovieDetailViewModel(PhantomApi api, SettingsService settin
     private IDisposable? _serverWatch;
 
     /// <summary>The server's copy of this movie (saved, or being saved), if any.</summary>
-    public ServerDownloadDto? ServerItem => server.ForMovie(_id);
+    public ServerDownloadDto? ServerItem => server.ForMovie(_id, SelectedRelease?.Id);
     public string ServerLabel => ServerDownloadTracker.Label(ServerItem);
     public bool IsOnServer => ServerItem is not null;
     public bool IsSavingOnServer => ServerDownloadTracker.IsRunning(ServerItem);
