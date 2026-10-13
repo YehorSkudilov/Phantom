@@ -120,8 +120,9 @@ public class ServerDownloadService(IServiceScopeFactory scopes, TorrentEngine en
                     .Where(x => x.Status != DownloadStatus.Completed && x.Status != DownloadStatus.Cancelled && x.Status != DownloadStatus.Failed)
                     .Select(x => x.Release!.InfoHash).ToListAsync(ct))
                 .Select(h => h.ToLowerInvariant()).ToHashSet();
-            await engine.EvictIdleAsync(TimeSpan.FromHours(Math.Max(1, settings.StreamCacheHours)), needed);
-            await engine.EnforceCacheLimitAsync((long)settings.MaxStreamCacheGb << 30, needed);
+            // Nothing streams from a torrent any more (only saved files play): any stream cache is left over, and goes
+            // once nothing has read it for a while.
+            await engine.EvictIdleAsync(TimeSpan.FromMinutes(10), needed);
         }
         await engine.EnsureFreeSpaceAsync();
 

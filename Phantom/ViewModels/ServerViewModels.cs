@@ -166,7 +166,7 @@ public partial class AdminViewModel(PhantomApi api) : BaseViewModel
     public ObservableList<StoredTorrentDto> StoredItems { get; } = [];
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(DiskText), nameof(DiskUsed), nameof(BreakdownText), nameof(CacheLimitText), nameof(DiskLow))]
+    [NotifyPropertyChangedFor(nameof(DiskText), nameof(DiskUsed), nameof(BreakdownText), nameof(HasStreamCache), nameof(DiskLow))]
     private StorageDto? storage;
 
     public string DiskText => Storage is not { DiskTotalBytes: > 0 } s ? ""
@@ -180,13 +180,14 @@ public partial class AdminViewModel(PhantomApi api) : BaseViewModel
 
     public string BreakdownText => Storage is not { } s ? "" : string.Join("\n",
         $"Saved on the server: {BytesConverter.Format(s.SavedBytes)}",
-        $"Stream cache: {BytesConverter.Format(s.StreamCacheBytes)}",
         $"Seek previews: {BytesConverter.Format(s.PreviewBytes)}",
-        $"Library database: {BytesConverter.Format(s.DatabaseBytes)}");
+        $"Library database: {BytesConverter.Format(s.DatabaseBytes)}",
+        // Nothing streams from a torrent any more: what's here is left over, and the server clears it by itself.
+        s.StreamCacheBytes > 0 ? $"Left from streaming (being cleared): {BytesConverter.Format(s.StreamCacheBytes)}" : null)
+        .Replace("\n\n", "\n").TrimEnd('\n');
 
-    public string CacheLimitText => Storage is not { } s ? ""
-        : (s.MaxStreamCacheGb > 0 ? $"The stream cache is kept under {s.MaxStreamCacheGb} GB" : "The stream cache has no size limit")
-          + $", and cleared when fewer than {s.MinFreeDiskGb} GB are free. A stream stops downloading 10 minutes after it was last watched. Change the limit in Server settings.";
+    /// <summary>Some stream cache is left from when torrents were streamed.</summary>
+    public bool HasStreamCache => Storage is { StreamCacheBytes: > 0 };
 
     private async Task LoadStorageAsync()
     {
@@ -213,7 +214,7 @@ public partial class AdminViewModel(PhantomApi api) : BaseViewModel
                 await Dialog.AlertAsync("Saved on the server", "This copy isn't from a download Phantom knows about, so it can't be removed here.");
                 return;
             }
-            if (!await Dialog.ConfirmAsync("Remove from the server", $"Delete the saved copy of {item.Title} ({BytesConverter.Format(item.SizeBytes)})? It can still be streamed.", "Delete", destructive: true)) return;
+            if (!await Dialog.ConfirmAsync("Remove from the server", $"Delete the saved copy of {item.Title} ({BytesConverter.Format(item.SizeBytes)})? It can be saved again later.", "Delete", destructive: true)) return;
             await api.DeleteServerDownloadAsync(id, deleteFiles: true);
         }
         else
@@ -226,7 +227,7 @@ public partial class AdminViewModel(PhantomApi api) : BaseViewModel
     [RelayCommand]
     private Task ClearIdleCaches() => RunAsync(async () =>
     {
-        if (!await Dialog.ConfirmAsync("Clear stream cache", "Delete the cached parts of everything nobody is watching right now? They download again when played.", "Clear", destructive: true)) return;
+        if (!await Dialog.ConfirmAsync("Clear stream cache", "Delete what's left from when torrents were streamed? Nothing plays from it any more.", "Clear", destructive: true)) return;
         ShowStorage(await api.ClearIdleCachesAsync());
         await ToastAsync("Stream cache cleared");
     }, showBusy: false);

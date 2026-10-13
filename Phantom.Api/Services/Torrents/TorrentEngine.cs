@@ -660,18 +660,4 @@ public sealed class TorrentEngine : IHostedService, IAsyncDisposable
             if (await ClearStreamCacheAsync(item.InfoHash)) cleared++;
         return cleared;
     }
-
-    /// <summary>Keeps the stream cache under <paramref name="maxBytes"/>, clearing the least recently watched first.</summary>
-    public async Task EnforceCacheLimitAsync(long maxBytes, IReadOnlySet<string> keep)
-    {
-        if (maxBytes <= 0) return;
-        var caches = StoredTorrents().Where(t => !t.Saved && !keep.Contains(t.InfoHash)).ToList();
-        var total = caches.Sum(c => c.SizeBytes);
-        foreach (var cache in caches.Where(c => !c.InUse).OrderBy(c => c.LastUsed))
-        {
-            if (total <= maxBytes) break;
-            _log.LogInformation("Stream cache over its {Limit} GB limit: clearing {Name}", maxBytes >> 30, cache.Name ?? cache.InfoHash);
-            if (await ClearStreamCacheAsync(cache.InfoHash)) total -= cache.SizeBytes;
-        }
-    }
 }

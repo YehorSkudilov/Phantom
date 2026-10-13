@@ -127,11 +127,6 @@ public abstract class StreamControllerBase(
                && TorrentEngine.IsFileComplete(video) && System.IO.File.Exists(video.FullPath) ? video.FullPath : null;
     }
 
-    /// <summary>Our own direct endpoint, for ffmpeg to read a video that's still a torrent.</summary>
-    /// <param name="preview">For a seek preview: only what's downloaded, never waiting on the swarm (see <see cref="Direct"/>).</param>
-    private string Loopback(int id, StreamTarget target, bool preview = false) =>
-        $"http://127.0.0.1:{HttpContext.Connection.LocalPort}{RouteBase(id)}/direct?releaseId={target.Release.Id}&access_token={Uri.EscapeDataString(Token())}"
-        + (preview ? "&preview=true" : "");
 
     /// <summary>
     /// Playing straight from a torrent is gone: it often couldn't start, and was slow when it did. Only what's whole on
@@ -221,19 +216,14 @@ public abstract class StreamControllerBase(
                               || ReleaseNameParser.EpisodeOfFile(s, target.Choice.Season) == (target.Choice.Season, target.Choice.Episode)).ToList();
     }
 
-    /// <summary>
-    /// Direct play with HTTP range support; pieces are fetched on demand while seeking. <paramref name="preview"/> (our own
-    /// seek previews, through <see cref="Loopback"/>) reads only what's downloaded already: a preview of a part that isn't
-    /// fails rather than stalling the playback beside it.
-    /// </summary>
+    /// <summary>The saved file, with HTTP range support (see <see cref="NotSavedMessage"/>).</summary>
     [HttpGet("direct")]
     [HttpHead("direct")]
-    public async Task<IActionResult> Direct(int id, [FromQuery] int? releaseId, [FromQuery] bool download, [FromQuery] bool preview, CancellationToken ct)
+    public async Task<IActionResult> Direct(int id, [FromQuery] int? releaseId, [FromQuery] bool download, CancellationToken ct)
     {
         var target = await ResolveAsync(id, releaseId, ct);
         if (target is null) return NotFound();
-        // Our own seek previews may read what's there of a torrent; nothing else plays one (see NotSavedMessage).
-        if (!preview && CompleteFile(target) is null) return NotSaved();
+        if (CompleteFile(target) is null) return NotSaved();
 
         if (Local(target) is { } local)
             return PhysicalFile(Path.GetFullPath(local), VideoFiles.ContentType(local), download ? Path.GetFileName(local) : null, enableRangeProcessing: true);
@@ -241,7 +231,7 @@ public abstract class StreamControllerBase(
         TorrentMedia? media;
         try
         {
-            media = await engine.OpenAsync(target.Release, ct, target.Choice, wait: !preview);
+            media = await engine.OpenAsync(target.Release, ct, target.Choice);
         }
         catch (OperationCanceledException) when (!ct.IsCancellationRequested)
         {
@@ -415,8 +405,9 @@ public abstract class StreamControllerBase(
     }
 
     /// <summary>
-    /// A small frame from <paramref name="t"/> seconds in, for the seek bar's preview. Taken by ffmpeg from the file (or
-    /// the torrent, which fetches the pieces around that point) and cached in steps of <see cref="ThumbnailStepSeconds"/>.
+    /// A small frame from <paramref name="t"/> seconds in, for the seek bar's preview. Taken by ffmpeg from the saved file
+    /// (only what's saved plays, so only that has previews: reading a torrent for one started it downloading into a
+    /// stream cache) and cached in steps of <see cref="ThumbnailStepSeconds"/>.
     /// </summary>
     [HttpGet("thumbnail")]
     public async Task<IActionResult> Thumbnail(int id, [FromQuery] int? releaseId, [FromQuery] double t, CancellationToken ct)
@@ -429,7 +420,8 @@ public abstract class StreamControllerBase(
         var cache = Path.Combine(trickplay.Folder(target.CacheKey), $"{step}.jpg");
         if (System.IO.File.Exists(cache)) return PhysicalFile(Path.GetFullPath(cache), "image/jpeg");
 
-        var input = CompleteFile(target) is { } complete ? Path.GetFullPath(complete) : Loopback(id, target, preview: true);
+        if (CompleteFile(target) is not { } complete) return NotFound();
+        var input = Path.GetFullPath(complete);
 
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
         timeout.CancelAfter(TimeSpan.FromSeconds(30));

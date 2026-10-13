@@ -190,10 +190,6 @@
                             <Entry Grid.Row="3" Text="{Binding MaxDownloadKbps}" Keyboard="Numeric" />
                             <Entry Grid.Row="3" Grid.Column="1" Text="{Binding MaxUploadKbps}" Keyboard="Numeric" />
                         </Grid>
-                        <skeleton:CLabel Text="Keep streamed torrents cached for (hours)" Style="{StaticResource Muted}" />
-                        <Entry Text="{Binding StreamCacheHours}" Keyboard="Numeric" />
-                        <skeleton:CLabel Text="Stream cache size limit (GB, 0 = no limit)" Style="{StaticResource Muted}" />
-                        <Entry Text="{Binding MaxStreamCacheGb}" Keyboard="Numeric" />
                         <skeleton:CLabel Text="Delete movies saved on the server after (days, 0 = keep them)" Style="{StaticResource Muted}" />
                         <Entry Text="{Binding KeepServerDownloadsDays}" Keyboard="Numeric" />
                         <Grid ColumnDefinitions="*,Auto">
@@ -236,17 +232,17 @@
                             </ProgressBar.Triggers>
                         </ProgressBar>
                         <skeleton:CLabel Text="{Binding BreakdownText}" Style="{StaticResource Muted}" LineHeight="1.3" />
-                        <skeleton:CLabel Text="{Binding CacheLimitText}" Style="{StaticResource Muted}" FontSize="12" />
                         <FlexLayout Wrap="Wrap" Margin="-4,4,-4,0">
-                            <Button Text="Clear stream cache" Style="{StaticResource SecondaryButton}" Command="{Binding ClearIdleCachesCommand}" Margin="4"
-                                    ImageSource="{controls:Icon delete_sweep, Size=20}" ContentLayout="Left,6" />
+                            <!-- Only while there's some left from when torrents were streamed (the server clears it by itself too) -->
+                            <Button Text="Clear leftover stream cache" Style="{StaticResource SecondaryButton}" Command="{Binding ClearIdleCachesCommand}" Margin="4"
+                                    ImageSource="{controls:Icon delete_sweep, Size=20}" ContentLayout="Left,6" IsVisible="{Binding HasStreamCache}" />
                             <Button Text="Clear seek previews" Style="{StaticResource SecondaryButton}" Command="{Binding ClearPreviewsCommand}" Margin="4"
                                     ImageSource="{controls:Icon image_not_supported, Size=20}" ContentLayout="Left,6" />
                         </FlexLayout>
                     </VerticalStackLayout>
                 </Border>
 
-                <skeleton:CLabel Text="Largest first. Stream caches are parts of torrents kept from watching, saved copies are kept for good (until removed or they expire)."
+                <skeleton:CLabel Text="Largest first. Saved copies are kept until they're removed or expire; anything else is left over from when torrents were streamed, and is cleared by itself."
                        Style="{StaticResource Muted}" FontSize="12" />
                 <VerticalStackLayout BindableLayout.ItemsSource="{Binding StoredItems}" Spacing="8">
                     <BindableLayout.EmptyView>
