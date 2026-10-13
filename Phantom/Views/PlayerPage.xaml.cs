@@ -230,7 +230,7 @@ public partial class PlayerPage : ContentPage
         if (show)
         {
             UpNextCountdown.Text = $"Starts in {Math.Ceiling(remaining.TotalSeconds / _vm.Speed):0}s";
-            Controls.IsVisible = true;
+            ShowControls(); // up while it counts down, and hidden again in time after
         }
     }
 
@@ -261,7 +261,7 @@ public partial class PlayerPage : ContentPage
             // The estimate is for where playback will carry on from.
             if (Media.Position > TimeSpan.Zero) _vm.StatusPosition = _vm.ActualPosition(Media.Position);
             _vm.StartLoadingStatus();
-            Controls.IsVisible = true; // keep the close button reachable
+            ShowControls(); // keep the close button reachable (they stay up while it loads; see ShowControls)
         }
         else _vm.StopLoadingStatus();
     }
@@ -433,19 +433,31 @@ public partial class PlayerPage : ContentPage
 
     // ---------- Controls ----------
 
+    /// <summary>
+    /// Shows the controls, and hides them again once left alone: after 4 seconds while it plays, 10 otherwise (paused,
+    /// or the player saying it's buffering, which it does for moments while it plays: only hiding while Playing left
+    /// them up for good then). Not while the timeline is being dragged or moved along, or the loading panel (with its
+    /// Close) is up: then it looks again a second later, rather than giving up.
+    /// </summary>
     private void ShowControls()
     {
         Controls.IsVisible = true;
         _hideTimer?.Stop();
+        _shownAt = DateTime.UtcNow;
         _hideTimer = Dispatcher.CreateTimer();
-        _hideTimer.Interval = TimeSpan.FromSeconds(4);
-        _hideTimer.IsRepeating = false;
-        _hideTimer.Tick += (_, _) =>
+        _hideTimer.Interval = TimeSpan.FromSeconds(1);
+        _hideTimer.IsRepeating = true;
+        _hideTimer.Tick += (sender, _) =>
         {
-            if (Media.CurrentState == MediaElementState.Playing && !_seeking) Controls.IsVisible = false;
+            var after = TimeSpan.FromSeconds(Media.CurrentState == MediaElementState.Playing ? 4 : 10);
+            if (DateTime.UtcNow - _shownAt < after || _seeking || _scrubbing || Buffering.IsVisible) return;
+            Controls.IsVisible = false;
+            (sender as IDispatcherTimer)?.Stop();
         };
         _hideTimer.Start();
     }
+
+    private DateTime _shownAt;
 
     private DateTime _lastToggle;
 
@@ -616,6 +628,8 @@ public partial class PlayerPage : ContentPage
     {
         if (_vm.TotalDuration(Media.Duration) <= TimeSpan.Zero) return;
         _scrubbing = _seeking = true;
+        _shownFrame = null; // the whole-picture preview starts empty, whatever the box above the bar had
+        SeekPreviewImage.IsVisible = false;
         _scrubAt = _scrubFrom = _vm.ActualPosition(Media.Position);
         _scrubResume = Media.CurrentState is not (MediaElementState.Paused or MediaElementState.Stopped);
         Media.Pause();
@@ -640,6 +654,7 @@ public partial class PlayerPage : ContentPage
     {
         if (!_scrubbing) return;
         _scrubbing = _seeking = false;
+        _shownFrame = null;
         Phantom.Droid.DpadFocus.SetAdjusting(null);
         _preview?.Cancel();
         _previewUrl = null;
@@ -799,7 +814,26 @@ public partial class PlayerPage : ContentPage
         var half = SeekPreview.WidthRequest / 2;
         SeekPreview.TranslationX = Math.Clamp(Seek.Width * e.NewValue - half, 0, Math.Max(0, Seek.Width - SeekPreview.WidthRequest));
 
-        PreviewAt(at, ShowPreviewFrame, () => SeekPreviewImage.IsVisible = false);
+        if (_scrubbing) SchedulePreview(); // the remote: see SchedulePreview
+        else PreviewAt(at, ShowPreviewFrame, () => SeekPreviewImage.IsVisible = false);
+    }
+
+    private bool _previewPending;
+
+    /// <summary>
+    /// Moving along the timeline with the remote: the position and time follow every press (held, twenty a second),
+    /// the picture at most every 120ms, for where it has got to by then. Decoding a frame for each press kept the UI
+    /// thread too busy to move smoothly.
+    /// </summary>
+    private void SchedulePreview()
+    {
+        if (_previewPending) return;
+        _previewPending = true;
+        Dispatcher.DispatchDelayed(TimeSpan.FromMilliseconds(120), () =>
+        {
+            _previewPending = false;
+            if (_scrubbing) PreviewAt(_scrubAt, ShowPreviewFrame, () => FullPreview.IsVisible = false);
+        });
     }
 
     /// <summary>
@@ -855,12 +889,13 @@ public partial class PlayerPage : ContentPage
 
     private void ShowPreviewFrame(byte[] jpeg)
     {
-        SeekPreviewImage.IsVisible = true;
+        // The remote's preview is the whole picture; the box above the bar only says the time (one decode, not two).
+        SeekPreviewImage.IsVisible = !_scrubbing;
         if (_scrubbing) FullPreview.IsVisible = true;
         if (ReferenceEquals(jpeg, _shownFrame)) return; // the same picture: no need to decode it again
         _shownFrame = jpeg;
-        SeekPreviewImage.Source = ImageSource.FromStream(() => new MemoryStream(jpeg));
         if (_scrubbing) FullPreview.Source = ImageSource.FromStream(() => new MemoryStream(jpeg));
+        else SeekPreviewImage.Source = ImageSource.FromStream(() => new MemoryStream(jpeg));
     }
 
     private DateTime _dragEnded;
