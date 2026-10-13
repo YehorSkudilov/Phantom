@@ -137,6 +137,9 @@ public partial class ProfilesViewModel(PhantomApi api, SettingsService settings)
 
     [ObservableProperty] private bool canManage;
 
+    /// <summary>The profile in use, which a TV remote starts on.</summary>
+    public int? CurrentProfileId => settings.User?.Id;
+
     [RelayCommand]
     public Task Load() => RunAsync(async () =>
     {
