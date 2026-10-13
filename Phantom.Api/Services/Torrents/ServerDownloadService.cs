@@ -115,8 +115,13 @@ public class ServerDownloadService(IServiceScopeFactory scopes, TorrentEngine en
         if (DateTime.UtcNow - _lastEviction > TimeSpan.FromMinutes(10))
         {
             _lastEviction = DateTime.UtcNow;
-            await engine.EvictIdleAsync(TimeSpan.FromHours(Math.Max(1, settings.StreamCacheHours)));
-            await engine.EnforceCacheLimitAsync((long)settings.MaxStreamCacheGb << 30);
+            // Never a torrent a server download still needs (one saving, or paused, which isn't loaded to protect itself).
+            var needed = (await db.ServerDownloads.AsNoTracking()
+                    .Where(x => x.Status != DownloadStatus.Completed && x.Status != DownloadStatus.Cancelled && x.Status != DownloadStatus.Failed)
+                    .Select(x => x.Release!.InfoHash).ToListAsync(ct))
+                .Select(h => h.ToLowerInvariant()).ToHashSet();
+            await engine.EvictIdleAsync(TimeSpan.FromHours(Math.Max(1, settings.StreamCacheHours)), needed);
+            await engine.EnforceCacheLimitAsync((long)settings.MaxStreamCacheGb << 30, needed);
         }
         await engine.EnsureFreeSpaceAsync();
 
