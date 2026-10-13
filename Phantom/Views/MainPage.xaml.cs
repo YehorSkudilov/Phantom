@@ -50,7 +50,6 @@ public partial class MainPage : ContentPage
         // The remote moves between the page and the bar, and Back takes it to the bar (see TvNavigation).
         Phantom.Droid.TvNavigation.NavBar = new(NavBar);
         Phantom.Droid.TvNavigation.TabHandlesBack = () => _current?.Page is TabView tab && tab.HandleBack();
-        Phantom.Droid.TvNavigation.TabFocusesTop = () => _current?.Page is TabView tab && tab.FocusTop();
         Phantom.Droid.TvNavigation.FocusSelectedTab = FocusSelectedTab;
         Phantom.Droid.TvNavigation.TopButton = new(TopButton);
         Phantom.Droid.TvNavigation.CurrentTab = () => _current?.Page;

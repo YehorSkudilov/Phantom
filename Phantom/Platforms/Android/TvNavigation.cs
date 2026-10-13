@@ -179,11 +179,9 @@ public static class TvNavigation
 
     /// <summary>
     /// What MainPage does for Back (set by it): the visible tab closing something open on it first (true when it
-    /// did), the tab focusing something of its own at its top (true when it did), focusing the selected tab's item in
-    /// the bar, and going back to the first tab (false when already there).
+    /// did), focusing the selected tab's item in the bar, and going back to the first tab (false when already there).
     /// </summary>
     public static Func<bool>? TabHandlesBack { get; set; }
-    public static Func<bool>? TabFocusesTop { get; set; }
     public static Func<bool>? FocusSelectedTab { get; set; }
     public static Func<bool>? ShowFirstTab { get; set; }
 
@@ -285,8 +283,32 @@ public static class TvNavigation
     {
         if (activity.CurrentFocus is not { } focused || BarView() is not { } bar) return false;
         if (InBar(focused, bar)) return AlongBar(focused, bar, left);
-        var next = focused.FocusSearch(left ? FocusSearchDirection.Left : FocusSearchDirection.Right);
-        if (next is not null && !InBar(next, bar)) return false;
+        var direction = left ? FocusSearchDirection.Left : FocusSearchDirection.Right;
+
+        // In a sideways row (Discover's): along the row while it goes on, and only at its very end to the bar. Left to
+        // Android, the end of the row went to whatever was nearest that way, in the row above or below as often as
+        // the bar, and a row whose next posters weren't made yet could end early.
+        if (RowOf(focused) is { } row)
+        {
+            var inRow = focused.FocusSearch(direction);
+            if (inRow is not null && inRow != row && IsWithin(inRow, row)) return false;
+            if (row.CanScrollHorizontally(left ? -1 : 1))
+            {
+                // More of the row past the edge, not made yet: bring it in, then on to it.
+                row.ScrollBy((left ? -1 : 1) * Math.Max(1, focused.Width), 0);
+                row.Post(() =>
+                {
+                    if (focused.IsAttachedToWindow && focused.HasFocus && focused.FocusSearch(direction) is { } later && IsWithin(later, row))
+                        later.RequestFocus();
+                });
+                return true;
+            }
+        }
+        else
+        {
+            var next = focused.FocusSearch(direction);
+            if (next is not null && !InBar(next, bar)) return false;
+        }
 
         var tabs = bar.GetFocusables(FocusSearchDirection.Forward)?
             .Where(v => v.IsShown && v.GetGlobalVisibleRect(Visible))
@@ -299,6 +321,15 @@ public static class TvNavigation
         var along = Math.Clamp(Visible.CenterX() / (double)screen, 0, 1);
         var index = Math.Clamp((int)(along * tabs.Count), 0, tabs.Count - 1);
         return tabs[index].RequestFocus();
+    }
+
+    /// <summary>The sideways list (a row of posters) the view is in, if it's in one.</summary>
+    private static RecyclerView? RowOf(AView view)
+    {
+        for (var parent = view.Parent; parent is AView ancestor; parent = ancestor.Parent)
+            if (ancestor is RecyclerView { } list && list.GetLayoutManager() is LinearLayoutManager { Orientation: LinearLayoutManager.Horizontal })
+                return list;
+        return null;
     }
 
     /// <summary>
@@ -320,10 +351,9 @@ public static class TvNavigation
     }
 
     /// <summary>
-    /// Back on the tabs, as TV apps have it: from the page, to the nav bar (the page left where it is: the
-    /// back-to-top button beside the bar scrolls it up), so the bar is a press away however far down the page is; from the bar, to the first tab; there, out of the app as usual.
-    /// Something open on the tab (the Search tab's filters) is closed first, and a tab with something at its top to
-    /// go to (the Search tab's box) goes there first: a long list is as far from its top as from the bar.
+    /// Back on the tabs, as TV apps have it: from a tab's page or the bar, to Discover with the remote on its tab in
+    /// the bar (each page left where it is); from there, out of the app as usual. Something open on the tab (the
+    /// Search tab's filters) is closed first.
     /// </summary>
     private static bool HandleBack(Activity activity, KeyEvent e)
     {
@@ -345,8 +375,8 @@ public static class TvNavigation
         }
 
         if (TabHandlesBack?.Invoke() == true) return _backUsed = true;
-        // The page stays where it is (the back-to-top button scrolls it up), and Up from the bar comes back here.
-        if (TabFocusesTop?.Invoke() == true) return _backUsed = true;
+        // Back to Discover (the page left where it is), with the remote on its tab: one more Back leaves the app.
+        ShowFirstTab?.Invoke();
         return _backUsed = FocusSelectedTab?.Invoke() == true;
     }
 
@@ -372,7 +402,13 @@ public static class TvNavigation
         if (!IsTv || page.Handler?.PlatformView is not AView view) return;
         view.PostDelayed(() =>
         {
-            if (view.RootView?.FindFocus() is { } focused && OnScreen(focused) && !IsContainer(focused)) return;
+            if (view.RootView?.FindFocus() is { } focused && OnScreen(focused) && !IsContainer(focused))
+            {
+                // Still on what it was on (the poster opened): selecting it took its ring away (MAUI swaps a selected
+                // row's foreground), so it's put back.
+                DpadFocus.EnsureRing(focused);
+                return;
+            }
             if (FocusSelectedTab?.Invoke() != true && view.RootView is ViewGroup root) FocusFirst(root);
         }, 400);
     }

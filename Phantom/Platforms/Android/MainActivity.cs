@@ -29,6 +29,9 @@ public class MainActivity : MauiAppCompatActivity
     protected override void OnCreate(Bundle? savedInstanceState)
     {
         base.OnCreate(savedInstanceState);
+        // The app's own over MAUI's theme (Resources/values/styles.xml): no highlight painted on a list's selected row.
+        if (Resources?.GetIdentifier("PhantomThemeOverrides", "style", PackageName) is int overrides and not 0)
+            Theme?.ApplyStyle(overrides, true);
         Droid.TvNavigation.Attach(this);
     }
 }

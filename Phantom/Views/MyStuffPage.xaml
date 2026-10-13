@@ -14,9 +14,9 @@
         <controls:TabStrip Grid.Row="1" Tabs="{Binding Tabs}" SelectedIndex="{Binding SelectedTab}" Margin="0,4,0,0" />
 
         <parts:MovieGridView Grid.Row="2" BindingContext="{Binding Watchlist}"
-                             IsVisible="{Binding Source={RelativeSource AncestorType={x:Type vm:MyStuffViewModel}}, Path=SelectedTab, Converter={StaticResource Equals}, ConverterParameter=0, x:DataType=vm:MyStuffViewModel}" />
-        <parts:MovieGridView Grid.Row="2" BindingContext="{Binding History}"
                              IsVisible="{Binding Source={RelativeSource AncestorType={x:Type vm:MyStuffViewModel}}, Path=SelectedTab, Converter={StaticResource Equals}, ConverterParameter=1, x:DataType=vm:MyStuffViewModel}" />
+        <parts:MovieGridView Grid.Row="2" BindingContext="{Binding History}"
+                             IsVisible="{Binding Source={RelativeSource AncestorType={x:Type vm:MyStuffViewModel}}, Path=SelectedTab, Converter={StaticResource Equals}, ConverterParameter=0, x:DataType=vm:MyStuffViewModel}" />
         <parts:PlaylistsView Grid.Row="2" BindingContext="{Binding Playlists}"
                              IsVisible="{Binding Source={RelativeSource AncestorType={x:Type vm:MyStuffViewModel}}, Path=SelectedTab, Converter={StaticResource Equals}, ConverterParameter=2, x:DataType=vm:MyStuffViewModel}" />
     </Grid>

@@ -132,7 +132,8 @@ public record SortOption(string Name, MovieSort Sort, bool Descending)
 /// </summary>
 public partial class MyStuffViewModel(MovieListViewModel watchlist, MovieListViewModel history, PlaylistsViewModel playlists) : BaseViewModel
 {
-    public IReadOnlyList<string> Tabs { get; } = ["Watchlist", "Recently watched", "Playlists"];
+    // What was watched lately first, and open to begin with: it's what people come back here for.
+    public IReadOnlyList<string> Tabs { get; } = ["Recently watched", "Watchlist", "Playlists"];
     public MovieListViewModel Watchlist { get; } = watchlist.Use("watchlist");
     public MovieListViewModel History { get; } = history.Use("history");
     public PlaylistsViewModel Playlists => playlists;
@@ -157,8 +158,8 @@ public partial class MyStuffViewModel(MovieListViewModel watchlist, MovieListVie
     {
         switch (SelectedTab)
         {
-            case 0 when !onlyIfEmpty || Watchlist.Movies.Count == 0: Watchlist.LoadCommand.Execute(null); break;
-            case 1 when !onlyIfEmpty || History.Movies.Count == 0: History.LoadCommand.Execute(null); break;
+            case 0 when !onlyIfEmpty || History.Movies.Count == 0: History.LoadCommand.Execute(null); break;
+            case 1 when !onlyIfEmpty || Watchlist.Movies.Count == 0: Watchlist.LoadCommand.Execute(null); break;
             case 2 when !onlyIfEmpty || Playlists.Playlists.Count == 0: Playlists.LoadCommand.Execute(null); break;
         }
     }

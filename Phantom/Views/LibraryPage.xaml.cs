@@ -59,29 +59,6 @@ public partial class LibraryPage : TabView
     }
 
     /// <summary>Back closes the filters popup when it's open.</summary>
-    /// <summary>A remote's Back from the results: to the search box, without the keyboard (OK on it brings that up).</summary>
-    public override bool FocusTop()
-    {
-#if ANDROID
-        if (Box.Handler?.PlatformView is not Android.Views.ViewGroup box) return false;
-        var field = FindField(box);
-        return field is { IsFocused: false } && field.RequestFocus();
-
-        static Android.Widget.EditText? FindField(Android.Views.ViewGroup group)
-        {
-            for (var i = 0; i < group.ChildCount; i++)
-            {
-                var child = group.GetChildAt(i);
-                if (child is Android.Widget.EditText text) return text;
-                if (child is Android.Views.ViewGroup inner && FindField(inner) is { } found) return found;
-            }
-            return null;
-        }
-#else
-        return false;
-#endif
-    }
-
     public override bool HandleBack()
     {
         if (!_vm.ShowFilters) return false;
