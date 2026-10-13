@@ -14,6 +14,9 @@ public class User
     public string? PinHash { get; set; }
     public string? AvatarColor { get; set; }
 
+    /// <summary>The profile's picture (one of ProfileAvatars.All), or null for its name's initial.</summary>
+    public string? Avatar { get; set; }
+
     /// <summary>Parental control: highest content rating this profile may see (e.g. "PG-13").</summary>
     public string? MaxContentRating { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;

@@ -16,10 +16,31 @@ public record UserDto(
     bool HasPin,
     string? AvatarColor,
     string? MaxContentRating,
-    int? AccountId = null);
+    int? AccountId = null,
+    // One of ProfileAvatars.All, shown in place of the name's initial; null for the initial.
+    string? Avatar = null);
 
 /// <summary>Plex Home style managed profile (child/guest accounts under the owner).</summary>
-public record CreateProfileRequest(string Username, string? Pin, string? MaxContentRating, string? AvatarColor);
+public record CreateProfileRequest(string Username, string? Pin, string? MaxContentRating, string? AvatarColor, string? Avatar = null);
+
+/// <summary>
+/// A profile's name and picture. Null leaves the name as it is; an empty <see cref="Avatar"/> goes back to the
+/// initial. The account's own (default) profile is renamed with the account (UpdateAccountRequest), its name being
+/// what it signs in with.
+/// </summary>
+public record UpdateProfileRequest(string? Username, string? Avatar);
+
+/// <summary>The pictures a profile can have: Material icon names, drawn on its colour.</summary>
+public static class ProfileAvatars
+{
+    public static readonly IReadOnlyList<string> All =
+    [
+        "face", "sentiment_very_satisfied", "pets", "cruelty_free", "emoji_nature",
+        "local_florist", "rocket_launch", "sports_esports", "sports_soccer", "music_note",
+        "headphones", "star", "favorite", "bolt", "local_pizza",
+        "icecream", "directions_car", "flight", "wb_sunny", "theater_comedy",
+    ];
+}
 
 public record SwitchProfileRequest(int ProfileId, string? Pin);
 

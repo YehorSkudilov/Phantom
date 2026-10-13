@@ -667,6 +667,9 @@ namespace Phantom.Api.Data.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("INTEGER");
 
+                    b.Property<string>("Avatar")
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("AvatarColor")
                         .HasColumnType("TEXT");
 

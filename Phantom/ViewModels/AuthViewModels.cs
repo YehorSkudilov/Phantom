@@ -192,6 +192,81 @@ public partial class ProfilesViewModel(PhantomApi api, SettingsService settings)
         Profiles.Add(created);
     });
 
+    // ---------- Editing a profile: its name and picture ----------
+
+    public IReadOnlyList<string> Avatars => ProfileAvatars.All;
+
+    /// <summary>The profile being edited (the editor is open while there is one).</summary>
+    [ObservableProperty] private UserDto? editing;
+    [ObservableProperty] private string editName = "";
+    /// <summary>The picture picked: one of <see cref="Avatars"/>, or null for the name's initial.</summary>
+    [ObservableProperty] private string? editAvatar;
+
+    public bool ShowEditor => Editing is not null;
+
+    /// <summary>The account's own profile is renamed with the account (Username and password), its name being its sign-in.</summary>
+    public bool CanRename => Editing?.IsManaged == true;
+
+    partial void OnEditingChanged(UserDto? value)
+    {
+        OnPropertyChanged(nameof(ShowEditor));
+        OnPropertyChanged(nameof(CanRename));
+    }
+
+    /// <summary>Edit profiles: the account's owner picks which; any other profile edits itself.</summary>
+    [RelayCommand]
+    private async Task EditProfiles()
+    {
+        var editable = CanManage ? Profiles.ToList() : Profiles.Where(p => p.Id == CurrentProfileId).ToList();
+        if (editable.Count == 0) return;
+        var profile = editable[0];
+        if (editable.Count > 1)
+        {
+            var name = await Dialog.ChooseAsync("Edit which profile?", null, [.. editable.Select(p => p.Username)]);
+            if (editable.FirstOrDefault(p => p.Username == name) is not { } picked) return;
+            profile = picked;
+        }
+        EditName = profile.Username;
+        EditAvatar = profile.Avatar;
+        Editing = profile;
+    }
+
+    [RelayCommand]
+    private void PickAvatar(string? avatar) => EditAvatar = avatar;
+
+    [RelayCommand]
+    private void CancelEdit() => Editing = null;
+
+    [RelayCommand]
+    private Task SaveEdit() => RunAsync(async () =>
+    {
+        if (Editing is not { } profile) return;
+        if (CanRename && string.IsNullOrWhiteSpace(EditName))
+        {
+            await Dialog.AlertAsync("Edit profile", "The profile needs a name.");
+            return;
+        }
+        var updated = await api.UpdateProfileAsync(profile.Id,
+            new UpdateProfileRequest(CanRename ? EditName.Trim() : null, EditAvatar ?? ""));
+        var at = Profiles.IndexOf(profile);
+        if (at >= 0) Profiles[at] = updated;
+        if (settings.User?.Id == updated.Id) settings.User = updated;
+        Editing = null;
+    }, showBusy: false);
+
+    /// <summary>Back: closes the editor, else goes back to the profile in use (if one is). True when it did.</summary>
+    public bool Back()
+    {
+        if (Editing is not null)
+        {
+            Editing = null;
+            return true;
+        }
+        if (settings.Token is null || settings.User is null) return false;
+        _ = GoToAsync("//main");
+        return true;
+    }
+
     [RelayCommand]
     private Task DeleteProfile(UserDto profile) => RunAsync(async () =>
     {

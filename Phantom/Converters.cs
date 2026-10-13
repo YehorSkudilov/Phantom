@@ -123,6 +123,15 @@ public class InitialConverter : IValueConverter
     public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture) => throw new NotSupportedException();
 }
 
+/// <summary>A profile's picture (a Material icon name, see ProfileAvatars), drawn in white; null for none.</summary>
+public class AvatarIconConverter : IValueConverter
+{
+    public object? Convert(object? value, Type targetType, object? parameter, CultureInfo culture) =>
+        value is string { Length: > 0 } glyph ? Controls.IconExtension.Create(glyph, Colors.White, size: 64) : null;
+
+    public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture) => throw new NotSupportedException();
+}
+
 /// <summary>A source's kind as people say it: YTS, The Pirate Bay, Knaben, Internet Archive.</summary>
 public class SourceTypeConverter : IValueConverter
 {

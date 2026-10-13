@@ -23,6 +23,7 @@
             <local:PosterWidthConverter x:Key="PosterWidth" />
             <local:EqualsConverter x:Key="Equals" />
             <local:InitialConverter x:Key="Initial" />
+            <local:AvatarIconConverter x:Key="AvatarIcon" />
             <local:SourceTypeConverter x:Key="SourceType" />
             <local:IntervalConverter x:Key="Interval" />
             <local:AllTrueConverter x:Key="AllTrue" />

@@ -168,6 +168,7 @@ public class PhantomApi(HttpClient http, SettingsService settings)
     public Task<List<UserDto>> ProfilesAsync() => GetAsync<List<UserDto>>("/api/profiles");
     public Task<UserDto> CreateProfileAsync(CreateProfileRequest req) => SendAsync<UserDto>(HttpMethod.Post, "/api/profiles", req);
     public Task<AuthResponse> SwitchProfileAsync(int id, string? pin) => SendAsync<AuthResponse>(HttpMethod.Post, "/api/profiles/switch", new SwitchProfileRequest(id, pin));
+    public Task<UserDto> UpdateProfileAsync(int id, UpdateProfileRequest req) => SendAsync<UserDto>(HttpMethod.Put, $"/api/profiles/{id}", req);
     public Task DeleteProfileAsync(int id) => SendNoContentAsync(HttpMethod.Delete, $"/api/profiles/{id}");
 
     // Accounts (admin): every account signs in with its own username and password, and has its own profiles.

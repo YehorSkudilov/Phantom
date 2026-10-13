@@ -39,8 +39,14 @@
                         <VerticalStackLayout Spacing="8" InputTransparent="True">
                             <Border WidthRequest="88" HeightRequest="88" StrokeShape="RoundRectangle 22" BackgroundColor="{Binding AvatarColor}"
                                     Stroke="Transparent" StrokeThickness="0">
-                                <Label Text="{Binding Username, Converter={StaticResource Initial}}" FontSize="34" FontFamily="OpenSansSemibold"
-                                       HorizontalOptions="Center" VerticalOptions="Center" />
+                                <Grid>
+                                    <Label Text="{Binding Username, Converter={StaticResource Initial}}" FontSize="34" FontFamily="OpenSansSemibold"
+                                           HorizontalOptions="Center" VerticalOptions="Center"
+                                           IsVisible="{Binding Avatar, Converter={StaticResource HasValue}, ConverterParameter=invert}" />
+                                    <Image Source="{Binding Avatar, Converter={StaticResource AvatarIcon}}" WidthRequest="52" HeightRequest="52"
+                                           HorizontalOptions="Center" VerticalOptions="Center"
+                                           IsVisible="{Binding Avatar, Converter={StaticResource HasValue}}" />
+                                </Grid>
                             </Border>
                             <Label Text="{Binding Username}" HorizontalOptions="Center" LineBreakMode="TailTruncation" />
                             <Label Text="Default" Style="{StaticResource Muted}" FontSize="11" HorizontalOptions="Center"
@@ -66,9 +72,52 @@
             </FlexLayout>
         </ScrollView>
 
-        <VerticalStackLayout Grid.Row="2" Spacing="10">
+        <HorizontalStackLayout Grid.Row="2" Spacing="10" HorizontalOptions="Center">
             <Button Text="+ Add profile" Style="{StaticResource SecondaryButton}" Command="{Binding AddProfileCommand}"
-                    IsVisible="{Binding CanManage}" HorizontalOptions="Center" />
-        </VerticalStackLayout>
+                    IsVisible="{Binding CanManage}" />
+            <Button x:Name="EditButton" Text="Edit profiles" Style="{StaticResource SecondaryButton}" Command="{Binding EditProfilesCommand}"
+                    ImageSource="{controls:Icon edit, Size=18}" ContentLayout="Left,8" />
+        </HorizontalStackLayout>
+
+        <!-- Editing a profile: its name (not the account's own: that's its sign-in) and a picture in place of its initial -->
+        <Grid Grid.RowSpan="3" Margin="-24,-64,-24,-24" IsVisible="{Binding ShowEditor}">
+            <BoxView Color="{StaticResource Scrim}" controls:RemoteFocus.Skip="True">
+                <BoxView.GestureRecognizers>
+                    <TapGestureRecognizer Command="{Binding CancelEditCommand}" />
+                </BoxView.GestureRecognizers>
+            </BoxView>
+            <Border x:Name="EditorCard" Style="{StaticResource Card}" Padding="20" Margin="16" MaximumWidthRequest="520"
+                    VerticalOptions="Center" BackgroundColor="{StaticResource Surface}">
+                <VerticalStackLayout Spacing="14">
+                    <Label Text="Edit profile" Style="{StaticResource H2}" />
+                    <Grid ColumnDefinitions="Auto,*" ColumnSpacing="14">
+                        <Border WidthRequest="64" HeightRequest="64" StrokeShape="RoundRectangle 16" StrokeThickness="0"
+                                BackgroundColor="{Binding Editing.AvatarColor, FallbackValue=#8B5CF6}">
+                            <Grid>
+                                <Label Text="{Binding EditName, Converter={StaticResource Initial}}" FontSize="26" FontFamily="OpenSansSemibold"
+                                       HorizontalOptions="Center" VerticalOptions="Center"
+                                       IsVisible="{Binding EditAvatar, Converter={StaticResource HasValue}, ConverterParameter=invert}" />
+                                <Image Source="{Binding EditAvatar, Converter={StaticResource AvatarIcon}}" WidthRequest="38" HeightRequest="38"
+                                       IsVisible="{Binding EditAvatar, Converter={StaticResource HasValue}}" />
+                            </Grid>
+                        </Border>
+                        <VerticalStackLayout Grid.Column="1" VerticalOptions="Center" Spacing="4">
+                            <Entry Text="{Binding EditName}" Placeholder="Name" IsVisible="{Binding CanRename}" MaxLength="32" />
+                            <Label Text="{Binding EditName}" Style="{StaticResource H2}"
+                                   IsVisible="{Binding CanRename, Converter={StaticResource Not}}" />
+                            <Label Text="The account's own profile is renamed under Username and password." Style="{StaticResource Muted}" FontSize="12"
+                                   IsVisible="{Binding CanRename, Converter={StaticResource Not}}" />
+                        </VerticalStackLayout>
+                    </Grid>
+                    <Label Text="Picture" Style="{StaticResource Muted}" FontSize="12" Margin="0,4,0,-6" />
+                    <!-- Filled in by ProfilesPage: the initial, then every picture -->
+                    <FlexLayout x:Name="AvatarGrid" Wrap="Wrap" JustifyContent="Start" />
+                    <HorizontalStackLayout Spacing="10" HorizontalOptions="End">
+                        <Button Text="Cancel" Style="{StaticResource SecondaryButton}" Command="{Binding CancelEditCommand}" />
+                        <Button Text="Save" Command="{Binding SaveEditCommand}" />
+                    </HorizontalStackLayout>
+                </VerticalStackLayout>
+            </Border>
+        </Grid>
     </Grid>
 </ContentPage>

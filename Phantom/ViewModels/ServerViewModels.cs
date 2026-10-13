@@ -63,6 +63,7 @@ public partial class MoreViewModel(PhantomApi api, SettingsService settings) : B
     [ObservableProperty] private bool isAdmin;
     [ObservableProperty] private string avatarColor = "#8B5CF6";
     [ObservableProperty] private string initial = "?";
+    [ObservableProperty] private string? avatar;
 
     public string AppVersion => $"Phantom {AppInfo.Current.VersionString}";
 
@@ -73,6 +74,7 @@ public partial class MoreViewModel(PhantomApi api, SettingsService settings) : B
         Username = user?.Username ?? "";
         Initial = Username.Length > 0 ? Username[..1].ToUpperInvariant() : "?";
         AvatarColor = user?.AvatarColor ?? "#8B5CF6";
+        Avatar = user?.Avatar;
         IsAdmin = user?.IsAdmin == true;
         // A managed profile's account is its owner, the one profile that isn't managed.
         AccountName = user is { IsManaged: false } ? user.Username : null;

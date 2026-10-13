@@ -162,6 +162,30 @@ public class ApiTests : IClassFixture<PhantomFactory>
     }
 
     [Fact]
+    public async Task Profiles_can_be_renamed_and_given_a_picture()
+    {
+        var owner = await AdminClientAsync();
+        var name = "pic" + Guid.NewGuid().ToString("N")[..6];
+        var profile = await (await owner.PostAsJsonAsync("/api/profiles", new CreateProfileRequest(name, null, null, null, "pets"), Json))
+            .Content.ReadFromJsonAsync<UserDto>(Json);
+        Assert.Equal("pets", profile!.Avatar);
+
+        var renamed = await (await owner.PutAsJsonAsync($"/api/profiles/{profile.Id}", new UpdateProfileRequest(name + "x", "rocket_launch"), Json))
+            .Content.ReadFromJsonAsync<UserDto>(Json);
+        Assert.Equal((name + "x", "rocket_launch"), (renamed!.Username, renamed.Avatar));
+        var listed = (await owner.GetFromJsonAsync<List<UserDto>>("/api/profiles", Json))!.Single(p => p.Id == profile.Id);
+        Assert.Equal((name + "x", "rocket_launch"), (listed.Username, listed.Avatar));
+
+        // Back to the initial; an unknown picture and renaming the account's own profile here are refused.
+        Assert.Null((await (await owner.PutAsJsonAsync($"/api/profiles/{profile.Id}", new UpdateProfileRequest(null, ""), Json))
+            .Content.ReadFromJsonAsync<UserDto>(Json))!.Avatar);
+        Assert.Equal(HttpStatusCode.BadRequest, (await owner.PutAsJsonAsync($"/api/profiles/{profile.Id}", new UpdateProfileRequest(null, "nope"), Json)).StatusCode);
+        var me = (await owner.GetFromJsonAsync<List<UserDto>>("/api/profiles", Json))!.Single(p => !p.IsManaged);
+        Assert.Equal(HttpStatusCode.BadRequest, (await owner.PutAsJsonAsync($"/api/profiles/{me.Id}", new UpdateProfileRequest(me.Username + "z", null), Json)).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await owner.PutAsJsonAsync($"/api/profiles/{me.Id}", new UpdateProfileRequest(null, "star"), Json)).StatusCode);
+    }
+
+    [Fact]
     public async Task Managed_profile_with_pin_hides_restricted_titles()
     {
         var owner = await AdminClientAsync();
