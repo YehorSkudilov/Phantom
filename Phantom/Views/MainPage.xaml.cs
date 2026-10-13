@@ -42,12 +42,9 @@ public partial class MainPage : ContentPage
         TabContent.PullCancelled += (_, _) => OnPullEnd(refresh: false);
         NavBar.LoadPageCommand = new Command<CNavItem>(Show);
         NavBar.CNavIconItems = _tabs;
-        // On a wide window the bar would stretch edge to edge; there it sits centred, only as wide as its items.
-        if (DeviceInfo.Platform == DevicePlatform.WinUI)
-        {
-            NavBar.HorizontalOptions = LayoutOptions.Center;
-            NavBar.WidthRequest = _tabs.Count * 80 + 16;
-        }
+        // On a big screen (a tablet, a TV, a wide window) the bar would stretch edge to edge; there it sits centred,
+        // only as wide as its items, whatever the platform. It follows the window as it's resized or turned.
+        SizeChanged += (_, _) => FitNavBar();
         NavBar.SelectItem(_tabs[(int)AppTab.Discover]);
 #if ANDROID
         // A TV leaves the bar unblurred (see TvNavigation), so its tint is made near solid to keep the page from
@@ -59,6 +56,17 @@ public partial class MainPage : ContentPage
         _instance = new(this);
         // The offline state's "Go to Downloads", wherever it shows.
         Phantom.Controls.StateView.OpenDownloads = ShowDeviceDownloads;
+    }
+
+    /// <summary>Wider than this (Material's "medium" window and up), the nav bar is compact.</summary>
+    private const double CompactNavBarFrom = 600;
+
+    private void FitNavBar()
+    {
+        if (Width <= 0) return;
+        var compact = Width >= CompactNavBarFrom;
+        NavBar.HorizontalOptions = compact ? LayoutOptions.Center : LayoutOptions.Fill;
+        NavBar.WidthRequest = compact ? _tabs.Count * 80 + 16 : -1;
     }
 
     /// <summary>Pops back to the tabs and switches to <paramref name="tab"/>.</summary>
