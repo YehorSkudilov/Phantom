@@ -167,7 +167,7 @@
                 <!-- More like this -->
                 <VerticalStackLayout Spacing="8" IsVisible="{Binding Related.Count, Converter={StaticResource HasValue}}">
                     <Label Text="More Like This" Style="{StaticResource H2}" Margin="16,0" />
-                    <CollectionView ItemsSource="{Binding Related}" HeightRequest="236" SelectionMode="Single"
+                    <CollectionView ItemsSource="{Binding Related}" HeightRequest="{OnIdiom Default=236, TV=250}" SelectionMode="Single"
                                     ItemTemplate="{StaticResource PosterCard}" SelectionChanged="OnRelatedSelected">
                         <CollectionView.ItemsLayout>
                             <LinearItemsLayout Orientation="Horizontal" ItemSpacing="12" />

@@ -89,8 +89,6 @@ public static class MauiProgram
         });
         // A TV remote reaches everything that can be tapped, and shows where it is (see DpadFocus).
         Phantom.Droid.DpadFocus.Register();
-        // On a TV: the page scrolls out from under the nav bar as the remote moves, and the bar isn't blurred live.
-        Phantom.Droid.TvNavigation.Register();
 #endif
 
 #if WINDOWS

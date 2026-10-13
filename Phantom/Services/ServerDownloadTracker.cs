@@ -24,6 +24,9 @@ public class ServerDownloadTracker(PhantomApi api)
 
     public ServerDownloadDto? ForEpisode(int episodeId) => _items.FirstOrDefault(d => d.EpisodeId == episodeId && Counts(d));
 
+    /// <summary>A show's episodes on the server (or on their way there), from any season.</summary>
+    public List<ServerDownloadDto> ForShow(int showId) => _items.Where(d => d.ShowId == showId && Counts(d)).ToList();
+
     private static bool Counts(ServerDownloadDto d) => d.Status is not (DownloadStatus.Cancelled or DownloadStatus.Failed);
 
     public static bool IsRunning(ServerDownloadDto? d) =>

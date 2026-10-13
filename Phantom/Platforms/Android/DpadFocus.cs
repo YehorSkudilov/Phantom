@@ -139,7 +139,14 @@ public static class DpadFocus
 
     private sealed class RingRows : Java.Lang.Object, RecyclerView.IOnChildAttachStateChangeListener
     {
-        public void OnChildViewAttachedToWindow(AView view) => AddRing(view);
+        public void OnChildViewAttachedToWindow(AView view)
+        {
+            // MAUI gives a selectable row Android's own highlight, which a TV draws as a square tinted block when the
+            // remote is on it: there the row has the app's ring instead (round the card, in the room the poster
+            // templates leave it on a TV). A phone keeps the ripple a tap makes.
+            if (TvNavigation.IsTv && !Ringed.TryGetValue(view, out _)) view.Foreground = null;
+            AddRing(view);
+        }
 
         public void OnChildViewDetachedFromWindow(AView view) { }
     }

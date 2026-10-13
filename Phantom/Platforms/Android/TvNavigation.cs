@@ -15,8 +15,7 @@ namespace Phantom.Droid;
 /// - went from the page down to the bar as soon as nothing further down was laid out yet, instead of scrolling on;
 /// - went up from the bar to whatever was nearest, not back to where the remote had been.
 /// Here the page scrolls the focused view clear of the bar, Down scrolls on while there's more page, and Up (or Down)
-/// from the bar goes back into the page where it was left. Whatever takes focus gets the ring (see DpadFocus), and
-/// the bar's live blur, which redraws what's behind it every frame and was what made a TV box crawl, is left off.
+/// from the bar goes back into the page where it was left. Whatever takes focus gets the ring (see DpadFocus).
 /// </summary>
 public static class TvNavigation
 {
@@ -28,18 +27,6 @@ public static class TvNavigation
     private static WeakReference<AView>? _lastInPage;
     private static readonly Rect Visible = new();
 
-    public static void Register()
-    {
-        if (!IsTv) return;
-        // The tint alone (made near solid by MainPage) reads the same from across the room.
-        Microsoft.Maui.Handlers.ViewHandler.ViewMapper.AppendToMapping("TvNoBlur", (handler, view) =>
-        {
-            if (view is not AppSkeleton.AcrylicView || handler.PlatformView is not ViewGroup frame) return;
-            for (var i = 0; i < frame.ChildCount; i++)
-                if (frame.GetChildAt(i) is AppSkeleton.RealtimeBlurView blur) blur.Visibility = ViewStates.Gone;
-        });
-    }
-
     public static void Attach(Activity activity)
     {
         if (!IsTv) return;
@@ -49,7 +36,11 @@ public static class TvNavigation
     /// <summary>The arrows between the page and the bar. True when it moved focus (or scrolled) itself.</summary>
     public static bool HandleKey(Activity activity, KeyEvent e)
     {
-        if (!IsTv || e.Action != KeyEventActions.Down || e.KeyCode is not (Keycode.DpadUp or Keycode.DpadDown)) return false;
+        if (!IsTv || e.Action != KeyEventActions.Down) return false;
+        if (e.KeyCode is Keycode.DpadUp or Keycode.DpadDown or Keycode.DpadLeft or Keycode.DpadRight or Keycode.DpadCenter or Keycode.Enter
+            && !OnScreen(activity.CurrentFocus) && activity.Window?.DecorView is ViewGroup page)
+            return FocusFirst(page);
+        if (e.KeyCode is not (Keycode.DpadUp or Keycode.DpadDown)) return false;
         if (activity.CurrentFocus is not { } focused || BarView() is not { } bar) return false;
 
         if (IsWithin(focused, bar))
@@ -77,6 +68,28 @@ public static class TvNavigation
                 below.RequestFocus();
         });
         return true;
+    }
+
+    /// <summary>
+    /// Whether the view is somewhere the remote can see it. A page closing or a tab sliding away (a cast member's
+    /// search, which goes back to the tabs) can leave focus on nothing, or on a view now hidden or off to the side:
+    /// no ring anywhere, and the arrows moving through what can't be seen.
+    /// </summary>
+    private static bool OnScreen(AView? view) =>
+        view is { IsAttachedToWindow: true, IsShown: true } && view.GetGlobalVisibleRect(Visible);
+
+    /// <summary>Focus to the first thing on screen, reading order, the page's before the nav bar's. True when it found one.</summary>
+    private static bool FocusFirst(ViewGroup root)
+    {
+        var bar = BarView();
+        var best = root.GetFocusables(FocusSearchDirection.Forward)?
+            .Where(v => v.IsShown && v.GetGlobalVisibleRect(Visible) && Visible.Width() > 0 && Visible.Height() > 0)
+            .Select(v => (View: v, Top: Visible.Top, Left: Visible.Left))
+            .OrderBy(x => bar is not null && IsWithin(x.View, bar))
+            .ThenBy(x => x.Top).ThenBy(x => x.Left)
+            .Select(x => x.View)
+            .FirstOrDefault();
+        return best?.RequestFocus() == true;
     }
 
     private sealed class FocusWatcher : Java.Lang.Object, ViewTreeObserver.IOnGlobalFocusChangeListener

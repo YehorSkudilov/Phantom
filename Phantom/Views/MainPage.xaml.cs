@@ -47,10 +47,8 @@ public partial class MainPage : ContentPage
         SizeChanged += (_, _) => FitNavBar();
         NavBar.SelectItem(_tabs[(int)AppTab.Discover]);
 #if ANDROID
-        // A TV leaves the bar unblurred (see TvNavigation), so its tint is made near solid to keep the page from
-        // showing through it.
+        // The remote moves between the page and the bar (see TvNavigation).
         Phantom.Droid.TvNavigation.NavBar = new(NavBar);
-        if (Phantom.Droid.TvNavigation.IsTv) NavBar.TintOpacity = 0.95;
 #endif
 
         _instance = new(this);

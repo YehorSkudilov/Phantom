@@ -282,7 +282,19 @@ public partial class ShowDetailViewModel(PhantomApi api, SettingsService setting
         : "Save on server";
 
     /// <summary>Some of the show is on the server (highlights the show's Save on server tile).</summary>
-    public bool HasOnServer => Episodes.Any(e => server.ForEpisode(e.Id) is not null);
+    public bool HasOnServer => server.ForShow(_id).Count > 0;
+
+    /// <summary>Some of the show's episodes are being saved: its tile fills as they go, as the season's does.</summary>
+    public bool IsShowSavingOnServer => server.ForShow(_id).Any(ServerDownloadTracker.IsRunning);
+
+    /// <summary>How far the show's copies on the server have got, all together (0 to 1).</summary>
+    public double ShowServerProgress => server.ForShow(_id) is { Count: > 0 } d
+        ? d.Average(x => x.Status == DownloadStatus.Completed ? 100 : x.Progress) / 100
+        : 0;
+
+    public string ShowServerLabel => IsShowSavingOnServer ? $"Saving {ShowServerProgress:0%}"
+        : HasOnServer ? "On server"
+        : "Save on server";
 
     /// <summary>Follows what's on the server while the page is on screen (the page starts and stops it).</summary>
     public void WatchServer(bool on)
@@ -307,6 +319,9 @@ public partial class ShowDetailViewModel(PhantomApi api, SettingsService setting
         OnPropertyChanged(nameof(SeasonServerProgress));
         OnPropertyChanged(nameof(SeasonServerLabel));
         OnPropertyChanged(nameof(HasOnServer));
+        OnPropertyChanged(nameof(IsShowSavingOnServer));
+        OnPropertyChanged(nameof(ShowServerProgress));
+        OnPropertyChanged(nameof(ShowServerLabel));
     }
 
     /// <summary>

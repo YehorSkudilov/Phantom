@@ -96,7 +96,7 @@
                                             Command="{Binding Source={RelativeSource AncestorType={x:Type vm:HomeViewModel}}, Path=SeeAllCommand, x:DataType=vm:HomeViewModel}"
                                             CommandParameter="{Binding .}" />
                                 </Grid>
-                                <CollectionView ItemsSource="{Binding Items}" HeightRequest="236" SelectionMode="Single"
+                                <CollectionView ItemsSource="{Binding Items}" HeightRequest="{OnIdiom Default=236, TV=250}" SelectionMode="Single"
                                                 ItemTemplate="{StaticResource PosterCard}"
                                                 SelectionChangedCommand="{Binding Source={RelativeSource AncestorType={x:Type vm:HomeViewModel}}, Path=OpenMovieCommand, x:DataType=vm:HomeViewModel}"
                                                 SelectionChangedCommandParameter="{Binding SelectedItem, Source={RelativeSource Self}, x:DataType=CollectionView}"

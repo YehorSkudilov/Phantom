@@ -73,7 +73,8 @@
                                              Command="{Binding AddToPlaylistCommand}" />
                         <controls:ActionTile Grid.Row="1" Grid.Column="1" Glyph="download" Text="Download" IsActive="{Binding HasDownloads}"
                                              Command="{Binding DownloadShowCommand}" />
-                        <controls:ActionTile Grid.Row="1" Grid.Column="2" Glyph="cloud_download" Text="Save on server" IsActive="{Binding HasOnServer}"
+                        <controls:ActionTile Grid.Row="1" Grid.Column="2" Glyph="cloud_download" Text="{Binding ShowServerLabel}" IsActive="{Binding HasOnServer}"
+                                             IsRunning="{Binding IsShowSavingOnServer}" Progress="{Binding ShowServerProgress}"
                                              Command="{Binding SaveShowOnServerCommand}" />
                     </Grid>
                 </VerticalStackLayout>
@@ -197,7 +198,7 @@
                 <!-- More like this -->
                 <VerticalStackLayout Spacing="8" IsVisible="{Binding Related.Count, Converter={StaticResource HasValue}}">
                     <Label Text="More Like This" Style="{StaticResource H2}" Margin="16,0" />
-                    <CollectionView ItemsSource="{Binding Related}" HeightRequest="236" SelectionMode="Single"
+                    <CollectionView ItemsSource="{Binding Related}" HeightRequest="{OnIdiom Default=236, TV=250}" SelectionMode="Single"
                                     ItemTemplate="{StaticResource PosterCard}" SelectionChanged="OnRelatedSelected">
                         <CollectionView.ItemsLayout>
                             <LinearItemsLayout Orientation="Horizontal" ItemSpacing="12" />
