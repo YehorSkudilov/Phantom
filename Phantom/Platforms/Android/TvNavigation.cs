@@ -61,7 +61,7 @@ public static class TvNavigation
     {
         if (container is not ViewGroup group) return container.RequestFocus();
         var first = group.GetFocusables(FocusSearchDirection.Forward)?
-            .Where(v => v.IsShown && v.GetGlobalVisibleRect(Visible))
+            .Where(v => v != container && v.IsShown && !IsContainer(v) && v.GetGlobalVisibleRect(Visible))
             .OrderBy(v => { v.GetGlobalVisibleRect(Visible); return Visible.Top; })
             .ThenBy(v => { v.GetGlobalVisibleRect(Visible); return Visible.Left; })
             .FirstOrDefault();
@@ -285,12 +285,31 @@ public static class TvNavigation
     private static bool OnScreen(AView? view) =>
         view is { IsAttachedToWindow: true, IsShown: true } && view.GetGlobalVisibleRect(Visible);
 
+    /// <summary>A view that only holds focus on the way to what's in it: a list, a scroll view, or one near the screen's size.</summary>
+    private static bool IsContainer(AView view) =>
+        view is RecyclerView or NestedScrollView or Android.Widget.ScrollView
+        || view.RootView is { Width: > 0 } root && view.Width > root.Width * 0.9 && view.Height > root.Height * 0.9;
+
+    /// <summary>
+    /// The tabs back on screen (from a profile switch, a page closed): focus to the selected tab if it isn't on
+    /// something to be seen, so the remote has a ring to start from.
+    /// </summary>
+    public static void SettleFocusSoon(View page)
+    {
+        if (!IsTv || page.Handler?.PlatformView is not AView view) return;
+        view.PostDelayed(() =>
+        {
+            if (view.RootView?.FindFocus() is { } focused && OnScreen(focused) && !IsContainer(focused)) return;
+            if (FocusSelectedTab?.Invoke() != true && view.RootView is ViewGroup root) FocusFirst(root);
+        }, 400);
+    }
+
     /// <summary>Focus to the first thing on screen, reading order, the page's before the nav bar's. True when it found one.</summary>
     private static bool FocusFirst(ViewGroup root)
     {
         var bar = BarView();
         var best = root.GetFocusables(FocusSearchDirection.Forward)?
-            .Where(v => v.IsShown && v.GetGlobalVisibleRect(Visible) && Visible.Width() > 0 && Visible.Height() > 0)
+            .Where(v => v.IsShown && !IsContainer(v) && v.GetGlobalVisibleRect(Visible) && Visible.Width() > 0 && Visible.Height() > 0)
             .Select(v => (View: v, Top: Visible.Top, Left: Visible.Left))
             .OrderBy(x => bar is not null && InBar(x.View, bar))
             .ThenBy(x => x.Top).ThenBy(x => x.Left)
@@ -307,10 +326,13 @@ public static class TvNavigation
             DpadFocus.EnsureRing(newFocus);
             // Focus that lands somewhere it can't be seen (a view hidden or slid away as it got it) and stays there:
             // on to the first thing on screen. Checked a moment later, as a list may still be scrolling the view in.
+            // So does focus left on a list or a page-sized container (after a profile switch, Discover's emptied list):
+            // it shows no ring, so nothing looked selected.
             newFocus.PostDelayed(() =>
             {
-                if (newFocus.IsAttachedToWindow && newFocus.HasFocus && !OnScreen(newFocus) && newFocus.RootView is ViewGroup root)
-                    FocusFirst(root);
+                if (!newFocus.IsAttachedToWindow || !newFocus.IsFocused || newFocus.RootView is not ViewGroup root) return;
+                if (!OnScreen(newFocus)) FocusFirst(root);
+                else if (IsContainer(newFocus) && BarView() is not null && !FocusFirstIn(newFocus)) FocusFirst(root); // on the tabs only
             }, 500);
             if (BarView() is not { } bar || InBar(newFocus, bar)) return;
             _lastInPage = new(newFocus);

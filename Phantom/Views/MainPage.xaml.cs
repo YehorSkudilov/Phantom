@@ -224,6 +224,9 @@ public partial class MainPage : ContentPage
         _visible = true;
         _loadAfterSlide = null;
         _current?.Page.Load();
+#if ANDROID
+        Phantom.Droid.TvNavigation.SettleFocusSoon(NavBar);
+#endif
     }
 
     protected override void OnDisappearing()
