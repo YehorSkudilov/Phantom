@@ -47,7 +47,7 @@
                                 <ImageButton Style="{StaticResource IconButton}" Source="{controls:Icon pause_circle, Outlined=True}" SemanticProperties.Description="Pause or resume" ToolTipProperties.Text="Pause or resume"
                                         Command="{Binding Source={RelativeSource AncestorType={x:Type vm:ServerDownloadsViewModel}}, Path=ToggleCommand, x:DataType=vm:ServerDownloadsViewModel}"
                                         CommandParameter="{Binding .}" />
-                                <ImageButton Style="{StaticResource IconButton}" Source="{controls:Icon delete, Outlined=True}" SemanticProperties.Description="Remove" ToolTipProperties.Text="Remove"
+                                <ImageButton Style="{StaticResource IconButton}" Source="{controls:Icon delete, Outlined=True}" SemanticProperties.Description="Delete" ToolTipProperties.Text="Delete"
                                         Command="{Binding Source={RelativeSource AncestorType={x:Type vm:ServerDownloadsViewModel}}, Path=RemoveCommand, x:DataType=vm:ServerDownloadsViewModel}"
                                         CommandParameter="{Binding .}" />
                             </HorizontalStackLayout>

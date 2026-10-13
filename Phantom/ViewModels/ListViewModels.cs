@@ -279,7 +279,7 @@ public partial class DownloadsViewModel(DownloadManager manager, SettingsService
     private async Task Delete(OfflineDownload item)
     {
         var confirmed = item.IsComplete
-            ? await Dialog.ConfirmAsync("Delete download", $"Delete {item.Title} from this device? You can still stream it.", "Delete", "Keep", destructive: true)
+            ? await Dialog.ConfirmAsync("Delete download", $"Delete {item.Title} from this device? Its copy saved on the server, if it has one, stays.", "Delete", "Keep", destructive: true)
             : await Dialog.ConfirmAsync("Cancel download", $"Stop downloading {item.Title} and remove what's downloaded so far?", "Cancel download", "Keep downloading", destructive: true);
         if (!confirmed) return;
         await manager.DeleteAsync(item);

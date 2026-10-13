@@ -39,9 +39,13 @@ public partial class ServerDownloadsViewModel(PhantomApi api, SettingsService se
     [RelayCommand]
     private Task Remove(ServerDownloadDto d) => RunAsync(async () =>
     {
-        var choice = await Dialog.ChooseAsync(d.MovieTitle, "Remove and delete files", "Remove from list (keep files)");
-        if (choice is null or "Cancel") return;
-        await api.DeleteServerDownloadAsync(d.Id, deleteFiles: choice.Contains("delete"));
+        // One way to remove it: the entry and its file go together (the file stays only while another profile has
+        // it saved too; see ServerDownloadService.RemoveAsync).
+        var running = d.Status is not DownloadStatus.Completed;
+        if (!await Dialog.ConfirmAsync(running ? "Stop and delete?" : "Delete from the server?",
+                running ? $"Stop saving {d.MovieTitle} and delete what the server has of it so far?" : $"Delete {d.MovieTitle} from the server?",
+                "Delete", destructive: true)) return;
+        await api.DeleteServerDownloadAsync(d.Id, deleteFiles: true);
         await Refresh();
     }, showBusy: false);
 
