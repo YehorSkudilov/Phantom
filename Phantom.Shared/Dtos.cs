@@ -368,7 +368,9 @@ public record ServerDownloadDto(
     int? EpisodeId = null,
     int? ShowId = null,
     // Only for a device to copy (see CreateServerDownloadRequest.ForDevice): the device deletes it once it has it.
-    bool ForDevice = false);
+    bool ForDevice = false,
+    // The movie's poster, or for an episode its show's: the Downloads grid shows it.
+    string? PosterUrl = null);
 
 /// <summary>
 /// Saves a movie, or with <see cref="EpisodeId"/> an episode (MovieId 0), on the server. <see cref="ForDevice"/>: only

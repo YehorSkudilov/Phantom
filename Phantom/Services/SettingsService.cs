@@ -158,6 +158,20 @@ public class SettingsService
         set => Set(nameof(DownloadOnWifiOnly), value);
     }
 
+    /// <summary>My Library's lists as a grid (true) or a list.</summary>
+    public bool MyLibraryGrid
+    {
+        get => Get(nameof(MyLibraryGrid), true);
+        set => Set(nameof(MyLibraryGrid), value);
+    }
+
+    /// <summary>Downloads' lists as a grid (true) or a list.</summary>
+    public bool DownloadsGrid
+    {
+        get => Get(nameof(DownloadsGrid), true);
+        set => Set(nameof(DownloadsGrid), value);
+    }
+
     public string LibraryView
     {
         get => Get(nameof(LibraryView), "grid");

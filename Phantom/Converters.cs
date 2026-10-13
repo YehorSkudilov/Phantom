@@ -143,6 +143,39 @@ public class AvatarIconConverter : IValueConverter
     public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture) => throw new NotSupportedException();
 }
 
+/// <summary>
+/// What's left of a download (1 - progress, 0 to 1), for the grey over a poster's part not downloaded yet (its ScaleX,
+/// anchored right). With the parameter "percent" the progress is 0 to 100.
+/// </summary>
+public class RemainingConverter : IValueConverter
+{
+    public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
+    {
+        var progress = value switch { double d => d, float f => f, _ => 0 };
+        if (parameter as string == "percent") progress /= 100;
+        return Math.Clamp(1 - progress, 0, 1);
+    }
+
+    public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture) => throw new NotSupportedException();
+}
+
+/// <summary>A server copy's status over its poster: "42% · 3.1 MB/s" while saving, else what it's doing.</summary>
+public class ServerStatusConverter : IValueConverter
+{
+    public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture) => value is not ServerDownloadDto d ? "" : d.Status switch
+    {
+        DownloadStatus.Downloading => $"{d.Progress / 100:0%}" + (d.DownloadRate > 0 ? $" · {BytesConverter.Format(d.DownloadRate)}/s" : ""),
+        DownloadStatus.Queued => "Waiting to start",
+        DownloadStatus.FetchingMetadata => "Finding it…",
+        DownloadStatus.Paused => $"Paused · {d.Progress / 100:0%}",
+        DownloadStatus.Failed => "Failed",
+        DownloadStatus.Completed => d.ExpiresAt is { } until ? $"Saved · until {until:d MMM}" : "Saved",
+        _ => d.Status.ToString(),
+    };
+
+    public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture) => throw new NotSupportedException();
+}
+
 /// <summary>A source's kind as people say it: YTS, The Pirate Bay, Knaben, Internet Archive.</summary>
 public class SourceTypeConverter : IValueConverter
 {

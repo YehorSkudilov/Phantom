@@ -8,13 +8,15 @@
              xmlns:svc="clr-namespace:Phantom.Services"
              x:Class="Phantom.Views.DownloadsPage"
              x:DataType="vm:DownloadsViewModel">
-    <Grid RowDefinitions="Auto,Auto,*">
+    <Grid RowDefinitions="Auto,Auto,Auto,*">
         <Label Text="Downloads" Style="{StaticResource H1}" Margin="16,18,16,4" />
         <controls:TabStrip Grid.Row="1" Tabs="{Binding Tabs}" SelectedIndex="{Binding SelectedTab}" Margin="0,4,0,0" />
+        <!-- Search, All / Movies / TV shows, sort and grid or list: one for both tabs -->
+        <controls:ListToolbar Grid.Row="2" BindingContext="{Binding Filter}" />
 
         <!-- On this device -->
-        <Grid Grid.Row="2" RowDefinitions="Auto,*" IsVisible="{Binding SelectedTab, Converter={StaticResource Equals}, ConverterParameter=1}">
-        <Border Style="{StaticResource Card}" Margin="16,8">
+        <Grid Grid.Row="3" RowDefinitions="Auto,*" IsVisible="{Binding SelectedTab, Converter={StaticResource Equals}, ConverterParameter=1}">
+        <Border Style="{StaticResource Card}" Margin="16,4,16,8">
             <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto">
                 <Label Text="On this device" Style="{StaticResource H2}" />
                 <Label Grid.Row="1" Text="{Binding StorageText}" Style="{StaticResource Muted}" />
@@ -25,8 +27,10 @@
             </Grid>
         </Border>
 
-        <RefreshView Grid.Row="1" IsRefreshing="{Binding IsRefreshing}" Command="{Binding RefreshCommand}">
-        <CollectionView ItemsSource="{Binding Items}" SelectionMode="None">
+        <!-- A list of cards -->
+        <RefreshView Grid.Row="1" IsRefreshing="{Binding IsRefreshing}" Command="{Binding RefreshCommand}"
+                     IsVisible="{Binding Filter.IsGrid, Converter={StaticResource Not}}">
+        <CollectionView ItemsSource="{Binding Shown}" SelectionMode="None">
             <CollectionView.Footer>
                 <BoxView HeightRequest="{x:Static views:TabView.NavBarInset}" Color="Transparent" />
             </CollectionView.Footer>
@@ -65,17 +69,68 @@
                                              SemanticProperties.Description="Resume" ToolTipProperties.Text="Resume"
                                              Command="{Binding Source={RelativeSource AncestorType={x:Type vm:DownloadsViewModel}}, Path=ResumeCommand, x:DataType=vm:DownloadsViewModel}"
                                              CommandParameter="{Binding .}" />
-                                <ImageButton Style="{StaticResource IconButton}" Source="{controls:Icon close}" IsVisible="{Binding IsComplete, Converter={StaticResource Not}}"
-                                             SemanticProperties.Description="Cancel download" ToolTipProperties.Text="Cancel download"
-                                             Command="{Binding Source={RelativeSource AncestorType={x:Type vm:DownloadsViewModel}}, Path=DeleteCommand, x:DataType=vm:DownloadsViewModel}"
-                                             CommandParameter="{Binding .}" />
-                                <ImageButton Style="{StaticResource IconButton}" Source="{controls:Icon delete, Outlined=True}" IsVisible="{Binding IsComplete}"
+                                <ImageButton Style="{StaticResource IconButton}" Source="{controls:Icon delete, Outlined=True}"
                                              SemanticProperties.Description="Delete from this device" ToolTipProperties.Text="Delete from this device"
                                              Command="{Binding Source={RelativeSource AncestorType={x:Type vm:DownloadsViewModel}}, Path=DeleteCommand, x:DataType=vm:DownloadsViewModel}"
                                              CommandParameter="{Binding .}" />
                             </HorizontalStackLayout>
                         </Grid>
                     </Border>
+                </DataTemplate>
+            </CollectionView.ItemTemplate>
+        </CollectionView>
+        </RefreshView>
+
+        <!-- A grid of posters, like My Library: the part not downloaded yet is greyed, with the status over it -->
+        <RefreshView Grid.Row="1" IsRefreshing="{Binding IsRefreshing}" Command="{Binding RefreshCommand}"
+                     IsVisible="{Binding Filter.IsGrid}">
+        <CollectionView ItemsSource="{Binding Shown}" SelectionMode="None" Margin="12,0">
+            <CollectionView.ItemsLayout>
+                <GridItemsLayout x:Name="DeviceGrid" Orientation="Vertical" Span="3" HorizontalItemSpacing="10" VerticalItemSpacing="6" />
+            </CollectionView.ItemsLayout>
+            <CollectionView.Footer>
+                <BoxView HeightRequest="{x:Static views:TabView.NavBarInset}" Color="Transparent" />
+            </CollectionView.Footer>
+            <CollectionView.ItemTemplate>
+                <DataTemplate x:DataType="svc:OfflineDownload">
+                    <Grid RowDefinitions="Auto,Auto,Auto" Padding="{OnIdiom Default='0,0,0,8', TV='5,5,5,8'}" RowSpacing="4">
+                        <Border StrokeShape="RoundRectangle 8" HeightRequest="165" BackgroundColor="{StaticResource Surface}">
+                            <Border.GestureRecognizers>
+                                <TapGestureRecognizer Command="{Binding Source={RelativeSource AncestorType={x:Type vm:DownloadsViewModel}}, Path=ActivateCommand, x:DataType=vm:DownloadsViewModel}"
+                                                      CommandParameter="{Binding .}" />
+                            </Border.GestureRecognizers>
+                            <Grid>
+                                <Image Source="{Binding PosterSource}" Aspect="AspectFill" />
+                                <!-- Grey over what's still to come: half downloaded, half grey -->
+                                <BoxView Color="#C8303038" AnchorX="1" InputTransparent="True"
+                                         ScaleX="{Binding Progress, Converter={StaticResource Remaining}}"
+                                         IsVisible="{Binding IsComplete, Converter={StaticResource Not}}" />
+                                <Border VerticalOptions="End" BackgroundColor="#B3000000" StrokeThickness="0" Padding="6,4" InputTransparent="True"
+                                        IsVisible="{Binding IsComplete, Converter={StaticResource Not}}">
+                                    <Label Text="{Binding OverlayText}" FontSize="11" TextColor="White" MaxLines="2" LineBreakMode="TailTruncation" />
+                                </Border>
+                            </Grid>
+                        </Border>
+                        <HorizontalStackLayout HorizontalOptions="End" VerticalOptions="Start" Margin="0,5,5,0" Spacing="4">
+                            <ImageButton Style="{StaticResource CornerButton}" Source="{controls:Icon pause, Color=White}" IsVisible="{Binding CanPause}"
+                                         SemanticProperties.Description="Pause" ToolTipProperties.Text="Pause"
+                                         Command="{Binding Source={RelativeSource AncestorType={x:Type vm:DownloadsViewModel}}, Path=PauseCommand, x:DataType=vm:DownloadsViewModel}"
+                                         CommandParameter="{Binding .}" />
+                            <ImageButton Style="{StaticResource CornerButton}" Source="{controls:Icon play_arrow, Color=White}" IsVisible="{Binding CanResume}"
+                                         SemanticProperties.Description="Resume" ToolTipProperties.Text="Resume"
+                                         Command="{Binding Source={RelativeSource AncestorType={x:Type vm:DownloadsViewModel}}, Path=ResumeCommand, x:DataType=vm:DownloadsViewModel}"
+                                         CommandParameter="{Binding .}" />
+                            <ImageButton Style="{StaticResource CornerButton}" Source="{controls:Icon delete, Outlined=True, Color=White}"
+                                         SemanticProperties.Description="Delete from this device" ToolTipProperties.Text="Delete from this device"
+                                         Command="{Binding Source={RelativeSource AncestorType={x:Type vm:DownloadsViewModel}}, Path=DeleteCommand, x:DataType=vm:DownloadsViewModel}"
+                                         CommandParameter="{Binding .}" />
+                        </HorizontalStackLayout>
+                        <Label Grid.Row="1" Text="{Binding Title}" FontSize="13" LineBreakMode="TailTruncation" MaxLines="2" />
+                        <Label Grid.Row="2" Style="{StaticResource Muted}" FontSize="12" LineBreakMode="TailTruncation" MaxLines="1"
+                               Text="{Binding Subtitle}" IsVisible="{Binding Subtitle, Converter={StaticResource HasValue}}" />
+                        <Label Grid.Row="2" Style="{StaticResource Muted}" FontSize="12" LineBreakMode="TailTruncation" MaxLines="1"
+                               Text="{Binding SizeText}" IsVisible="{Binding Subtitle, Converter={StaticResource HasValue}, ConverterParameter=invert}" />
+                    </Grid>
                 </DataTemplate>
             </CollectionView.ItemTemplate>
         </CollectionView>
@@ -88,7 +143,7 @@
         </Grid>
 
         <!-- On the server -->
-        <parts:ServerDownloadsView Grid.Row="2" BindingContext="{Binding Server}"
+        <parts:ServerDownloadsView Grid.Row="3" BindingContext="{Binding Server}"
                                    IsVisible="{Binding Source={RelativeSource AncestorType={x:Type vm:DownloadsViewModel}}, Path=SelectedTab, Converter={StaticResource Equals}, ConverterParameter=0, x:DataType=vm:DownloadsViewModel}" />
     </Grid>
 </views:TabView>

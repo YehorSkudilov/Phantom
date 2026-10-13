@@ -15,6 +15,45 @@ public partial class MovieListViewModel(PhantomApi api) : BaseViewModel, IQueryA
 
     public ObservableList<MovieSummaryDto> Movies { get; } = [];
 
+    /// <summary>What's shown of <see cref="Movies"/>: all of it, or what <see cref="Filter"/> leaves (My Library's toolbar).</summary>
+    public ObservableList<MovieSummaryDto> Shown { get; } = [];
+
+    /// <summary>The toolbar over the list, in My Library (none on a collection's page: all of it, in a grid).</summary>
+    public ListFilter? Filter { get; private set; }
+
+    /// <summary>Filters this list by <paramref name="filter"/> from now on.</summary>
+    public MovieListViewModel UseFilter(ListFilter filter)
+    {
+        Filter = filter;
+        filter.Changed += (_, _) => ApplyFilter();
+        OnPropertyChanged(nameof(Filter));
+        return this;
+    }
+
+    private void ApplyFilter()
+    {
+        IEnumerable<MovieSummaryDto> shown = Movies;
+        if (Filter is { } f)
+        {
+            shown = shown.Where(m => f.Matches(m.Title) && f.KindMatches(m.Kind == MediaKind.Show));
+            shown = f.Show switch
+            {
+                "Not watched" => shown.Where(m => !m.Watched),
+                "In progress" => shown.Where(m => !m.Watched && m.ProgressPercent > 0),
+                "Watched" => shown.Where(m => m.Watched),
+                _ => shown,
+            };
+            shown = f.Sort switch
+            {
+                "Title" => shown.OrderBy(m => m.Title, StringComparer.CurrentCultureIgnoreCase),
+                "Year" => shown.OrderByDescending(m => m.Year),
+                "Rating" => shown.OrderByDescending(m => m.Rating),
+                _ => shown, // the list's own order: newest first
+            };
+        }
+        Shown.Sync(shown.ToList());
+    }
+
     [ObservableProperty] private string? subtitle;
     [ObservableProperty] private bool isEmpty;
 
@@ -83,6 +122,7 @@ public partial class MovieListViewModel(PhantomApi api) : BaseViewModel, IQueryA
                 break;
         }
         Movies.Sync(items);
+        ApplyFilter();
         IsEmpty = Movies.Count == 0;
     });
 
@@ -238,8 +278,26 @@ public partial class PlaylistViewModel(PhantomApi api) : BaseViewModel, IQueryAt
 }
 
 /// <summary>Movies saved on this device.</summary>
-public partial class DownloadsViewModel(DownloadManager manager, SettingsService settings, ServerDownloadsViewModel server) : BaseViewModel
+public partial class DownloadsViewModel : BaseViewModel
 {
+    private readonly DownloadManager manager;
+    private readonly SettingsService settings;
+    private readonly ServerDownloadsViewModel server;
+
+    public DownloadsViewModel(DownloadManager manager, SettingsService settings, ServerDownloadsViewModel server)
+    {
+        this.manager = manager;
+        this.settings = settings;
+        this.server = server;
+        wifiOnly = settings.DownloadOnWifiOnly;
+        Filter = new ListFilter("Search downloads", ["Newest first", "Title"], ["Everything", "In progress", "Done"],
+            settings.DownloadsGrid, grid => settings.DownloadsGrid = grid);
+        Filter.Changed += (_, _) => ApplyFilter();
+        manager.Items.CollectionChanged += (_, _) => ApplyFilter();
+        server.UseFilter(Filter);
+        ApplyFilter();
+    }
+
     public IReadOnlyList<string> Tabs { get; } = ["On the server", "On this device"];
 
     /// <summary>0 (the default): what the server is downloading or keeps; 1: downloads on this device.</summary>
@@ -249,14 +307,38 @@ public partial class DownloadsViewModel(DownloadManager manager, SettingsService
 
     public ObservableCollection<OfflineDownload> Items => manager.Items;
 
+    /// <summary>The toolbar over both lists (search, kind, sort and "show", grid or list).</summary>
+    public ListFilter Filter { get; }
+
+    /// <summary>What's shown of this device's downloads, by <see cref="Filter"/>.</summary>
+    public ObservableList<OfflineDownload> Shown { get; } = [];
+
+    private void ApplyFilter()
+    {
+        var shown = Items.Where(i => Filter.Matches(i.Title, i.Subtitle) && Filter.KindMatches(i.IsEpisode));
+        shown = Filter.Show switch
+        {
+            "In progress" => shown.Where(i => !i.IsComplete),
+            "Done" => shown.Where(i => i.IsComplete),
+            _ => shown,
+        };
+        if (Filter.Sort == "Title") shown = shown.OrderBy(i => i.Title, StringComparer.CurrentCultureIgnoreCase).ThenBy(i => i.Subtitle);
+        Shown.Sync(shown.ToList());
+    }
+
+    /// <summary>A download's poster: plays it once it's here, else opens its page.</summary>
+    [RelayCommand]
+    private Task Activate(OfflineDownload item) => item.IsComplete ? Play(item) : Open(item);
+
     [ObservableProperty] private string storageText = "";
-    [ObservableProperty] private bool wifiOnly = settings.DownloadOnWifiOnly;
+    [ObservableProperty] private bool wifiOnly;
 
     partial void OnWifiOnlyChanged(bool value) => settings.DownloadOnWifiOnly = value;
 
     [RelayCommand]
     public async Task Refresh()
     {
+        ApplyFilter();
         StorageText = $"{Items.Count(i => i.IsComplete)} of {Items.Count} ready · {BytesConverter.Format(manager.UsedBytes)} used";
         await EndRefreshAsync();
     }

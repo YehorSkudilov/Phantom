@@ -12,8 +12,10 @@
         <Label Text="Movies saved on the server's own disk: they start instantly, and are deleted automatically after the time set in Manage server."
                Style="{StaticResource Muted}" Margin="16,8,16,0" />
         <Label Grid.Row="1" Text="{Binding Totals}" Margin="16,8" FontSize="13" TextColor="{StaticResource Accent}" />
-        <RefreshView Grid.Row="2" IsRefreshing="{Binding IsRefreshing}" Command="{Binding RefreshCommand}">
-        <CollectionView ItemsSource="{Binding Items}" SelectionMode="None">
+        <!-- A list of cards -->
+        <RefreshView Grid.Row="2" IsRefreshing="{Binding IsRefreshing}" Command="{Binding RefreshCommand}"
+                     IsVisible="{Binding Filter.IsGrid, Converter={StaticResource Not}, FallbackValue=False}">
+        <CollectionView ItemsSource="{Binding Shown}" SelectionMode="None">
             <CollectionView.Footer>
                 <BoxView HeightRequest="{x:Static views:TabView.NavBarInset}" Color="Transparent" />
             </CollectionView.Footer>
@@ -57,6 +59,57 @@
                                    IsVisible="{Binding Error, Converter={StaticResource HasValue}}" />
                         </Grid>
                     </Border>
+                </DataTemplate>
+            </CollectionView.ItemTemplate>
+        </CollectionView>
+        </RefreshView>
+
+        <!-- A grid of posters, like My Library: the part not saved yet is greyed, with the status over it -->
+        <RefreshView Grid.Row="2" IsRefreshing="{Binding IsRefreshing}" Command="{Binding RefreshCommand}"
+                     IsVisible="{Binding Filter.IsGrid, FallbackValue=True}">
+        <CollectionView ItemsSource="{Binding Shown}" SelectionMode="None" Margin="12,0">
+            <CollectionView.ItemsLayout>
+                <GridItemsLayout x:Name="PosterGrid" Orientation="Vertical" Span="3" HorizontalItemSpacing="10" VerticalItemSpacing="6" />
+            </CollectionView.ItemsLayout>
+            <CollectionView.Footer>
+                <BoxView HeightRequest="{x:Static views:TabView.NavBarInset}" Color="Transparent" />
+            </CollectionView.Footer>
+            <CollectionView.ItemTemplate>
+                <DataTemplate x:DataType="dto:ServerDownloadDto">
+                    <Grid RowDefinitions="Auto,Auto,Auto" Padding="{OnIdiom Default='0,0,0,8', TV='5,5,5,8'}" RowSpacing="4">
+                        <Border StrokeShape="RoundRectangle 8" HeightRequest="165" BackgroundColor="{StaticResource Surface}">
+                            <Border.GestureRecognizers>
+                                <TapGestureRecognizer Command="{Binding Source={RelativeSource AncestorType={x:Type vm:ServerDownloadsViewModel}}, Path=OpenCommand, x:DataType=vm:ServerDownloadsViewModel}"
+                                                      CommandParameter="{Binding .}" />
+                            </Border.GestureRecognizers>
+                            <Grid>
+                                <Image Source="{Binding PosterUrl, Converter={StaticResource Poster}}" Aspect="AspectFill" />
+                                <BoxView Color="#C8303038" AnchorX="1" InputTransparent="True"
+                                         ScaleX="{Binding Progress, Converter={StaticResource Remaining}, ConverterParameter=percent}" />
+                                <Border VerticalOptions="End" BackgroundColor="#B3000000" StrokeThickness="0" Padding="6,4" InputTransparent="True">
+                                    <Label Text="{Binding ., Converter={StaticResource ServerStatus}}" FontSize="11" TextColor="White" MaxLines="2" LineBreakMode="TailTruncation" />
+                                </Border>
+                            </Grid>
+                        </Border>
+                        <HorizontalStackLayout HorizontalOptions="End" VerticalOptions="Start" Margin="0,5,5,0" Spacing="4">
+                            <ImageButton Style="{StaticResource CornerButton}" Source="{controls:Icon pause, Color=White}"
+                                         IsVisible="{Binding Status, Converter={StaticResource Equals}, ConverterParameter=Downloading}"
+                                         SemanticProperties.Description="Pause" ToolTipProperties.Text="Pause"
+                                         Command="{Binding Source={RelativeSource AncestorType={x:Type vm:ServerDownloadsViewModel}}, Path=ToggleCommand, x:DataType=vm:ServerDownloadsViewModel}"
+                                         CommandParameter="{Binding .}" />
+                            <ImageButton Style="{StaticResource CornerButton}" Source="{controls:Icon play_arrow, Color=White}"
+                                         IsVisible="{Binding Status, Converter={StaticResource Equals}, ConverterParameter=Paused}"
+                                         SemanticProperties.Description="Resume" ToolTipProperties.Text="Resume"
+                                         Command="{Binding Source={RelativeSource AncestorType={x:Type vm:ServerDownloadsViewModel}}, Path=ToggleCommand, x:DataType=vm:ServerDownloadsViewModel}"
+                                         CommandParameter="{Binding .}" />
+                            <ImageButton Style="{StaticResource CornerButton}" Source="{controls:Icon delete, Outlined=True, Color=White}"
+                                         SemanticProperties.Description="Delete" ToolTipProperties.Text="Delete"
+                                         Command="{Binding Source={RelativeSource AncestorType={x:Type vm:ServerDownloadsViewModel}}, Path=RemoveCommand, x:DataType=vm:ServerDownloadsViewModel}"
+                                         CommandParameter="{Binding .}" />
+                        </HorizontalStackLayout>
+                        <Label Grid.Row="1" Text="{Binding MovieTitle}" FontSize="13" LineBreakMode="TailTruncation" MaxLines="2" />
+                        <Label Grid.Row="2" Text="{Binding SizeBytes, Converter={StaticResource Bytes}}" Style="{StaticResource Muted}" FontSize="12" MaxLines="1" />
+                    </Grid>
                 </DataTemplate>
             </CollectionView.ItemTemplate>
         </CollectionView>

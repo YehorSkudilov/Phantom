@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<!-- Over My Library's and Downloads' lists: a search, All / Movies / TV shows, Filters (sort and "show") and grid or
+     list. Its BindingContext is the list's ListFilter. -->
+<ContentView xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:controls="clr-namespace:Phantom.Controls"
+             xmlns:vm="clr-namespace:Phantom.ViewModels"
+             x:Class="Phantom.Controls.ListToolbar"
+             x:DataType="vm:ListFilter">
+    <VerticalStackLayout Spacing="4" Padding="8,6,8,2">
+        <Grid ColumnDefinitions="*,Auto,Auto">
+            <SearchBar Text="{Binding Query}" Placeholder="{Binding Placeholder}" />
+            <!-- A dot while a sort or "show" other than the list's own is in use -->
+            <Grid Grid.Column="1">
+                <ImageButton Style="{StaticResource IconButton}" Source="{controls:Icon tune}" Command="{Binding ChooseFiltersCommand}"
+                             SemanticProperties.Description="Sort and filter" ToolTipProperties.Text="Sort and filter" />
+                <Border WidthRequest="9" HeightRequest="9" StrokeShape="RoundRectangle 4.5" BackgroundColor="{StaticResource Primary}"
+                        HorizontalOptions="End" VerticalOptions="Start" Margin="0,9,9,0" InputTransparent="True"
+                        IsVisible="{Binding HasActiveFilters}" />
+            </Grid>
+            <Grid Grid.Column="2">
+                <ImageButton Style="{StaticResource IconButton}" Source="{controls:Icon view_list}" Command="{Binding ToggleViewCommand}" IsVisible="{Binding IsGrid}"
+                             SemanticProperties.Description="Show as list" ToolTipProperties.Text="Show as list" />
+                <ImageButton Style="{StaticResource IconButton}" Source="{controls:Icon grid_view}" Command="{Binding ToggleViewCommand}" IsVisible="{Binding IsGrid, Converter={StaticResource Not}}"
+                             SemanticProperties.Description="Show as grid" ToolTipProperties.Text="Show as grid" />
+            </Grid>
+        </Grid>
+        <HorizontalStackLayout Spacing="6" Padding="8,0">
+            <Button Text="All" Command="{Binding ShowAllCommand}" Style="{StaticResource SecondaryButton}" Padding="12,0" HeightRequest="32" MinimumHeightRequest="32" FontSize="13">
+                <Button.Triggers>
+                    <DataTrigger TargetType="Button" Binding="{Binding IsAll}" Value="True">
+                        <Setter Property="BackgroundColor" Value="{StaticResource Primary}" />
+                        <Setter Property="TextColor" Value="{StaticResource White}" />
+                    </DataTrigger>
+                </Button.Triggers>
+            </Button>
+            <Button Text="Movies" Command="{Binding ShowMoviesCommand}" Style="{StaticResource SecondaryButton}" Padding="12,0" HeightRequest="32" MinimumHeightRequest="32" FontSize="13">
+                <Button.Triggers>
+                    <DataTrigger TargetType="Button" Binding="{Binding IsMovies}" Value="True">
+                        <Setter Property="BackgroundColor" Value="{StaticResource Primary}" />
+                        <Setter Property="TextColor" Value="{StaticResource White}" />
+                    </DataTrigger>
+                </Button.Triggers>
+            </Button>
+            <Button Text="TV shows" Command="{Binding ShowShowsCommand}" Style="{StaticResource SecondaryButton}" Padding="12,0" HeightRequest="32" MinimumHeightRequest="32" FontSize="13">
+                <Button.Triggers>
+                    <DataTrigger TargetType="Button" Binding="{Binding IsShows}" Value="True">
+                        <Setter Property="BackgroundColor" Value="{StaticResource Primary}" />
+                        <Setter Property="TextColor" Value="{StaticResource White}" />
+                    </DataTrigger>
+                </Button.Triggers>
+            </Button>
+        </HorizontalStackLayout>
+    </VerticalStackLayout>
+</ContentView>

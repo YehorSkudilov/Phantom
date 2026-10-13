@@ -99,6 +99,15 @@
     </Style>
 
     <!-- Icon-only button: Source="{controls:Icon name}". Give it a SemanticProperties.Description. -->
+    <!-- A small round button over a poster's top-right corner (Downloads' pause and delete) -->
+    <Style x:Key="CornerButton" TargetType="ImageButton">
+        <Setter Property="BackgroundColor" Value="#B3000000" />
+        <Setter Property="WidthRequest" Value="30" />
+        <Setter Property="HeightRequest" Value="30" />
+        <Setter Property="Padding" Value="6" />
+        <Setter Property="CornerRadius" Value="15" />
+    </Style>
+
     <Style x:Key="IconButton" TargetType="ImageButton">
         <Setter Property="BackgroundColor" Value="Transparent" />
         <Setter Property="WidthRequest" Value="44" />

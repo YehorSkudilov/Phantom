@@ -13,6 +13,7 @@ public partial class DownloadsPage : TabView
     {
         InitializeComponent();
         BindingContext = _vm = vm;
+        SizeChanged += (_, _) => DeviceGrid.Span = Math.Max(3, (int)(Width / 140));
         vm.PropertyChanged += (_, e) =>
         {
             if (e.PropertyName == nameof(DownloadsViewModel.SelectedTab)) UpdatePolling();

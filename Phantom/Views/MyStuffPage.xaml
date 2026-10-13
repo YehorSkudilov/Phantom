@@ -8,16 +8,20 @@
              xmlns:vm="clr-namespace:Phantom.ViewModels"
              x:Class="Phantom.Views.MyStuffPage"
              x:DataType="vm:MyStuffViewModel">
-    <Grid RowDefinitions="Auto,Auto,*">
+    <Grid RowDefinitions="Auto,Auto,Auto,*">
         <Label Text="My Library" Style="{StaticResource H1}" Padding="16,18,16,0" MinimumHeightRequest="62" VerticalTextAlignment="Center" />
 
         <controls:TabStrip Grid.Row="1" Tabs="{Binding Tabs}" SelectedIndex="{Binding SelectedTab}" Margin="0,4,0,0" />
 
-        <parts:MovieGridView Grid.Row="2" BindingContext="{Binding Watchlist}"
+        <!-- Search, kind, sort and grid or list, for Recently watched and Watchlist (not Playlists) -->
+        <controls:ListToolbar Grid.Row="2" BindingContext="{Binding Filter}"
+                              IsVisible="{Binding Source={RelativeSource AncestorType={x:Type vm:MyStuffViewModel}}, Path=ShowsToolbar, x:DataType=vm:MyStuffViewModel}" />
+
+        <parts:MovieGridView Grid.Row="3" BindingContext="{Binding Watchlist}"
                              IsVisible="{Binding Source={RelativeSource AncestorType={x:Type vm:MyStuffViewModel}}, Path=SelectedTab, Converter={StaticResource Equals}, ConverterParameter=1, x:DataType=vm:MyStuffViewModel}" />
-        <parts:MovieGridView Grid.Row="2" BindingContext="{Binding History}"
+        <parts:MovieGridView Grid.Row="3" BindingContext="{Binding History}"
                              IsVisible="{Binding Source={RelativeSource AncestorType={x:Type vm:MyStuffViewModel}}, Path=SelectedTab, Converter={StaticResource Equals}, ConverterParameter=0, x:DataType=vm:MyStuffViewModel}" />
-        <parts:PlaylistsView Grid.Row="2" BindingContext="{Binding Playlists}"
+        <parts:PlaylistsView Grid.Row="3" BindingContext="{Binding Playlists}"
                              IsVisible="{Binding Source={RelativeSource AncestorType={x:Type vm:MyStuffViewModel}}, Path=SelectedTab, Converter={StaticResource Equals}, ConverterParameter=2, x:DataType=vm:MyStuffViewModel}" />
     </Grid>
 </views:TabView>

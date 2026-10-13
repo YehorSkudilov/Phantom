@@ -76,6 +76,18 @@ public partial class OfflineDownload : ObservableObject
         _ => Status.ToString(),
     };
 
+    /// <summary>
+    /// Over the poster in Downloads: "42% · 3.1 MB/s" while downloading, why it's waiting (for the server to save it,
+    /// say) or its status otherwise.
+    /// </summary>
+    public string OverlayText => Status switch
+    {
+        OfflineStatus.Downloading => $"{Progress:0%}" + (BytesPerSecond > 0 ? $" · {Phantom.BytesConverter.Format(BytesPerSecond)}/s" : ""),
+        OfflineStatus.Paused => $"Paused · {Progress:0%}",
+        OfflineStatus.Queued when !string.IsNullOrEmpty(Error) => Error!,
+        _ => StatusText,
+    };
+
     /// <summary>"1.2 GB of 4.5 GB · 3.1 MB/s" while downloading, the size once done.</summary>
     public string SizeText => IsComplete
         ? Phantom.BytesConverter.Format(TotalBytes)
@@ -83,9 +95,10 @@ public partial class OfflineDownload : ObservableObject
         : $"{Phantom.BytesConverter.Format(DownloadedBytes)} of {Phantom.BytesConverter.Format(TotalBytes)}"
           + (BytesPerSecond > 0 ? $"  ·  {Phantom.BytesConverter.Format(BytesPerSecond)}/s" : "");
 
-    partial void OnDownloadedBytesChanged(long value) { OnPropertyChanged(nameof(Progress)); OnPropertyChanged(nameof(SizeText)); }
-    partial void OnTotalBytesChanged(long value) { OnPropertyChanged(nameof(Progress)); OnPropertyChanged(nameof(SizeText)); }
-    partial void OnBytesPerSecondChanged(long value) => OnPropertyChanged(nameof(SizeText));
+    partial void OnDownloadedBytesChanged(long value) { OnPropertyChanged(nameof(Progress)); OnPropertyChanged(nameof(SizeText)); OnPropertyChanged(nameof(OverlayText)); }
+    partial void OnTotalBytesChanged(long value) { OnPropertyChanged(nameof(Progress)); OnPropertyChanged(nameof(SizeText)); OnPropertyChanged(nameof(OverlayText)); }
+    partial void OnBytesPerSecondChanged(long value) { OnPropertyChanged(nameof(SizeText)); OnPropertyChanged(nameof(OverlayText)); }
+    partial void OnErrorChanged(string? value) => OnPropertyChanged(nameof(OverlayText));
     partial void OnStatusChanged(OfflineStatus value)
     {
         OnPropertyChanged(nameof(IsComplete));
@@ -93,6 +106,7 @@ public partial class OfflineDownload : ObservableObject
         OnPropertyChanged(nameof(CanResume));
         OnPropertyChanged(nameof(StatusText));
         OnPropertyChanged(nameof(SizeText));
+        OnPropertyChanged(nameof(OverlayText));
     }
 }
 

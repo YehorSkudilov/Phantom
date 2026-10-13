@@ -12,6 +12,35 @@ public partial class ServerDownloadsViewModel(PhantomApi api, SettingsService se
 {
     public ObservableList<ServerDownloadDto> Items { get; } = [];
 
+    /// <summary>What's shown of <see cref="Items"/>, by Downloads' toolbar.</summary>
+    public ObservableList<ServerDownloadDto> Shown { get; } = [];
+
+    public ListFilter? Filter { get; private set; }
+
+    public void UseFilter(ListFilter filter)
+    {
+        Filter = filter;
+        filter.Changed += (_, _) => ApplyFilter();
+        OnPropertyChanged(nameof(Filter));
+    }
+
+    private void ApplyFilter()
+    {
+        IEnumerable<ServerDownloadDto> shown = Items;
+        if (Filter is { } f)
+        {
+            shown = shown.Where(d => f.Matches(d.MovieTitle) && f.KindMatches(d.EpisodeId is not null));
+            shown = f.Show switch
+            {
+                "In progress" => shown.Where(d => d.Status != DownloadStatus.Completed),
+                "Done" => shown.Where(d => d.Status == DownloadStatus.Completed),
+                _ => shown,
+            };
+            if (f.Sort == "Title") shown = shown.OrderBy(d => d.MovieTitle, StringComparer.CurrentCultureIgnoreCase);
+        }
+        Shown.Sync(shown.ToList(), key: d => d.Id);
+    }
+
     [ObservableProperty] private bool isEmpty;
     [ObservableProperty] private string totals = "";
 
@@ -24,6 +53,7 @@ public partial class ServerDownloadsViewModel(PhantomApi api, SettingsService se
         // Polled every couple of seconds: only rows whose progress or state changed are redrawn, and matched by id so
         // the list isn't reset (losing its scroll) when most of them have moved on.
         Items.Sync(items, key: d => d.Id);
+        ApplyFilter();
         IsEmpty = Items.Count == 0;
         Totals = $"↓ {BytesConverter.Format(items.Sum(d => d.DownloadRate))}/s   ↑ {BytesConverter.Format(items.Sum(d => d.UploadRate))}/s   ·   {items.Count(d => d.Status == DownloadStatus.Completed)} completed";
     }, showBusy: false);

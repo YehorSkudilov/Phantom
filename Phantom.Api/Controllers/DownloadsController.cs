@@ -139,6 +139,6 @@ public class DownloadsController(PhantomDbContext db, TorrentEngine engine) : Co
             stats?.Size is > 0 ? stats.Size : d.Release?.SizeBytes ?? 0,
             d.Error, d.CreatedAt, d.CompletedAt,
             d.CompletedAt is { } done && _keepDays > 0 ? done.AddDays(_keepDays) : null,
-            d.EpisodeId, d.Episode?.ShowId, d.ForDevice);
+            d.EpisodeId, d.Episode?.ShowId, d.ForDevice, d.Episode?.Show?.PosterUrl ?? d.Movie?.PosterUrl);
     }
 }

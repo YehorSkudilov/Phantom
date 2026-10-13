@@ -130,15 +130,24 @@ public record SortOption(string Name, MovieSort Sort, bool Descending)
 /// <summary>
 /// The profile's own lists, in the My Library tab: the watchlist, what was watched lately, and playlists.
 /// </summary>
-public partial class MyStuffViewModel(MovieListViewModel watchlist, MovieListViewModel history, PlaylistsViewModel playlists) : BaseViewModel
+public partial class MyStuffViewModel(MovieListViewModel watchlist, MovieListViewModel history, PlaylistsViewModel playlists, SettingsService settings) : BaseViewModel
 {
     // What was watched lately first, and open to begin with: it's what people come back here for.
     public IReadOnlyList<string> Tabs { get; } = ["Recently watched", "Watchlist", "Playlists"];
-    public MovieListViewModel Watchlist { get; } = watchlist.Use("watchlist");
-    public MovieListViewModel History { get; } = history.Use("history");
+
+    /// <summary>The toolbar over Recently watched and Watchlist (shared: switching between them keeps it).</summary>
+    public ListFilter Filter { get; } = new("Search my library", ["Newest first", "Title", "Year", "Rating"],
+        ["Everything", "Not watched", "In progress", "Watched"], settings.MyLibraryGrid, grid => settings.MyLibraryGrid = grid);
+
+    public MovieListViewModel Watchlist => _watchlist ??= watchlist.Use("watchlist").UseFilter(Filter);
+    public MovieListViewModel History => _history ??= history.Use("history").UseFilter(Filter);
+    private MovieListViewModel? _watchlist, _history;
     public PlaylistsViewModel Playlists => playlists;
 
-    [ObservableProperty] private int selectedTab;
+    [ObservableProperty] [NotifyPropertyChangedFor(nameof(ShowsToolbar))] private int selectedTab;
+
+    /// <summary>The toolbar is over the two lists of movies and shows, not Playlists.</summary>
+    public bool ShowsToolbar => SelectedTab != 2;
 
     partial void OnSelectedTabChanged(int value) => LoadSelectedTab(onlyIfEmpty: true);
 
@@ -150,7 +159,9 @@ public partial class MyStuffViewModel(MovieListViewModel watchlist, MovieListVie
     public void Reset()
     {
         Watchlist.Movies.Clear();
+        Watchlist.Shown.Clear();
         History.Movies.Clear();
+        History.Shown.Clear();
         Playlists.Playlists.Clear();
     }
 
