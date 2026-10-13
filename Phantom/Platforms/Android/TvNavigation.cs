@@ -175,6 +175,7 @@ public static class TvNavigation
         if (e.KeyCode is Keycode.DpadUp or Keycode.DpadDown or Keycode.DpadLeft or Keycode.DpadRight or Keycode.DpadCenter or Keycode.Enter
             && !OnScreen(activity.CurrentFocus) && activity.Window?.DecorView is ViewGroup page)
             return FocusFirst(page);
+        if (e.KeyCode is Keycode.DpadLeft or Keycode.DpadRight) return SideToBar(activity, e.KeyCode == Keycode.DpadLeft);
         if (e.KeyCode is not (Keycode.DpadUp or Keycode.DpadDown)) return false;
         if (activity.CurrentFocus is not { } focused || BarView() is not { } bar) return false;
 
@@ -203,6 +204,30 @@ public static class TvNavigation
                 below.RequestFocus();
         });
         return true;
+    }
+
+    /// <summary>
+    /// Left or Right with nowhere further to go on the page (the end of a row, the edge of the screen): to the nav
+    /// bar, to the tab at the same place along it as the focused view is along the screen, so the left edge comes to the
+    /// first tab and the right edge to the last. True when it moved focus.
+    /// </summary>
+    private static bool SideToBar(Activity activity, bool left)
+    {
+        if (activity.CurrentFocus is not { } focused || BarView() is not { } bar || InBar(focused, bar)) return false;
+        var next = focused.FocusSearch(left ? FocusSearchDirection.Left : FocusSearchDirection.Right);
+        if (next is not null && !InBar(next, bar)) return false;
+
+        var tabs = bar.GetFocusables(FocusSearchDirection.Forward)?
+            .Where(v => v.IsShown && v.GetGlobalVisibleRect(Visible))
+            .OrderBy(v => { v.GetGlobalVisibleRect(Visible); return Visible.Left; })
+            .ToList();
+        if (tabs is not { Count: > 0 }) return false;
+        var screen = activity.Window?.DecorView.Width ?? 0;
+        if (screen <= 0) return false;
+        focused.GetGlobalVisibleRect(Visible);
+        var along = Math.Clamp(Visible.CenterX() / (double)screen, 0, 1);
+        var index = Math.Clamp((int)(along * tabs.Count), 0, tabs.Count - 1);
+        return tabs[index].RequestFocus();
     }
 
     /// <summary>
