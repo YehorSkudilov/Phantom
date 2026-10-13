@@ -450,8 +450,12 @@ public partial class PlayerPage : ContentPage
 
     private void OnPlayPause(object? sender, EventArgs e)
     {
-        if (Media.CurrentState == MediaElementState.Playing) Media.Pause();
-        else Media.Play();
+        // Paused, stopped or not started: play. Anything else pauses: the player reports Buffering for moments while it
+        // plays, and only pausing on Playing made a press then play on instead (the controls came up, the movie didn't stop).
+        if (Media.CurrentState is MediaElementState.Paused or MediaElementState.Stopped or MediaElementState.None or MediaElementState.Failed)
+            Media.Play();
+        else
+            Media.Pause();
         ShowControls();
     }
 
@@ -530,7 +534,7 @@ public partial class PlayerPage : ContentPage
         var hidden = !Controls.IsVisible;
         switch (key)
         {
-            case Android.Views.Keycode.MediaPlayPause when ready:
+            case Android.Views.Keycode.MediaPlayPause:
                 OnPlayPause(null, EventArgs.Empty);
                 return true;
             case Android.Views.Keycode.MediaPlay when ready:
@@ -558,7 +562,7 @@ public partial class PlayerPage : ContentPage
                 if (!hidden) ShowControls();
                 Guard(() => SkipAsync(key == Android.Views.Keycode.DpadLeft ? -_vm.SkipBack : _vm.SkipForward));
                 return true;
-            case Android.Views.Keycode.DpadCenter or Android.Views.Keycode.Enter or Android.Views.Keycode.NumpadEnter when hidden && ready:
+            case Android.Views.Keycode.DpadCenter or Android.Views.Keycode.Enter or Android.Views.Keycode.NumpadEnter or Android.Views.Keycode.ButtonA when hidden:
                 OnPlayPause(null, EventArgs.Empty);
                 FocusPlayPause();
                 return true;
