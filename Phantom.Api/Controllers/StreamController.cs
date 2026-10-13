@@ -94,6 +94,7 @@ public abstract class StreamControllerBase(
 
     /// <summary>Seek previews are cached per this many seconds of the video.</summary>
     private const int ThumbnailStepSeconds = TrickplayService.StepSeconds;
+    private const int SmallThumbnailWidth = 320;
 
     // A few ffmpeg processes at a time: scrubbing asks for many previews in a row.
     private static readonly SemaphoreSlim ThumbnailSlots = new(3, 3);
@@ -413,17 +414,21 @@ public abstract class StreamControllerBase(
     /// <summary>
     /// A small frame from <paramref name="t"/> seconds in, for the seek bar's preview. Taken by ffmpeg from the saved file
     /// (only what's saved plays, so only that has previews: reading a torrent for one started it downloading into a
-    /// stream cache) and cached in steps of <see cref="ThumbnailStepSeconds"/>.
+    /// stream cache) and cached in steps of <see cref="ThumbnailStepSeconds"/>. <paramref name="w"/> asks for a bigger
+    /// one (the full-screen preview), kept apart from the small ones.
     /// </summary>
     [HttpGet("thumbnail")]
-    public async Task<IActionResult> Thumbnail(int id, [FromQuery] int? releaseId, [FromQuery] double t, CancellationToken ct)
+    public async Task<IActionResult> Thumbnail(int id, [FromQuery] int? releaseId, [FromQuery] double t, [FromQuery] int? w, CancellationToken ct)
     {
         if (!transcoder.IsAvailable) return StatusCode(StatusCodes.Status501NotImplemented);
         var target = await ResolveAsync(id, releaseId, ct);
         if (target is null) return NotFound();
 
         var step = (int)Math.Max(0, t) / ThumbnailStepSeconds * ThumbnailStepSeconds;
-        var cache = Path.Combine(trickplay.Folder(target.CacheKey), $"{step}.jpg");
+        var width = Math.Clamp(w ?? SmallThumbnailWidth, SmallThumbnailWidth, 1280) / 2 * 2;
+        var cache = width == SmallThumbnailWidth
+            ? Path.Combine(trickplay.Folder(target.CacheKey), $"{step}.jpg")
+            : Path.Combine(trickplay.Folder(target.CacheKey), $"w{width}", $"{step}.jpg");
         if (System.IO.File.Exists(cache)) return PhysicalFile(Path.GetFullPath(cache), "image/jpeg");
 
         if (CompleteFile(target) is not { } complete) return NotFound();
@@ -431,7 +436,8 @@ public abstract class StreamControllerBase(
 
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
         timeout.CancelAfter(TimeSpan.FromSeconds(30));
-        var viewer = $"{target.CacheKey}:{User.UserId()}";
+        // A newer request takes over from an older one of the same size (a small and a big one can run together).
+        var viewer = $"{target.CacheKey}:{User.UserId()}:{width}";
         ThumbnailsInFlight.AddOrUpdate(viewer, timeout, (_, older) =>
         {
             older.Cancel();
@@ -448,7 +454,7 @@ public abstract class StreamControllerBase(
         }
         try
         {
-            var jpeg = await transcoder.ThumbnailAsync(input, step, 320, timeout.Token);
+            var jpeg = await transcoder.ThumbnailAsync(input, step, width, timeout.Token);
             if (jpeg is null) return NotFound();
             Directory.CreateDirectory(Path.GetDirectoryName(cache)!);
             await System.IO.File.WriteAllBytesAsync(cache, jpeg, CancellationToken.None);

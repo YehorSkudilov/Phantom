@@ -198,11 +198,11 @@ public partial class PlayerPage : ContentPage
         _skipTarget = target;
 
         var moved = (int)Math.Round((target - from).TotalSeconds);
-        // On a TV the presses get longer to add up (a remote's are slower than taps), and show the frame they'll land on
-        // above the "+30s"; the movie plays on meanwhile.
+        // The frame they'll land on shows above the "+30s" while the movie plays on. On a TV the presses get longer to
+        // add up (a remote's are slower than taps).
         var tv = DeviceInfo.Idiom == DeviceIdiom.TV;
-        Flash(moved < 0 ? $"−{-moved}s" : $"+{moved}s", left: moved < 0, showFor: tv ? 1300 : 700, keepPreview: tv);
-        if (tv) PreviewAt(target, ShowSkipFrame, () => SkipPreview.IsVisible = false);
+        Flash(moved < 0 ? $"−{-moved}s" : $"+{moved}s", left: moved < 0, showFor: tv ? 1300 : 1000, keepPreview: true);
+        PreviewAt(target, large: false, _skipSlot, ShowSkipFrame, () => SkipPreview.IsVisible = false);
         PositionLabel.Text = TimeSpanConverter.Format(target);
         if (total > TimeSpan.Zero) Seek.Value = Math.Clamp(target / total, 0, 1);
 
@@ -658,7 +658,7 @@ public partial class PlayerPage : ContentPage
     {
         if (_vm.TotalDuration(Media.Duration) <= TimeSpan.Zero) return;
         _scrubbing = _seeking = true;
-        _shownFrame = null; // the whole-picture preview gets the first frame too, whatever the box above the bar had
+        _shownFrame = _fullFrame = null; // the whole-picture preview gets the first frame too, whatever the box above the bar had
         _scrubAt = _scrubFrom = _vm.ActualPosition(Media.Position);
         _scrubResume = Media.CurrentState is not (MediaElementState.Paused or MediaElementState.Stopped);
         Media.Pause();
@@ -683,12 +683,8 @@ public partial class PlayerPage : ContentPage
     {
         if (!_scrubbing) return;
         _scrubbing = _seeking = false;
-        _shownFrame = null;
         Phantom.Droid.DpadFocus.SetAdjusting(null);
-        _preview?.Cancel();
-        _previewUrl = null;
-        SeekPreview.IsVisible = false;
-        FullPreview.IsVisible = false;
+        HidePreviews();
         var total = _vm.TotalDuration(Media.Duration);
         if (go) Guard(() => SeekToAsync(_scrubAt));
         else if (total > TimeSpan.Zero)
@@ -825,35 +821,48 @@ public partial class PlayerPage : ContentPage
         ShowControls();
     }
 
-    private CancellationTokenSource? _preview;
-    private string? _previewUrl;
-    private byte[]? _shownFrame;
+    /// <summary>One kind of preview being fetched (the small one, the big one, the skip's): only its latest is.</summary>
+    private sealed class PreviewSlot
+    {
+        public CancellationTokenSource? Fetch;
+        public int? Step;
 
-    // While dragging: show where the drag would land, and (after a short pause, so a fast drag doesn't ask the server
-    // for every frame on the way) a preview frame from there. Only one frame is ever being fetched: moving on cancels
-    // the request, so the server stops pulling that part of the torrent and playback isn't kept waiting behind it.
+        public void Cancel()
+        {
+            Fetch?.Cancel();
+            Step = null;
+        }
+    }
+
+    private readonly PreviewSlot _smallSlot = new(), _largeSlot = new(), _skipSlot = new();
+    private byte[]? _shownFrame, _fullFrame;
+    private bool _fullIsLarge;
+    private TimeSpan _previewTarget;
+
+    // While dragging (or moving along with the remote): show where it would land, the frame there in the box above the
+    // bar, and over the whole picture too, sharper (a big frame) once it rests somewhere. Only one frame of each size
+    // is ever being fetched: moving on cancels the request.
     private void OnSeekValueChanged(object? sender, ValueChangedEventArgs e)
     {
         if (!_seeking || !double.IsFinite(e.NewValue)) return;
         var total = _vm.TotalDuration(Media.Duration);
         if (total <= TimeSpan.Zero) return;
-        var at = total * Math.Clamp(e.NewValue, 0, 1);
+        var at = _scrubbing ? _scrubAt : total * Math.Clamp(e.NewValue, 0, 1);
 
         SeekPreview.IsVisible = true;
         SeekPreviewTime.Text = TimeSpanConverter.Format(at);
         var half = SeekPreview.WidthRequest / 2;
         SeekPreview.TranslationX = Math.Clamp(Seek.Width * e.NewValue - half, 0, Math.Max(0, Seek.Width - SeekPreview.WidthRequest));
 
-        if (_scrubbing) SchedulePreview(); // the remote: see SchedulePreview
-        else PreviewAt(at, ShowPreviewFrame, () => SeekPreviewImage.IsVisible = false);
+        _previewTarget = at;
+        SchedulePreview();
     }
 
     private bool _previewPending;
 
     /// <summary>
-    /// Moving along the timeline with the remote: the position and time follow every press (held, twenty a second),
-    /// the pictures at most every 120ms, for where it has got to by then. Decoding frames for each press kept the UI
-    /// thread too busy to move smoothly.
+    /// The pictures follow the position at most every 120ms, for where it has got to by then: decoding frames for each
+    /// move (a held remote button moves twenty times a second) kept the UI thread too busy to move smoothly.
     /// </summary>
     private void SchedulePreview()
     {
@@ -862,36 +871,46 @@ public partial class PlayerPage : ContentPage
         Dispatcher.DispatchDelayed(TimeSpan.FromMilliseconds(120), () =>
         {
             _previewPending = false;
-            if (_scrubbing) PreviewAt(_scrubAt, ShowPreviewFrame, () => FullPreview.IsVisible = false);
+            if (!_seeking) return;
+            var at = _previewTarget;
+            PreviewAt(at, large: false, _smallSlot, ShowPreviewFrame, () => SeekPreviewImage.IsVisible = false);
+            if (_vm.LargePreviewFrame(at) is { } big) ShowFullFrame(big, large: true);
+            else PreviewAt(at, large: true, _largeSlot, big => ShowFullFrame(big, large: true), () => { }, wait: 300);
         });
     }
 
     /// <summary>
-    /// The preview frame at <paramref name="at"/>, given to <paramref name="show"/>: straight from the previews already
-    /// downloaded (all of them, once the server has made them), the exact one or the nearest while the exact one is
-    /// fetched. <paramref name="none"/> when there's none at all.
+    /// The preview at <paramref name="at"/>, given to <paramref name="show"/>. A small one straight from those already
+    /// here (all of them, once the server has made them), the exact one or the nearest while the exact one is fetched; a
+    /// big one only once fetched, after <paramref name="wait"/> ms in the same place. <paramref name="none"/> when there's
+    /// none at all.
     /// </summary>
-    private async void PreviewAt(TimeSpan at, Action<byte[]> show, Action none)
+    private async void PreviewAt(TimeSpan at, bool large, PreviewSlot slot, Action<byte[]> show, Action none, int wait = 80)
     {
-        var frame = _vm.PreviewFrame(at, out var exact);
-        if (frame is not null) show(frame);
-        if (exact) return;
+        byte[]? frame = null;
+        if (!large)
+        {
+            frame = _vm.PreviewFrame(at, out var exact);
+            if (frame is not null) show(frame);
+            if (exact) return;
+        }
 
-        if (_vm.ThumbnailUrl(at) is not { } url)
+        if (!_vm.CanFetchPreview)
         {
             if (frame is null) none();
             return;
         }
-        if (url == _previewUrl) return; // same frame (they're 10 s apart), already on its way
-        _previewUrl = url;
-        _preview?.Cancel();
-        var cts = _preview = new CancellationTokenSource();
+        var step = PlayerViewModel.PreviewStep(at);
+        if (step == slot.Step) return; // same frame (they're 10 s apart), already on its way
+        slot.Fetch?.Cancel();
+        slot.Step = step;
+        var cts = slot.Fetch = new CancellationTokenSource();
         try
         {
-            await Task.Delay(80, cts.Token);
-            var jpeg = await _vm.ThumbnailAsync(url, cts.Token);
-            if (jpeg is not null) _vm.RememberPreviewFrame(at, jpeg); // a miss may be a timeout, so it's asked again next time
+            await Task.Delay(wait, cts.Token);
+            var jpeg = await _vm.FetchPreviewFrameAsync(at, large, cts.Token);
             if (cts.IsCancellationRequested) return;
+            if (slot.Step == step) slot.Step = null; // a miss is asked again next time
             // The frame on show stays up while the next one loads; only hide it when there's none at all.
             if (jpeg is not null) show(jpeg);
             else if (frame is null) none();
@@ -919,14 +938,38 @@ public partial class PlayerPage : ContentPage
 
     private void ShowPreviewFrame(byte[] jpeg)
     {
-        // The frame in the box above the bar, and with the remote over the whole picture too (shown at most every
-        // 120ms then, see SchedulePreview, so the two decodes don't hold up moving along).
+        if (!_seeking) return;
         SeekPreviewImage.IsVisible = true;
-        if (_scrubbing) FullPreview.IsVisible = true;
-        if (ReferenceEquals(jpeg, _shownFrame)) return; // the same picture: no need to decode it again
-        _shownFrame = jpeg;
-        SeekPreviewImage.Source = ImageSource.FromStream(() => new MemoryStream(jpeg));
-        if (_scrubbing) FullPreview.Source = ImageSource.FromStream(() => new MemoryStream(jpeg));
+        if (!ReferenceEquals(jpeg, _shownFrame)) // the same picture: no need to decode it again
+        {
+            _shownFrame = jpeg;
+            SeekPreviewImage.Source = ImageSource.FromStream(() => new MemoryStream(jpeg));
+        }
+        // Over the whole picture too, until the big one for here comes.
+        if (!(_fullIsLarge && ReferenceEquals(_fullFrame, _vm.LargePreviewFrame(_previewTarget)))) ShowFullFrame(jpeg, large: false);
+    }
+
+    private void ShowFullFrame(byte[] jpeg, bool large)
+    {
+        if (!_seeking) return;
+        // A big frame that came for where the drag has since left isn't shown.
+        if (large && !ReferenceEquals(jpeg, _vm.LargePreviewFrame(_previewTarget))) return;
+        FullPreview.IsVisible = true;
+        if (ReferenceEquals(jpeg, _fullFrame)) return;
+        _fullFrame = jpeg;
+        _fullIsLarge = large;
+        FullPreview.Source = ImageSource.FromStream(() => new MemoryStream(jpeg));
+    }
+
+    /// <summary>Done moving along the timeline: the previews go.</summary>
+    private void HidePreviews()
+    {
+        _smallSlot.Cancel();
+        _largeSlot.Cancel();
+        _shownFrame = _fullFrame = null;
+        _fullIsLarge = false;
+        SeekPreview.IsVisible = false;
+        FullPreview.IsVisible = false;
     }
 
     private DateTime _dragEnded;
@@ -935,9 +978,7 @@ public partial class PlayerPage : ContentPage
     {
         _seeking = false;
         _dragEnded = DateTime.UtcNow;
-        _preview?.Cancel();
-        _previewUrl = null;
-        SeekPreview.IsVisible = false;
+        HidePreviews();
         Guard(() => SeekToAsync(_vm.TotalDuration(Media.Duration) * Seek.Value));
     }
 
@@ -1001,7 +1042,8 @@ public partial class PlayerPage : ContentPage
         _hideTimer?.Stop();
         _skipDelay?.Cancel();
         _scrubbing = false;
-        _preview?.Cancel();
+        HidePreviews();
+        _skipSlot.Cancel();
         _vm.StopLoadingStatus();
         _vm.StopPreviewFrames();
         _vm.StopBufferWatch();

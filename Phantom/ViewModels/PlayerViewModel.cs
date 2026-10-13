@@ -189,18 +189,29 @@ public partial class PlayerViewModel(PhantomApi api, SettingsService settings, D
         _ => $"{seconds / 3600} h {seconds % 3600 / 60} min",
     };
 
-    /// <summary>The seek bar's preview frame at <paramref name="at"/>, or null when the server can't make one.</summary>
-    public string? ThumbnailUrl(TimeSpan at) =>
-        Stream?.ThumbnailUrl is { } url && !_offline ? $"{url}&t={(int)at.TotalSeconds / 10 * 10}" : null;
+    // ---------- Seek previews ----------
+    // Two sizes, both kept: small ones (the box above the bar, the skip preview), which the server makes for the whole
+    // film and sends in one go, and big ones for the picture over the whole screen while moving along the timeline,
+    // fetched one at a time where it rests. Both are kept in memory while playing and on disk afterwards, so the next
+    // time they show at once. A download playing offline takes its own from the file (see LocalPreviews).
 
-    // Seek previews by second (on 10 s steps), downloaded together so dragging shows them at once.
+    public const int SmallPreviewWidth = 320;
+    public const int LargePreviewWidth = 960;
+
     private readonly Dictionary<int, byte[]> _previewFrames = [];
+    private readonly Dictionary<int, byte[]> _largeFrames = [];
     private CancellationTokenSource? _previewFramesLoad;
+    private string? _previewFolder;
+    private bool _previewsComplete;
+    private int _savedPreviewCount;
 
-    private static int PreviewStep(TimeSpan at) => (int)Math.Max(0, at.TotalSeconds) / 10 * 10;
+    public static int PreviewStep(TimeSpan at) => (int)Math.Max(0, at.TotalSeconds) / 10 * 10;
+
+    /// <summary>Whether a preview not here yet can be fetched (from the server, or from the file offline).</summary>
+    public bool CanFetchPreview => _offline ? LocalPreviews.IsSupported && SourceUrl is not null : Stream?.ThumbnailUrl is not null;
 
     /// <summary>
-    /// The preview for <paramref name="at"/> if it's here (<paramref name="exact"/>), else the nearest one within a
+    /// The small preview for <paramref name="at"/> if it's here (<paramref name="exact"/>), else the nearest one within a
     /// minute to show meanwhile, else null.
     /// </summary>
     public byte[]? PreviewFrame(TimeSpan at, out bool exact)
@@ -214,36 +225,109 @@ public partial class PlayerViewModel(PhantomApi api, SettingsService settings, D
         return nearest >= 0 ? _previewFrames[nearest] : null;
     }
 
-    public void RememberPreviewFrame(TimeSpan at, byte[] jpeg) => _previewFrames[PreviewStep(at)] = jpeg;
+    /// <summary>The big preview for <paramref name="at"/>, if it has been fetched before (now or on an earlier play).</summary>
+    public byte[]? LargePreviewFrame(TimeSpan at)
+    {
+        var step = PreviewStep(at);
+        if (_largeFrames.TryGetValue(step, out var frame)) return frame;
+        if (_previewFolder is null) return null;
+        try
+        {
+            var file = Path.Combine(_previewFolder, $"L{step}.jpg");
+            if (!File.Exists(file)) return null;
+            return _largeFrames[step] = File.ReadAllBytes(file);
+        }
+        catch (IOException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>Fetches the preview at <paramref name="at"/> (small or big) and keeps it. Null when there's none.</summary>
+    public async Task<byte[]?> FetchPreviewFrameAsync(TimeSpan at, bool large, CancellationToken ct)
+    {
+        var step = PreviewStep(at);
+        var width = large ? LargePreviewWidth : SmallPreviewWidth;
+        byte[]? jpeg;
+        if (_offline) jpeg = SourceUrl is { } file && LocalPreviews.IsSupported ? await LocalPreviews.FrameAsync(file, step, width, ct) : null;
+        else if (Stream?.ThumbnailUrl is { } url) jpeg = await ThumbnailAsync($"{url}&t={step}" + (large ? $"&w={width}" : ""), ct);
+        else return null;
+        // A miss may be a timeout, so it's asked again next time.
+        if (jpeg is null) return null;
+        if (!large) _previewFrames[step] = jpeg;
+        else
+        {
+            _largeFrames[step] = jpeg;
+            if (_previewFolder is { } folder)
+                _ = Task.Run(() =>
+                {
+                    try
+                    {
+                        Directory.CreateDirectory(folder);
+                        File.WriteAllBytes(Path.Combine(folder, $"L{step}.jpg"), jpeg);
+                    }
+                    catch (IOException)
+                    {
+                    }
+                });
+        }
+        return jpeg;
+    }
 
     /// <summary>
-    /// Downloads every preview the server has for this video, and again every 30 seconds until it has made them all
-    /// (it does once the file is complete on the server).
+    /// Shows what was kept from earlier plays, then downloads every small preview the server has, again every 30
+    /// seconds until it has made them all (it does once the file is complete on the server).
     /// </summary>
-    private void StartPreviewFrames()
+    private void StartPreviewFrames(int? releaseId)
     {
         StopPreviewFrames();
         _previewFrames.Clear();
-        if (_offline || Stream?.ThumbnailPackUrl is not { } url) return;
+        _largeFrames.Clear();
+        _previewsComplete = false;
+        var root = Path.Combine(FileSystem.CacheDirectory, "previews");
+        _previewFolder = Path.Combine(root, $"m{MovieId}-e{EpisodeId}-r{releaseId}");
         var cts = _previewFramesLoad = new CancellationTokenSource();
-        _ = LoadPreviewFramesAsync(url, cts.Token);
+        _ = LoadPreviewFramesAsync(_offline ? null : Stream?.ThumbnailPackUrl, _previewFolder, root, cts.Token);
     }
 
+    /// <summary>Stops fetching, and keeps the small previews on disk for next time.</summary>
     public void StopPreviewFrames()
     {
         _previewFramesLoad?.Cancel();
         _previewFramesLoad = null;
+        SavePreviewPack();
+        if (_offline) LocalPreviews.Close();
     }
 
-    private async Task LoadPreviewFramesAsync(string url, CancellationToken ct)
+    private async Task LoadPreviewFramesAsync(string? url, string folder, string root, CancellationToken ct)
     {
+        try
+        {
+            // Read off the UI thread: a film's previews are a few MB.
+            var (kept, complete) = await Task.Run(() => ReadPreviewPack(folder, root), ct);
+            if (ct.IsCancellationRequested) return;
+            foreach (var (seconds, jpeg) in kept) _previewFrames.TryAdd(seconds, jpeg);
+            _savedPreviewCount = _previewFrames.Count;
+            _previewsComplete = complete;
+            if (complete || url is null) return;
+        }
+        catch (OperationCanceledException)
+        {
+            return;
+        }
+
         for (var attempt = 0; attempt < 40; attempt++)
         {
             try
             {
                 var (frames, complete) = await api.ThumbnailPackAsync(url, ct);
                 foreach (var (seconds, jpeg) in frames) _previewFrames[seconds] = jpeg;
-                if (complete) return;
+                if (complete)
+                {
+                    _previewsComplete = true;
+                    SavePreviewPack();
+                    return;
+                }
                 await Task.Delay(TimeSpan.FromSeconds(30), ct);
             }
             catch (OperationCanceledException)
@@ -255,6 +339,76 @@ public partial class PlayerViewModel(PhantomApi api, SettingsService settings, D
                 try { await Task.Delay(TimeSpan.FromSeconds(30), ct); } catch (OperationCanceledException) { return; }
             }
         }
+    }
+
+    private const string PackFile = "small.bin";
+
+    /// <summary>
+    /// The small previews kept for this video: <c>[complete][count]</c> then per frame <c>[seconds][length][JPEG]</c>.
+    /// Also clears out the previews of videos not played for a month, keeping at most 40.
+    /// </summary>
+    private static (Dictionary<int, byte[]> Frames, bool Complete) ReadPreviewPack(string folder, string root)
+    {
+        var frames = new Dictionary<int, byte[]>();
+        var complete = false;
+        try
+        {
+            if (Directory.Exists(root))
+            {
+                var old = new DirectoryInfo(root).GetDirectories().Where(d => d.FullName != Path.GetFullPath(folder))
+                    .OrderByDescending(d => d.LastWriteTimeUtc).ToList();
+                foreach (var d in old.Skip(40).Concat(old.Take(40).Where(d => d.LastWriteTimeUtc < DateTime.UtcNow.AddDays(-30))))
+                    d.Delete(recursive: true);
+            }
+            if (Directory.Exists(folder)) Directory.SetLastWriteTimeUtc(folder, DateTime.UtcNow);
+            var file = Path.Combine(folder, PackFile);
+            if (!File.Exists(file)) return (frames, false);
+            using var reader = new BinaryReader(File.OpenRead(file));
+            complete = reader.ReadBoolean();
+            var count = reader.ReadInt32();
+            for (var i = 0; i < count; i++)
+            {
+                var seconds = reader.ReadInt32();
+                frames[seconds] = reader.ReadBytes(reader.ReadInt32());
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // A pack cut short: what came is kept, the rest is fetched again.
+        }
+        return (frames, complete && frames.Count > 0);
+    }
+
+    private void SavePreviewPack()
+    {
+        if (_previewFolder is not { } folder || _previewFrames.Count == 0 || _previewFrames.Count == _savedPreviewCount && !_previewsComplete) return;
+        var frames = _previewFrames.ToList();
+        var complete = _previewsComplete && !_offline;
+        _savedPreviewCount = frames.Count;
+        _ = Task.Run(() =>
+        {
+            try
+            {
+                Directory.CreateDirectory(folder);
+                var file = Path.Combine(folder, PackFile);
+                using (var writer = new BinaryWriter(File.Create(file + ".tmp")))
+                {
+                    writer.Write(complete);
+                    writer.Write(frames.Count);
+                    foreach (var (seconds, jpeg) in frames)
+                    {
+                        writer.Write(seconds);
+                        writer.Write(jpeg.Length);
+                        writer.Write(jpeg);
+                    }
+                }
+                File.Move(file + ".tmp", file, overwrite: true);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                System.Diagnostics.Debug.WriteLine($"Couldn't keep previews: {ex.Message}");
+            }
+        });
     }
 
     /// <summary>
@@ -334,6 +488,7 @@ public partial class PlayerViewModel(PhantomApi api, SettingsService settings, D
             Stream = null;
             IsTranscoding = false;
             SourceUrl = offline.FilePath;
+            StartPreviewFrames(offline.ReleaseId);
             SourceChanged?.Invoke(this, EventArgs.Empty);
             return;
         }
@@ -358,7 +513,7 @@ public partial class PlayerViewModel(PhantomApi api, SettingsService settings, D
         }
         Stream = await api.StreamInfoAsync(MovieId, _releaseId, episodeId: EpisodeId);
         _releaseId = Stream.ReleaseId;
-        StartPreviewFrames();
+        StartPreviewFrames(_releaseId);
         ResumePosition = _resume ? TimeSpan.FromMilliseconds(Stream.ResumePositionMs) : TimeSpan.Zero;
         StatusPosition = ResumePosition;
 

@@ -25,7 +25,7 @@
                               Aspect="AspectFit" MetadataTitle="{Binding Title}" MetadataArtworkUrl="{Binding PosterUrl}"
                               Speed="{Binding Speed}" />
 
-        <!-- TV, moving along the timeline with the remote (paused): the frame there, over the whole picture. -->
+        <!-- Moving along the timeline (dragging, or the remote, paused): the frame there, over the whole picture. -->
         <Image x:Name="FullPreview" IsVisible="False" Aspect="AspectFit" InputTransparent="True" BackgroundColor="Black" />
 
         <!-- Subtitles are rendered by Phantom (MediaElement has no subtitle support). -->
