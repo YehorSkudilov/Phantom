@@ -76,10 +76,9 @@ public partial class ShowDetailViewModel(PhantomApi api, SettingsService setting
     public bool IsReady(EpisodeDto episode) =>
         downloads.FindEpisode(episode.Id) is { IsComplete: true } || server.ForEpisode(episode.Id) is { Status: DownloadStatus.Completed };
 
-    /// <summary>Under Play while the next episode isn't saved: why, and how far saving it has got.</summary>
-    public string PlayNotice => Show?.NextEpisode is not { } next || IsReady(next) ? ""
-        : server.ForEpisode(next.Id) is { } saving && ServerDownloadTracker.IsRunning(saving)
-            ? $"Saving S{next.SeasonNumber}:E{next.EpisodeNumber} on the server: {saving.Progress / 100:0%}. It plays once it's saved."
+    /// <summary>Under Play before the next episode is saved: why it saves first. Once saving, the button says how far it's got.</summary>
+    public string PlayNotice => Show?.NextEpisode is not { } next || IsReady(next)
+                                || server.ForEpisode(next.Id) is { } saving && ServerDownloadTracker.IsRunning(saving) ? ""
             : "Episodes play once they're saved on the server: playing straight from a torrent was too unreliable. Save an episode (or a whole season) and Play works as soon as it's done.";
 
     public double NextProgress => Show?.NextEpisode is { } next && InProgress(next) ? next.Playback.ProgressPercent / 100 : 0;

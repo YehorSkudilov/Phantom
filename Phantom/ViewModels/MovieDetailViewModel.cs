@@ -48,9 +48,8 @@ public partial class MovieDetailViewModel(PhantomApi api, SettingsService settin
     public bool IsPlayable => SourceDownload is { IsComplete: true } || SelectedRelease?.AvailableOffline == true
                               || ServerItem is { Status: DownloadStatus.Completed };
 
-    /// <summary>Under Play while it can't: why, and how far saving it has got.</summary>
-    public string PlayNotice => IsPlayable ? ""
-        : IsSavingOnServer ? $"Saving on the server: {ServerProgress:0%}{(ServerItem?.DownloadRate > 0 ? $" at {BytesConverter.Format(ServerItem.DownloadRate)}/s" : "")}. It plays once it's saved."
+    /// <summary>Under Play before it's saved: why it saves first. Once saving, the button says how far it's got.</summary>
+    public string PlayNotice => IsPlayable || IsSavingOnServer ? ""
         : "Movies play once they're saved on the server: playing straight from a torrent was too unreliable. Save to watch saves it, and Play works as soon as it's done.";
     public bool IsWatched => Movie?.Playback.Watched == true;
     public bool IsOnWatchlist => Movie?.OnWatchlist == true;
@@ -140,7 +139,7 @@ public partial class MovieDetailViewModel(PhantomApi api, SettingsService settin
     {
         if (IsSavingOnServer)
         {
-            await Dialog.AlertAsync("Saving on the server", PlayNotice);
+            await Dialog.AlertAsync("Saving on the server", $"It's {ServerProgress:0%} saved, and plays once it's saved.");
             return;
         }
         if (ServerItem is { Status: DownloadStatus.Paused } paused)

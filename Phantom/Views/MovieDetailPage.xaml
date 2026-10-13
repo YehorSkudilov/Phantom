@@ -44,7 +44,7 @@
                                 IsVisible="{Binding HasPlayChoices}" SemanticProperties.Description="Play from" ToolTipProperties.Text="Play from…" />
                     </Grid>
                     <!-- Not saved yet: why Play saves it first, and how far that's got -->
-                    <Border Style="{StaticResource Card}" Padding="12" IsVisible="{Binding IsPlayable, Converter={StaticResource Not}}">
+                    <Border Style="{StaticResource Card}" Padding="12" IsVisible="{Binding PlayNotice, Converter={StaticResource HasValue}}">
                         <Grid ColumnDefinitions="Auto,*" ColumnSpacing="10">
                             <Image Source="{controls:Icon cloud_download, Color={StaticResource PrimaryLight}}" WidthRequest="22" HeightRequest="22" VerticalOptions="Start" />
                             <Label Grid.Column="1" Text="{Binding PlayNotice}" FontSize="13" />
