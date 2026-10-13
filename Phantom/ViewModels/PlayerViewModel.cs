@@ -6,6 +6,12 @@ using Phantom.Shared;
 
 namespace Phantom.ViewModels;
 
+/// <summary>
+/// What a cast device is sent: <paramref name="Url"/> from <paramref name="StartAt"/> into it. A conversion starts at the
+/// position asked for, so the TV's own position is <paramref name="Offset"/> behind the movie's.
+/// </summary>
+public sealed record CastMedia(string Url, string ContentType, TimeSpan Offset, TimeSpan StartAt, bool Converted);
+
 public record SubtitleChoice(string Label, SubtitleTrackDto? Track)
 {
     public override string ToString() => Label;
@@ -624,6 +630,57 @@ public partial class PlayerViewModel(PhantomApi api, SettingsService settings, D
         return true;
     }
 
+    /// <summary>Plays here again from <paramref name="position"/> (after casting).</summary>
+    public void RestartAt(TimeSpan position)
+    {
+        if (!_offline) ApplySource(position);
+    }
+
+    // ---------- Casting ----------
+
+    /// <summary>
+    /// What to send a cast device to play from <paramref name="start"/>: the file itself when the TV plays that kind (and
+    /// original quality is asked for), else the server's conversion (H.264 and AAC in MP4, which every cast device
+    /// plays), which starts there. Null for a downloaded copy: that's on this device, where the TV can't fetch it.
+    /// </summary>
+    public CastMedia? CastMediaFrom(TimeSpan start, bool convert = false)
+    {
+        if (_offline || Stream is null) return null;
+        if (start < TimeSpan.Zero) start = TimeSpan.Zero;
+        var quality = SelectedQuality.Resolve();
+        var contentType = CastContentType(Stream.FileName);
+        if (Stream.TranscodeUrl is null || (!convert && quality.IsOriginal && contentType is not null))
+            return new CastMedia(Stream.DirectUrl, contentType ?? "video/mp4", TimeSpan.Zero, start, Converted: false);
+        var url = $"{Stream.TranscodeUrl}&start={start.TotalSeconds.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture)}";
+        if (quality.MaxKbps is { } kbps) url += $"&maxKbps={kbps}";
+        if (quality.MaxHeight is { } h) url += $"&maxHeight={h}";
+        return new CastMedia(url, "video/mp4", start, TimeSpan.Zero, Converted: true);
+    }
+
+    /// <summary>
+    /// The file types a cast device plays as they are. MKVs aren't among them: some play, but the AC3 or DTS sound most
+    /// carry plays silently, with no error to switch to the conversion on.
+    /// </summary>
+    private static string? CastContentType(string fileName) => Path.GetExtension(fileName).ToLowerInvariant() switch
+    {
+        ".mp4" or ".m4v" => "video/mp4",
+        ".webm" => "video/webm",
+        _ => null,
+    };
+
+    /// <summary>The movie's full length while casting <paramref name="media"/>, of which the TV knows <paramref name="castDuration"/>.</summary>
+    public TimeSpan CastLength(TimeSpan castDuration, CastMedia media) =>
+        castDuration > TimeSpan.Zero ? media.Offset + castDuration : _runtime;
+
+    /// <summary>The cast device's position, as OnPosition is this device's: subtitles here, and progress saved.</summary>
+    public void OnCastPosition(TimeSpan position, TimeSpan total, bool playing)
+    {
+        _playedTo = position;
+        if (_cues.Count > 0) SubtitleText = SubtitleParser.CueAt(_cues, position)?.Text;
+        if (DateTime.UtcNow - _lastReport > TimeSpan.FromSeconds(10))
+            _ = ReportProgressAsync(position, total, playing ? PlayerState.Playing : PlayerState.Paused);
+    }
+
     public void ChangeQuality(QualityOption quality, TimeSpan currentPosition)
     {
         SelectedQuality = quality;
@@ -673,13 +730,19 @@ public partial class PlayerViewModel(PhantomApi api, SettingsService settings, D
         : elementDuration > TimeSpan.Zero ? elementDuration + TranscodeOffset
         : _runtime;
 
-    public async Task ReportAsync(TimeSpan position, TimeSpan duration, PlayerState state)
+    public Task ReportAsync(TimeSpan position, TimeSpan duration, PlayerState state)
     {
-        _lastReport = DateTime.UtcNow;
         // A live transcode often reports no duration (or only what's left), so fall back to metadata.
         var total = !IsTranscoding ? duration
             : duration > TimeSpan.Zero ? duration + TranscodeOffset
             : _runtime;
+        return ReportProgressAsync(position, total, state);
+    }
+
+    /// <summary>Saves how far it's got (<paramref name="total"/> being the whole movie's length).</summary>
+    public async Task ReportProgressAsync(TimeSpan position, TimeSpan total, PlayerState state)
+    {
+        _lastReport = DateTime.UtcNow;
         var pos = (long)position.TotalMilliseconds;
         var dur = (long)total.TotalMilliseconds;
         if (dur <= 0) return;

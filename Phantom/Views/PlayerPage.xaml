@@ -33,6 +33,15 @@
                Padding="10,4" HorizontalOptions="Center" VerticalOptions="End" Margin="24,0,24,96"
                HorizontalTextAlignment="Center" IsVisible="{Binding SubtitleText, Converter={StaticResource HasValue}}" />
 
+        <!-- Casting: the video plays on the TV, and this screen is its remote (see StartCastingAsync). -->
+        <Grid x:Name="CastPanel" IsVisible="False" BackgroundColor="Black" InputTransparent="True">
+            <Image Source="{Binding PosterUrl}" Aspect="AspectFill" Opacity="0.3" />
+            <VerticalStackLayout HorizontalOptions="Center" VerticalOptions="Center" Spacing="10" Margin="24,0">
+                <Image Source="{controls:Icon cast_connected, Color=White, Size=56}" HorizontalOptions="Center" />
+                <Label x:Name="CastStatus" TextColor="White" FontFamily="OpenSansSemibold" FontSize="16" HorizontalTextAlignment="Center" />
+            </VerticalStackLayout>
+        </Grid>
+
         <!-- Loading: what the server is doing to get the movie playing (see PlayerViewModel.PollStatusAsync). -->
         <Border x:Name="Buffering" HorizontalOptions="Center" VerticalOptions="Center" Padding="24,20" MaximumWidthRequest="420"
                 BackgroundColor="#CC0B0B12" StrokeShape="RoundRectangle 16" InputTransparent="True">
@@ -76,21 +85,23 @@
                 <TapGestureRecognizer Tapped="OnSurfaceTapped" />
                 <TapGestureRecognizer NumberOfTapsRequired="2" Tapped="OnSurfaceDoubleTapped" />
             </Grid.GestureRecognizers>
-            <Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto,Auto,Auto" ColumnSpacing="6">
+            <Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto,Auto,Auto,Auto" ColumnSpacing="6">
                 <ImageButton Style="{StaticResource IconButton}" Source="{controls:Icon close, Color=White}" Clicked="OnClose"
                              SemanticProperties.Description="Close player" ToolTipProperties.Text="Close" />
                 <VerticalStackLayout Grid.Column="1" VerticalOptions="Center">
                     <Label Text="{Binding Title}" FontFamily="OpenSansSemibold" FontSize="16" LineBreakMode="TailTruncation" />
                     <Label x:Name="EndsAtLabel" Style="{StaticResource Muted}" FontSize="12" />
                 </VerticalStackLayout>
-                <ImageButton x:Name="SubtitlesButton" Grid.Column="2" Style="{StaticResource IconButton}" Source="{controls:Icon closed_caption, Color=White, Outlined=True}" Clicked="OnSubtitles"
+                <ImageButton x:Name="CastButton" Grid.Column="2" Style="{StaticResource IconButton}" Source="{controls:Icon cast, Color=White}" Clicked="OnCast"
+                             SemanticProperties.Description="Play on a TV" ToolTipProperties.Text="Cast" />
+                <ImageButton x:Name="SubtitlesButton" Grid.Column="3" Style="{StaticResource IconButton}" Source="{controls:Icon closed_caption, Color=White, Outlined=True}" Clicked="OnSubtitles"
                              SemanticProperties.Description="Subtitles" ToolTipProperties.Text="Subtitles" />
-                <ImageButton x:Name="QualityButton" Grid.Column="3" Style="{StaticResource IconButton}" Source="{controls:Icon high_quality, Color=White, Outlined=True}" Clicked="OnQuality"
+                <ImageButton x:Name="QualityButton" Grid.Column="4" Style="{StaticResource IconButton}" Source="{controls:Icon high_quality, Color=White, Outlined=True}" Clicked="OnQuality"
                              SemanticProperties.Description="Quality" ToolTipProperties.Text="Quality" />
-                <Button Grid.Column="4" x:Name="SpeedButton" Text="1x" Style="{StaticResource GhostButton}" TextColor="White" Clicked="OnSpeed" SemanticProperties.Description="Playback speed" />
-                <ImageButton x:Name="AspectButton" Grid.Column="5" Style="{StaticResource IconButton}" Source="{controls:Icon fit_screen, Color=White, Outlined=True}" Clicked="OnAspect"
+                <Button Grid.Column="5" x:Name="SpeedButton" Text="1x" Style="{StaticResource GhostButton}" TextColor="White" Clicked="OnSpeed" SemanticProperties.Description="Playback speed" />
+                <ImageButton x:Name="AspectButton" Grid.Column="6" Style="{StaticResource IconButton}" Source="{controls:Icon fit_screen, Color=White, Outlined=True}" Clicked="OnAspect"
                              SemanticProperties.Description="Fill or fit the screen" ToolTipProperties.Text="Fill / fit" />
-                <ImageButton x:Name="FullscreenButton" Grid.Column="6" Style="{StaticResource IconButton}" Source="{controls:Icon fullscreen, Color=White}" Clicked="OnFullscreen"
+                <ImageButton x:Name="FullscreenButton" Grid.Column="7" Style="{StaticResource IconButton}" Source="{controls:Icon fullscreen, Color=White}" Clicked="OnFullscreen"
                              SemanticProperties.Description="Full screen" ToolTipProperties.Text="Full screen (F)" />
             </Grid>
 
