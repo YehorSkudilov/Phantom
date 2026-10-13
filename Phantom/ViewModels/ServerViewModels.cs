@@ -12,7 +12,6 @@ public partial class ServerDownloadsViewModel(PhantomApi api, SettingsService se
 {
     public ObservableList<ServerDownloadDto> Items { get; } = [];
 
-    [ObservableProperty] private bool isAdmin;
     [ObservableProperty] private bool isEmpty;
     [ObservableProperty] private string totals = "";
 
@@ -21,7 +20,6 @@ public partial class ServerDownloadsViewModel(PhantomApi api, SettingsService se
     [RelayCommand]
     public Task Refresh() => RunAsync(async () =>
     {
-        IsAdmin = settings.User?.IsAdmin == true;
         var items = await api.ServerDownloadsAsync();
         // Polled every couple of seconds: only rows whose progress or state changed are redrawn, and matched by id so
         // the list isn't reset (losing its scroll) when most of them have moved on.

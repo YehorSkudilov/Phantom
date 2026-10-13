@@ -265,16 +265,11 @@ public partial class MovieDetailViewModel(PhantomApi api, SettingsService settin
     private Task DownloadOnServer() => RunAsync(async () =>
     {
         if (Movie is not { } movie) return;
-        // Not there yet: saved. There (or on its way): an admin may stop or remove it; anyone else hears how it's doing.
+        // Not there yet: saved. There (or on its way): this profile's own copy, which it may stop or remove.
         if (ServerItem is not { } d)
         {
             var queued = await api.QueueServerDownloadAsync(_id, SelectedRelease?.Id);
             await ToastAsync(queued.Status == DownloadStatus.Completed ? "Already on the server" : "Saving on the server");
-        }
-        else if (!IsAdmin)
-        {
-            await ToastAsync(ServerDownloadTracker.IsRunning(d) ? $"{ServerLabel} on the server" : "Saved on the server");
-            return;
         }
         else if (ServerDownloadTracker.IsRunning(d))
         {

@@ -17,10 +17,17 @@ namespace Phantom.Api.Controllers;
 [Route("api/downloads")]
 public class DownloadsController(PhantomDbContext db, TorrentEngine engine) : ControllerBase
 {
+    /// <summary>
+    /// The profile's own saved copies (each profile keeps its own list, as a user of its own; two saving the same
+    /// thing share the one file on disk). An admin also sees what the server saved by itself (new releases).
+    /// </summary>
     [HttpGet]
     public async Task<List<ServerDownloadDto>> List(CancellationToken ct)
     {
+        var me = User.UserId();
+        var admin = User.IsInRole("Admin");
         var rows = await db.ServerDownloads.AsNoTracking()
+            .Where(d => d.RequestedByUserId == me || admin && d.RequestedByUserId == null)
             .Include(d => d.Movie).Include(d => d.Release).Include(d => d.Episode).ThenInclude(e => e!.Show)
             .OrderByDescending(d => d.CreatedAt)
             .ToListAsync(ct);
@@ -49,10 +56,13 @@ public class DownloadsController(PhantomDbContext db, TorrentEngine engine) : Co
         }
         if (release is null) return NotFound();
 
-        // One download per movie release, and per episode: each episode saved from a season (or whole-show) pack is a
-        // download of its own, and only its file is fetched.
+        // One download per movie release, and per episode, for each profile: each episode saved from a season (or
+        // whole-show) pack is a download of its own, and only its file is fetched. Another profile's of the same is a
+        // separate entry over the same torrent (see ServerDownloadService.RemoveAsync).
+        var me = User.UserId();
         var existing = await db.ServerDownloads.Include(d => d.Movie).Include(d => d.Release).Include(d => d.Episode).ThenInclude(e => e!.Show)
             .FirstOrDefaultAsync(d => (episode == null ? d.ReleaseId == release.Id && d.EpisodeId == null : d.EpisodeId == episode.Id)
+                                      && d.RequestedByUserId == me
                                       && d.Status != DownloadStatus.Cancelled && d.Status != DownloadStatus.Failed, ct);
         if (existing is not null) return ToDto(existing);
 
@@ -66,12 +76,11 @@ public class DownloadsController(PhantomDbContext db, TorrentEngine engine) : Co
         return CreatedAtAction(nameof(List), ToDto(download));
     }
 
-    [Authorize(Roles = "Admin")]
     [HttpPost("{id:int}/pause")]
     public async Task<IActionResult> Pause(int id, CancellationToken ct)
     {
         var d = await db.ServerDownloads.Include(x => x.Release).FirstOrDefaultAsync(x => x.Id == id, ct);
-        if (d is null) return NotFound();
+        if (d is null || !Mine(d)) return NotFound();
         if (d.Status is DownloadStatus.Completed or DownloadStatus.Cancelled) return BadRequest("Download is not active.");
         // Other episodes being saved from the same pack carry on; only this one's file stops (see ServerDownloadService).
         var sharesTorrent = await db.ServerDownloads.AnyAsync(x => x.ReleaseId == d.ReleaseId && x.Id != d.Id
@@ -82,12 +91,11 @@ public class DownloadsController(PhantomDbContext db, TorrentEngine engine) : Co
         return NoContent();
     }
 
-    [Authorize(Roles = "Admin")]
     [HttpPost("{id:int}/resume")]
     public async Task<IActionResult> Resume(int id, CancellationToken ct)
     {
         var d = await db.ServerDownloads.FindAsync([id], ct);
-        if (d is null) return NotFound();
+        if (d is null || !Mine(d)) return NotFound();
         if (d.Status is not (DownloadStatus.Paused or DownloadStatus.Failed)) return BadRequest("Download is not paused.");
         d.Status = DownloadStatus.Queued;
         d.Error = null;
@@ -96,15 +104,17 @@ public class DownloadsController(PhantomDbContext db, TorrentEngine engine) : Co
     }
 
     /// <summary>Cancels an active download, or removes a finished one (optionally deleting files).</summary>
-    [Authorize(Roles = "Admin")]
     [HttpDelete("{id:int}")]
     public async Task<IActionResult> Delete(int id, [FromQuery] bool deleteFiles, CancellationToken ct)
     {
         var d = await db.ServerDownloads.Include(x => x.Release).Include(x => x.Episode).FirstOrDefaultAsync(x => x.Id == id, ct);
-        if (d is null) return NotFound();
+        if (d is null || !Mine(d)) return NotFound();
         await ServerDownloadService.RemoveAsync(db, engine, d, deleteFiles, ct);
         return NoContent();
     }
+
+    /// <summary>A profile manages the copies it saved; an admin also the server's own (and anyone's).</summary>
+    private bool Mine(ServerDownload d) => d.RequestedByUserId == User.UserId() || User.IsInRole("Admin");
 
     private int _keepDays = 7;
 

@@ -145,7 +145,7 @@ public class ServerDownloadService(IServiceScopeFactory scopes, TorrentEngine en
     /// <summary>
     /// Removes a server download, stopping it if it's still going, and with <paramref name="deleteFiles"/> its files.
     /// An episode saved from a pack that other episodes were saved from too only takes its own file with it: the
-    /// torrent carries on for the others.
+    /// torrent carries on for the others. A video another profile has saved too keeps its file for that profile.
     /// </summary>
     public static async Task RemoveAsync(PhantomDbContext db, TorrentEngine engine, ServerDownload d, bool deleteFiles, CancellationToken ct)
     {
@@ -155,7 +155,11 @@ public class ServerDownloadService(IServiceScopeFactory scopes, TorrentEngine en
             .ToListAsync(ct);
         db.ServerDownloads.Remove(d);
 
-        if (others.Count > 0 && d.EpisodeId is not null)
+        // Another profile has this very video saved too: only this entry goes; the torrent and file stay for it.
+        if (others.Any(o => o.EpisodeId == d.EpisodeId))
+        {
+        }
+        else if (others.Count > 0 && d.EpisodeId is not null)
         {
             await engine.KeepEpisodesAsync(release, others.Select(Choice));
             if (deleteFiles) engine.DeleteSavedEpisode(release, Choice(d));

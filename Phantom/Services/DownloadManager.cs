@@ -27,7 +27,10 @@ public partial class OfflineDownload : ObservableObject
     public bool IsEpisode => EpisodeId is not null;
 
     /// <summary>Names its files: the movie's id, or "ep" and the episode's.</summary>
-    public string FileKey => EpisodeId is { } e ? $"ep{e}" : MovieId.ToString();
+    public string FileKey => (ProfileId is { } p ? $"p{p}-" : "") + (EpisodeId is { } e ? $"ep{e}" : MovieId.ToString());
+
+    /// <summary>The profile it was downloaded for: each sees only its own (null: from before downloads were per profile).</summary>
+    public int? ProfileId { get; set; }
     public int? ReleaseId { get; set; }
     public string Title { get; set; } = "";
     public int? Year { get; set; }
@@ -117,7 +120,11 @@ public class DownloadManager
     private readonly Dictionary<OfflineDownload, int> _retries = [];
     private readonly HashSet<OfflineDownload> _waiting = [];
 
+    /// <summary>The profile in use's downloads (each profile is a user of its own; see <see cref="ShowProfile"/>).</summary>
     public ObservableCollection<OfflineDownload> Items { get; } = [];
+
+    // Every profile's: they all go on downloading, whichever is in use.
+    private readonly List<OfflineDownload> _all = [];
 
     public DownloadManager(HttpClient http, PhantomApi api, SettingsService settings)
     {
@@ -127,7 +134,27 @@ public class DownloadManager
         _indexPath = Path.Combine(_root, "index.json");
         Directory.CreateDirectory(_root);
         Load();
+        settings.ProfileChanged += (_, _) => MainThread.BeginInvokeOnMainThread(ShowProfile);
         Connectivity.Current.ConnectivityChanged += (_, _) => Kick();
+    }
+
+    /// <summary>
+    /// Lists the profile in use's downloads. Those from before downloads were kept per profile become the first
+    /// profile's to see them.
+    /// </summary>
+    private void ShowProfile()
+    {
+        var profile = _settings.User?.Id;
+        var claimed = false;
+        if (profile is not null)
+            foreach (var item in _all.Where(i => i.ProfileId is null))
+            {
+                item.ProfileId = profile;
+                claimed = true;
+            }
+        Items.Clear();
+        foreach (var item in _all.Where(i => i.ProfileId == profile)) Items.Add(item);
+        if (claimed) _ = SaveAsync();
     }
 
     public OfflineDownload? Find(int movieId) => Items.FirstOrDefault(i => i.EpisodeId is null && i.MovieId == movieId);
@@ -187,6 +214,8 @@ public class DownloadManager
 
     private async Task AddAsync(OfflineDownload item)
     {
+        item.ProfileId = _settings.User?.Id;
+        _all.Insert(0, item);
         Items.Insert(0, item);
         await CachePosterAsync(item);
         await SaveAsync();
@@ -229,8 +258,9 @@ public class DownloadManager
             _retries.Remove(item);
             _waiting.Remove(item);
         }
+        _all.Remove(item);
         Items.Remove(item);
-        var posterShared = Items.Any(i => i.LocalPosterPath == item.LocalPosterPath);
+        var posterShared = _all.Any(i => i.LocalPosterPath == item.LocalPosterPath);
         foreach (var path in new[] { item.FilePath, item.FilePath + ".part", posterShared ? null : item.LocalPosterPath })
             if (!string.IsNullOrEmpty(path) && File.Exists(path)) File.Delete(path);
         await SaveAsync();
@@ -281,7 +311,7 @@ public class DownloadManager
         lock (_queueLock)
         {
             // Oldest first: new downloads are inserted at the top of the list.
-            foreach (var next in Items.ToList().AsEnumerable().Reverse().Where(i => i.Status is OfflineStatus.Queued or OfflineStatus.WaitingForWifi).ToList())
+            foreach (var next in _all.ToList().AsEnumerable().Reverse().Where(i => i.Status is OfflineStatus.Queued or OfflineStatus.WaitingForWifi).ToList())
             {
                 if (_running.Count >= MaxParallel) return;
                 if (_running.ContainsKey(next) || _waiting.Contains(next)) continue;
@@ -369,7 +399,9 @@ public class DownloadManager
         var info = await _api.StreamInfoAsync(item.MovieId, item.ReleaseId, ct, item.EpisodeId);
         item.ReleaseId = info.ReleaseId;
         var ext = Path.GetExtension(info.FileName);
-        item.FilePath = Path.Combine(_root, $"{item.FileKey}{(string.IsNullOrEmpty(ext) ? ".mp4" : ext)}");
+        var path = Path.Combine(_root, $"{item.FileKey}{(string.IsNullOrEmpty(ext) ? ".mp4" : ext)}");
+        // One begun before it had a profile keeps its name, so it carries on from its .part rather than starting over.
+        if (string.IsNullOrEmpty(item.FilePath) || Path.GetExtension(item.FilePath) != Path.GetExtension(path)) item.FilePath = path;
         var part = item.FilePath + ".part";
 
         var existing = File.Exists(part) ? new FileInfo(part).Length : 0;
@@ -462,17 +494,19 @@ public class DownloadManager
         string? LocalPosterPath, string FilePath, DateTime AddedAt, OfflineStatus Status, long TotalBytes, long DownloadedBytes, string? Error,
         long OfflinePositionMs, long OfflineDurationMs, bool PendingSync,
         // Episodes (absent, so null, in indexes written before they could be downloaded).
-        int? EpisodeId = null, int? ShowId = null, int? SeasonNumber = null, int? EpisodeNumber = null, string? Subtitle = null);
+        int? EpisodeId = null, int? ShowId = null, int? SeasonNumber = null, int? EpisodeNumber = null, string? Subtitle = null,
+        // The profile's it is (absent in indexes written before downloads were per profile).
+        int? ProfileId = null);
 
     private async Task SaveAsync()
     {
         await _saveLock.WaitAsync();
         try
         {
-            var snapshot = Items.Select(i => new Snapshot(i.MovieId, i.ReleaseId, i.Title, i.Year, i.Overview, i.RuntimeMinutes, i.PosterUrl,
+            var snapshot = _all.Select(i => new Snapshot(i.MovieId, i.ReleaseId, i.Title, i.Year, i.Overview, i.RuntimeMinutes, i.PosterUrl,
                 i.LocalPosterPath, i.FilePath, i.AddedAt, i.Status == OfflineStatus.Downloading ? OfflineStatus.Queued : i.Status,
                 i.TotalBytes, i.DownloadedBytes, i.Error, i.OfflinePositionMs, i.OfflineDurationMs, i.PendingSync,
-                i.EpisodeId, i.ShowId, i.SeasonNumber, i.EpisodeNumber, i.Subtitle)).ToList();
+                i.EpisodeId, i.ShowId, i.SeasonNumber, i.EpisodeNumber, i.Subtitle, i.ProfileId)).ToList();
             await File.WriteAllTextAsync(_indexPath, JsonSerializer.Serialize(snapshot));
         }
         finally
@@ -490,7 +524,7 @@ public class DownloadManager
             foreach (var s in items)
             {
                 var complete = s.Status == OfflineStatus.Completed && File.Exists(s.FilePath);
-                Items.Add(new OfflineDownload
+                _all.Add(new OfflineDownload
                 {
                     MovieId = s.MovieId, ReleaseId = s.ReleaseId, Title = s.Title, Year = s.Year, Overview = s.Overview,
                     RuntimeMinutes = s.RuntimeMinutes, PosterUrl = s.PosterUrl, LocalPosterPath = s.LocalPosterPath,
@@ -499,8 +533,10 @@ public class DownloadManager
                     TotalBytes = s.TotalBytes, DownloadedBytes = s.DownloadedBytes, Error = s.Error,
                     OfflinePositionMs = s.OfflinePositionMs, OfflineDurationMs = s.OfflineDurationMs, PendingSync = s.PendingSync,
                     EpisodeId = s.EpisodeId, ShowId = s.ShowId, SeasonNumber = s.SeasonNumber, EpisodeNumber = s.EpisodeNumber, Subtitle = s.Subtitle,
+                    ProfileId = s.ProfileId,
                 });
             }
+            ShowProfile();
             Kick();
         }
         catch (JsonException)

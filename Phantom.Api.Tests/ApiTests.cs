@@ -284,6 +284,31 @@ public class ApiTests : IClassFixture<PhantomFactory>
     }
 
     [Fact]
+    public async Task Each_profile_has_its_own_saved_copies()
+    {
+        var owner = await AdminClientAsync();
+        var id = (await owner.GetFromJsonAsync<PagedResult<MovieSummaryDto>>("/api/library/movies?search=General", Json))!.Items.Single().Id;
+        var mine = await (await owner.PostAsJsonAsync("/api/downloads", new CreateServerDownloadRequest(id, null), Json)).Content.ReadFromJsonAsync<ServerDownloadDto>(Json);
+
+        var profile = await (await owner.PostAsJsonAsync("/api/profiles", new CreateProfileRequest("dl" + Guid.NewGuid().ToString("N")[..6], null, null, null), Json))
+            .Content.ReadFromJsonAsync<UserDto>(Json);
+        var auth = await (await owner.PostAsJsonAsync("/api/profiles/switch", new SwitchProfileRequest(profile!.Id, null), Json)).Content.ReadFromJsonAsync<AuthResponse>(Json);
+        var other = _factory.CreateClient();
+        other.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", auth!.Token);
+
+        // The other profile doesn't see (or manage) the owner's copy, and saving the same is an entry of its own.
+        Assert.DoesNotContain(await other.GetFromJsonAsync<List<ServerDownloadDto>>("/api/downloads", Json) ?? [], d => d.Id == mine!.Id);
+        Assert.Equal(HttpStatusCode.NotFound, (await other.DeleteAsync($"/api/downloads/{mine!.Id}?deleteFiles=true")).StatusCode);
+        var theirs = await (await other.PostAsJsonAsync("/api/downloads", new CreateServerDownloadRequest(id, null), Json)).Content.ReadFromJsonAsync<ServerDownloadDto>(Json);
+        Assert.NotEqual(mine.Id, theirs!.Id);
+
+        // Removing theirs leaves the owner's.
+        Assert.Equal(HttpStatusCode.NoContent, (await other.DeleteAsync($"/api/downloads/{theirs.Id}?deleteFiles=true")).StatusCode);
+        Assert.Contains(await owner.GetFromJsonAsync<List<ServerDownloadDto>>("/api/downloads", Json) ?? [], d => d.Id == mine.Id);
+        await owner.DeleteAsync($"/api/downloads/{mine.Id}?deleteFiles=true");
+    }
+
+    [Fact]
     public async Task Sources_are_built_in_and_can_only_be_switched_on_or_off()
     {
         var client = await AdminClientAsync();

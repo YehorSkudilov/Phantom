@@ -325,17 +325,12 @@ public partial class ShowDetailViewModel(PhantomApi api, SettingsService setting
     }
 
     /// <summary>
-    /// Copies on the server, pressed again: an admin can stop them (while saving) or remove them, after saying so;
-    /// anyone else hears how they're doing.
+    /// Copies on the server, pressed again: this profile's own, which it can stop (while saving) or remove, after
+    /// saying so.
     /// </summary>
     private Task RemoveFromServerAsync(IReadOnlyList<ServerDownloadDto> copies, string name) => RunAsync(async () =>
     {
         var running = copies.Any(ServerDownloadTracker.IsRunning);
-        if (settings.User?.IsAdmin != true)
-        {
-            await ToastAsync(running ? $"Saving on the server ({copies.Average(c => c.Progress) / 100:0%})" : "Saved on the server");
-            return;
-        }
         var what = copies.Count == 1 ? name : $"{name} ({copies.Count} episodes)";
         var confirmed = running
             ? await Dialog.ConfirmAsync("Stop saving on the server?", $"The server stops downloading {what} and deletes what it has of it so far.",
