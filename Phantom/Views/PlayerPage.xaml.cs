@@ -656,8 +656,7 @@ public partial class PlayerPage : ContentPage
     {
         if (_vm.TotalDuration(Media.Duration) <= TimeSpan.Zero) return;
         _scrubbing = _seeking = true;
-        _shownFrame = null; // the whole-picture preview starts empty, whatever the box above the bar had
-        SeekPreviewImage.IsVisible = false;
+        _shownFrame = null; // the whole-picture preview gets the first frame too, whatever the box above the bar had
         _scrubAt = _scrubFrom = _vm.ActualPosition(Media.Position);
         _scrubResume = Media.CurrentState is not (MediaElementState.Paused or MediaElementState.Stopped);
         Media.Pause();
@@ -851,7 +850,7 @@ public partial class PlayerPage : ContentPage
 
     /// <summary>
     /// Moving along the timeline with the remote: the position and time follow every press (held, twenty a second),
-    /// the picture at most every 120ms, for where it has got to by then. Decoding a frame for each press kept the UI
+    /// the pictures at most every 120ms, for where it has got to by then. Decoding frames for each press kept the UI
     /// thread too busy to move smoothly.
     /// </summary>
     private void SchedulePreview()
@@ -918,13 +917,14 @@ public partial class PlayerPage : ContentPage
 
     private void ShowPreviewFrame(byte[] jpeg)
     {
-        // The remote's preview is the whole picture; the box above the bar only says the time (one decode, not two).
-        SeekPreviewImage.IsVisible = !_scrubbing;
+        // The frame in the box above the bar, and with the remote over the whole picture too (shown at most every
+        // 120ms then, see SchedulePreview, so the two decodes don't hold up moving along).
+        SeekPreviewImage.IsVisible = true;
         if (_scrubbing) FullPreview.IsVisible = true;
         if (ReferenceEquals(jpeg, _shownFrame)) return; // the same picture: no need to decode it again
         _shownFrame = jpeg;
+        SeekPreviewImage.Source = ImageSource.FromStream(() => new MemoryStream(jpeg));
         if (_scrubbing) FullPreview.Source = ImageSource.FromStream(() => new MemoryStream(jpeg));
-        else SeekPreviewImage.Source = ImageSource.FromStream(() => new MemoryStream(jpeg));
     }
 
     private DateTime _dragEnded;
