@@ -22,4 +22,11 @@ public class TabView : PageBase
     /// something open on it, so it doesn't leave the app.
     /// </summary>
     public virtual bool HandleBack() => false;
+
+    /// <summary>
+    /// A TV remote's Back from the tab's content (see TvNavigation), with the tab already scrolled to its top: true
+    /// when the tab moved focus to something of its own up there (the Search tab's box), so the next Back goes on to
+    /// the nav bar.
+    /// </summary>
+    public virtual bool FocusTop() => false;
 }

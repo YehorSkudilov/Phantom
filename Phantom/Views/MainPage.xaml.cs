@@ -47,14 +47,35 @@ public partial class MainPage : ContentPage
         SizeChanged += (_, _) => FitNavBar();
         NavBar.SelectItem(_tabs[(int)AppTab.Discover]);
 #if ANDROID
-        // The remote moves between the page and the bar (see TvNavigation).
+        // The remote moves between the page and the bar, and Back takes it to the bar (see TvNavigation).
         Phantom.Droid.TvNavigation.NavBar = new(NavBar);
+        Phantom.Droid.TvNavigation.TabHandlesBack = () => _current?.Page is TabView tab && tab.HandleBack();
+        Phantom.Droid.TvNavigation.TabFocusesTop = () => _current?.Page is TabView tab && tab.FocusTop();
+        Phantom.Droid.TvNavigation.FocusSelectedTab = FocusSelectedTab;
+        Phantom.Droid.TvNavigation.ShowFirstTab = () =>
+        {
+            if (_current == _tabs[(int)AppTab.Discover]) return false;
+            NavBar.SelectItem(_tabs[(int)AppTab.Discover]);
+            return true;
+        };
 #endif
 
         _instance = new(this);
         // The offline state's "Go to Downloads", wherever it shows.
         Phantom.Controls.StateView.OpenDownloads = ShowDeviceDownloads;
     }
+
+#if ANDROID
+    /// <summary>Focuses the selected tab's item in the nav bar: the view its tap is on (see DpadFocus). True when it took focus.</summary>
+    private bool FocusSelectedTab()
+    {
+        var item = NavBar.GetVisualTreeDescendants().OfType<View>()
+            .FirstOrDefault(v => v.BindingContext is CNavItem { IsSelected: true } && v.GestureRecognizers.Count > 0);
+        if (item?.Handler is not IPlatformViewHandler handler) return false;
+        var target = handler.ContainerView ?? handler.PlatformView;
+        return target?.RequestFocus() == true;
+    }
+#endif
 
     /// <summary>Wider than this (Material's "medium" window and up), the nav bar is compact.</summary>
     private const double CompactNavBarFrom = 600;

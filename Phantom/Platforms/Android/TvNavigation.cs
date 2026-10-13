@@ -33,10 +33,27 @@ public static class TvNavigation
         activity.Window?.DecorView.ViewTreeObserver?.AddOnGlobalFocusChangeListener(new FocusWatcher());
     }
 
-    /// <summary>The arrows between the page and the bar. True when it moved focus (or scrolled) itself.</summary>
+    /// <summary>
+    /// What MainPage does for Back (set by it): the visible tab closing something open on it first (true when it
+    /// did), the tab focusing something of its own at its top (true when it did), focusing the selected tab's item in
+    /// the bar, and going back to the first tab (false when already there).
+    /// </summary>
+    public static Func<bool>? TabHandlesBack { get; set; }
+    public static Func<bool>? TabFocusesTop { get; set; }
+    public static Func<bool>? FocusSelectedTab { get; set; }
+    public static Func<bool>? ShowFirstTab { get; set; }
+
+    // Back acts when it comes up, as Android's own does: the up of a Back used here isn't passed on.
+    private static bool _backUsed;
+
+    /// <summary>
+    /// The arrows between the page and the bar, and Back. True when it moved focus (or scrolled) itself.
+    /// </summary>
     public static bool HandleKey(Activity activity, KeyEvent e)
     {
-        if (!IsTv || e.Action != KeyEventActions.Down) return false;
+        if (!IsTv) return false;
+        if (e.KeyCode == Keycode.Back) return HandleBack(activity, e);
+        if (e.Action != KeyEventActions.Down) return false;
         if (e.KeyCode is Keycode.DpadUp or Keycode.DpadDown or Keycode.DpadLeft or Keycode.DpadRight or Keycode.DpadCenter or Keycode.Enter
             && !OnScreen(activity.CurrentFocus) && activity.Window?.DecorView is ViewGroup page)
             return FocusFirst(page);
@@ -68,6 +85,53 @@ public static class TvNavigation
                 below.RequestFocus();
         });
         return true;
+    }
+
+    /// <summary>
+    /// Back on the tabs, as TV apps have it: from the page, to the nav bar (the page back at its top), so the bar
+    /// is a press away however far down the page is; from the bar, to the first tab; there, out of the app as usual.
+    /// Something open on the tab (the Search tab's filters) is closed first, and a tab with something at its top to
+    /// go to (the Search tab's box) goes there first: a long list is as far from its top as from the bar.
+    /// </summary>
+    private static bool HandleBack(Activity activity, KeyEvent e)
+    {
+        if (e.Action == KeyEventActions.Up)
+        {
+            var used = _backUsed;
+            _backUsed = false;
+            return used;
+        }
+        if (e.Action != KeyEventActions.Down || e.RepeatCount > 0) return _backUsed;
+        _backUsed = false;
+        if (BarView() is not { } bar) return false;
+
+        if (activity.CurrentFocus is { } focused && IsWithin(focused, bar))
+        {
+            _backUsed = ShowFirstTab?.Invoke() == true;
+            if (_backUsed) FocusSelectedTab?.Invoke();
+            return _backUsed;
+        }
+
+        if (TabHandlesBack?.Invoke() == true) return _backUsed = true;
+        if (activity.CurrentFocus is { } inPage) ScrollToTop(inPage);
+        _lastInPage = null; // Up from the bar starts again from the top of the page
+        if (TabFocusesTop?.Invoke() == true) return _backUsed = true;
+        return _backUsed = FocusSelectedTab?.Invoke() == true;
+    }
+
+    /// <summary>Every list or scroll view round the view back at its start (sideways rows stay where they are).</summary>
+    private static void ScrollToTop(AView view)
+    {
+        for (var parent = view.Parent; parent is AView ancestor; parent = ancestor.Parent)
+        {
+            if (!ancestor.CanScrollVertically(-1)) continue;
+            switch (ancestor)
+            {
+                case RecyclerView list: list.ScrollToPosition(0); break;
+                case NestedScrollView scroll: scroll.ScrollTo(0, 0); break;
+                case Android.Widget.ScrollView scroll: scroll.ScrollTo(0, 0); break;
+            }
+        }
     }
 
     /// <summary>
