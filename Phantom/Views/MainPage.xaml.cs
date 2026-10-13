@@ -49,6 +49,12 @@ public partial class MainPage : ContentPage
             NavBar.WidthRequest = _tabs.Count * 80 + 16;
         }
         NavBar.SelectItem(_tabs[(int)AppTab.Discover]);
+#if ANDROID
+        // A TV leaves the bar unblurred (see TvNavigation), so its tint is made near solid to keep the page from
+        // showing through it.
+        Phantom.Droid.TvNavigation.NavBar = new(NavBar);
+        if (Phantom.Droid.TvNavigation.IsTv) NavBar.TintOpacity = 0.95;
+#endif
 
         _instance = new(this);
         // The offline state's "Go to Downloads", wherever it shows.

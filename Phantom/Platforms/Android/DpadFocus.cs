@@ -61,6 +61,19 @@ public static class DpadFocus
         else if (platform.Focusable && platform is not ViewGroup) AddRing(platform);
     }
 
+    /// <summary>
+    /// A ring on whatever the remote has just focused, if it hasn't one: the views above are ringed as they're made,
+    /// but some take focus that aren't seen then (a search box's text field inside it, a picker...). Lists and scroll
+    /// views are left alone: they only hold focus on the way to what's in them. So is anything near the size of the
+    /// screen (the video): a ring round the edge of it says nothing.
+    /// </summary>
+    internal static void EnsureRing(AView view)
+    {
+        if (view is RecyclerView or Android.Widget.ScrollView or AndroidX.Core.Widget.NestedScrollView or Android.Widget.HorizontalScrollView) return;
+        if (view.RootView is { Width: > 0 } root && view.Width > root.Width * 0.9 && view.Height > root.Height * 0.9) return;
+        AddRing(view);
+    }
+
     private static void AddRing(AView view)
     {
         if (Ringed.TryGetValue(view, out _)) return;

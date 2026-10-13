@@ -22,7 +22,13 @@ public class MainActivity : MauiAppCompatActivity
 
     public override bool DispatchKeyEvent(KeyEvent? e)
     {
-        if (e is not null && KeyHandler?.Invoke(e) == true) return true;
+        if (e is not null && (KeyHandler?.Invoke(e) == true || Droid.TvNavigation.HandleKey(this, e))) return true;
         return base.DispatchKeyEvent(e);
+    }
+
+    protected override void OnCreate(Bundle? savedInstanceState)
+    {
+        base.OnCreate(savedInstanceState);
+        Droid.TvNavigation.Attach(this);
     }
 }

@@ -92,12 +92,13 @@ public class PosterConverter : IValueConverter
 {
     /// <summary>
     /// Posters are shown card-sized (about 120 wide), yet stored as TMDB's 500-wide image. On a phone the 342-wide one
-    /// is still sharp there and a fraction of the download, which adds up across a screen full of them.
+    /// is still sharp there and a fraction of the download, which adds up across a screen full of them. A TV's cards
+    /// are no bigger, and a TV box has the least memory and CPU to decode them with.
     /// </summary>
     public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
     {
         if (value is not string { Length: > 0 } url) return ImageSource.FromFile("logo_mark.png");
-        if (DeviceInfo.Idiom == DeviceIdiom.Phone)
+        if (DeviceInfo.Idiom == DeviceIdiom.Phone || DeviceInfo.Idiom == DeviceIdiom.TV)
             url = url.Replace("image.tmdb.org/t/p/w500/", "image.tmdb.org/t/p/w342/", StringComparison.Ordinal);
         return ImageSource.FromUri(new Uri(url));
     }
@@ -170,7 +171,9 @@ public class BackdropConverter : IValueConverter
     public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
     {
         if (value is not string { Length: > 0 } url) return ImageSource.FromFile("logo_mark.png");
-        if (DeviceInfo.Idiom == DeviceIdiom.Desktop || DeviceInfo.Idiom == DeviceIdiom.TV || DeviceInfo.Idiom == DeviceIdiom.Tablet)
+        // Not on a TV: the full-size original (up to 4K) is a big decode for a TV box's memory and CPU, and the banner
+        // that shows it is only half the screen there.
+        if (DeviceInfo.Idiom == DeviceIdiom.Desktop || DeviceInfo.Idiom == DeviceIdiom.Tablet)
             url = url.Replace("image.tmdb.org/t/p/w1280/", "image.tmdb.org/t/p/original/", StringComparison.Ordinal);
         return ImageSource.FromUri(new Uri(url));
     }
