@@ -57,6 +57,13 @@
                     <!-- Play across the whole width, the trailer under it -->
                     <Button Text="{Binding PlayLabel}" Command="{Binding PlayCommand}" IsEnabled="{Binding CanPlay}" FontSize="16" HeightRequest="52"
                             ImageSource="{controls:Icon play_arrow, Color=White, Size=20}" ContentLayout="Left,8" />
+                    <!-- The next episode isn't saved yet: why Play saves it first, and how far that's got -->
+                    <Border Style="{StaticResource Card}" Padding="12" IsVisible="{Binding PlayNotice, Converter={StaticResource HasValue}}">
+                        <Grid ColumnDefinitions="Auto,*" ColumnSpacing="10">
+                            <Image Source="{controls:Icon cloud_download, Color={StaticResource PrimaryLight}}" WidthRequest="22" HeightRequest="22" VerticalOptions="Start" />
+                            <Label Grid.Column="1" Text="{Binding PlayNotice}" FontSize="13" />
+                        </Grid>
+                    </Border>
                     <Button Text="Trailer" Style="{StaticResource SecondaryButton}" HeightRequest="46"
                             ImageSource="{controls:Icon smart_display, Size=20}" ContentLayout="Left,8"
                             Command="{Binding PlayTrailerCommand}" IsVisible="{Binding Show.TrailerUrl, Converter={StaticResource HasValue}}" />

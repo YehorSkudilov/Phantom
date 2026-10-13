@@ -38,7 +38,20 @@ public partial class MovieDetailViewModel(PhantomApi api, SettingsService settin
     [ObservableProperty] private bool isAdmin;
 
     public bool CanResume => Movie?.Playback is { PositionMs: > 0, Watched: false };
-    public string PlayLabel => CanResume ? $"Resume from {TimeSpanConverter.Format(TimeSpan.FromMilliseconds(Movie!.Playback.PositionMs))}" : "Play";
+    public string PlayLabel => !IsPlayable ? (IsSavingOnServer ? $"Saving {ServerProgress:0%}…" : "Save to watch")
+        : CanResume ? $"Resume from {TimeSpanConverter.Format(TimeSpan.FromMilliseconds(Movie!.Playback.PositionMs))}" : "Play";
+
+    /// <summary>
+    /// The source picked can play: it's downloaded on this device, or saved on the server. Nothing plays straight from
+    /// a torrent any more (it often couldn't start, and was slow when it did): until it's saved, Play saves it.
+    /// </summary>
+    public bool IsPlayable => SourceDownload is { IsComplete: true } || SelectedRelease?.AvailableOffline == true
+                              || ServerItem is { Status: DownloadStatus.Completed };
+
+    /// <summary>Under Play while it can't: why, and how far saving it has got.</summary>
+    public string PlayNotice => IsPlayable ? ""
+        : IsSavingOnServer ? $"Saving on the server: {ServerProgress:0%}{(ServerItem?.DownloadRate > 0 ? $" at {BytesConverter.Format(ServerItem.DownloadRate)}/s" : "")}. It plays once it's saved."
+        : "Movies play once they're saved on the server: playing straight from a torrent was too unreliable. Save to watch saves it, and Play works as soon as it's done.";
     public bool IsWatched => Movie?.Playback.Watched == true;
     public bool IsOnWatchlist => Movie?.OnWatchlist == true;
     public string WatchedLabel => IsWatched ? "Watched" : "Mark watched";
@@ -122,13 +135,32 @@ public partial class MovieDetailViewModel(PhantomApi api, SettingsService settin
     [RelayCommand]
     private Task PlayFromStart() => StartPlayback(resume: false);
 
+    /// <summary>Play on a source that isn't saved yet: saves it (or says how far that's got).</summary>
+    private async Task SaveToWatchAsync()
+    {
+        if (IsSavingOnServer)
+        {
+            await Dialog.AlertAsync("Saving on the server", PlayNotice);
+            return;
+        }
+        if (ServerItem is { Status: DownloadStatus.Paused } paused)
+        {
+            await api.ResumeServerDownloadAsync(paused.Id);
+            await server.RefreshAsync();
+            await ToastAsync("Saving on the server");
+            return;
+        }
+        await DownloadOnServer();
+    }
+
     /// <summary>
     /// Plays the source picked under Play: from this device if that's the version downloaded here, else from the
     /// server (its saved copy of that source if it has one, else streamed). The source picked at first is the best
     /// copy there is (the server lists saved ones first).
     /// </summary>
     private Task StartPlayback(bool resume) =>
-        SourceDownload is { IsComplete: true } ? Open(resume, offline: true, SelectedRelease)
+        !IsPlayable ? SaveToWatchAsync()
+        : SourceDownload is { IsComplete: true } ? Open(resume, offline: true, SelectedRelease)
         : Open(resume, offline: false, SelectedRelease);
 
     /// <summary>
@@ -144,6 +176,13 @@ public partial class MovieDetailViewModel(PhantomApi api, SettingsService settin
         OnServerChanged(this, EventArgs.Empty);
     }
 
+    private void OnPlayableChanged()
+    {
+        OnPropertyChanged(nameof(IsPlayable));
+        OnPropertyChanged(nameof(PlayLabel));
+        OnPropertyChanged(nameof(PlayNotice));
+    }
+
     private Task Open(bool resume, bool offline, ReleaseDto? release) =>
         GoToAsync($"{nameof(Views.PlayerPage)}?id={Movie!.Id}&resume={resume}"
                   + (release is { } r ? $"&releaseId={r.Id}" : "") + (offline ? "&offline=true" : ""));
@@ -151,31 +190,23 @@ public partial class MovieDetailViewModel(PhantomApi api, SettingsService settin
     private const string FromDevice = "Downloaded copy on this device";
     private const string FromServer = "Saved copy on the server";
 
-    /// <summary>More than one way to play: a downloaded or server-saved copy as well as streaming.</summary>
-    public bool HasPlayChoices => OfflineItem is { IsComplete: true } || Releases.Any(r => r.AvailableOffline);
+    /// <summary>More than one copy to play from: this device's download and the server's saved one.</summary>
+    public bool HasPlayChoices => OfflineItem is { IsComplete: true } && Releases.Any(r => r.AvailableOffline);
 
     partial void OnOfflineItemChanged(OfflineDownload? value)
     {
         OnPropertyChanged(nameof(HasPlayChoices));
         OnPropertyChanged(nameof(SourceDownload));
+        OnPlayableChanged();
     }
 
     [RelayCommand]
     private async Task ChoosePlaySource()
     {
         if (Movie is null) return;
-        var stream = Releases.FirstOrDefault(r => !r.AvailableOffline && r == SelectedRelease)
-                     ?? Releases.FirstOrDefault(r => !r.AvailableOffline) ?? SelectedRelease;
-        var streamLabel = stream?.Quality is { } q ? $"Stream it ({q})" : "Stream it";
-        var choices = new List<string>();
-        if (OfflineItem is { IsComplete: true }) choices.Add(FromDevice);
-        if (Releases.Any(r => r.AvailableOffline)) choices.Add(FromServer);
-        choices.Add(streamLabel);
-
-        var choice = await Dialog.ChooseAsync("Play from", null, [.. choices]);
-        if (choice == FromDevice) await Open(CanResume, offline: true, SelectedRelease);
+        var choice = await Dialog.ChooseAsync("Play from", null, FromDevice, FromServer);
+        if (choice == FromDevice) await Open(CanResume, offline: true, OfflineItem?.ReleaseId is { } r ? Releases.FirstOrDefault(x => x.Id == r) : SelectedRelease);
         else if (choice == FromServer) await Open(CanResume, offline: false, Releases.First(r => r.AvailableOffline));
-        else if (choice == streamLabel) await Open(CanResume, offline: false, stream);
     }
 
     /// <summary>Shows the change straight away, as the server will make it, then tells the server (undone if that fails).</summary>
@@ -327,6 +358,7 @@ public partial class MovieDetailViewModel(PhantomApi api, SettingsService settin
         OnPropertyChanged(nameof(IsSavingOnServer));
         OnPropertyChanged(nameof(ServerProgress));
         OnPropertyChanged(nameof(ServerStatusText));
+        OnPlayableChanged();
     }
 
     [RelayCommand]

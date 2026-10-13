@@ -284,6 +284,18 @@ public class ApiTests : IClassFixture<PhantomFactory>
     }
 
     [Fact]
+    public async Task Only_what_is_saved_on_the_server_plays()
+    {
+        var client = await AdminClientAsync();
+        var id = (await client.GetFromJsonAsync<PagedResult<MovieSummaryDto>>("/api/library/movies?search=Nosferatu", Json))!.Items.Single().Id;
+        // Not saved (the tests' releases have no files): no streaming from the torrent, but a reason to show.
+        var info = await client.GetAsync($"/api/stream/{id}/info");
+        Assert.Equal(HttpStatusCode.Conflict, info.StatusCode);
+        Assert.Contains("isn't saved on the server", await info.Content.ReadAsStringAsync());
+        Assert.Equal(HttpStatusCode.Conflict, (await client.GetAsync($"/api/stream/{id}/direct")).StatusCode);
+    }
+
+    [Fact]
     public async Task Each_profile_has_its_own_saved_copies()
     {
         var owner = await AdminClientAsync();

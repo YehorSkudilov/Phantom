@@ -134,35 +134,21 @@ public abstract class StreamControllerBase(
         + (preview ? "&preview=true" : "");
 
     /// <summary>
-    /// Opens the torrent's video here before ffmpeg is pointed at <see cref="Loopback"/>: when that can't be done, ffmpeg
-    /// only reports "Server returned 5XX", so the reason is found and said here instead. Null when it opened.
+    /// Playing straight from a torrent is gone: it often couldn't start, and was slow when it did. Only what's whole on
+    /// the server's disk plays (saved on the server, or a torrent that has finished); anything else is answered with
+    /// this, which the app shows as "save it first".
     /// </summary>
-    private async Task<string?> OpenTorrentAsync(StreamTarget target, CancellationToken ct)
-    {
-        try
-        {
-            var media = await engine.OpenAsync(target.Release, ct, target.Choice);
-            if (media is null) return "This release hasn't got that episode. Try another version.";
-            media.Stream?.Dispose();
-            return null;
-        }
-        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
-        {
-            return "Nobody sharing this torrent could be reached to start it. Try again later, or choose another source.";
-        }
-        catch (Exception ex) when (ex is not OperationCanceledException)
-        {
-            log.LogWarning(ex, "Couldn't open {Release} to convert it", target.Release.Name);
-            return $"The torrent couldn't be read ({ex.Message}). Try again, or choose another source.";
-        }
-    }
+    public const string NotSavedMessage = "This isn't saved on the server yet. Save it on the server, and it plays once it's saved.";
 
-    /// <summary>Starts the torrent (if needed) and tells the client how to play it.</summary>
+    private ObjectResult NotSaved() => StatusCode(StatusCodes.Status409Conflict, NotSavedMessage);
+
+    /// <summary>Tells the client how to play what's saved (see <see cref="NotSavedMessage"/>).</summary>
     [HttpGet("info")]
     public async Task<ActionResult<StreamInfoDto>> Info(int id, [FromQuery] int? releaseId, CancellationToken ct)
     {
         var target = await ResolveAsync(id, releaseId, ct);
         if (target is null) return NotFound();
+        if (CompleteFile(target) is null) return NotSaved();
         var release = target.Release;
 
         string fileName;
@@ -246,6 +232,8 @@ public abstract class StreamControllerBase(
     {
         var target = await ResolveAsync(id, releaseId, ct);
         if (target is null) return NotFound();
+        // Our own seek previews may read what's there of a torrent; nothing else plays one (see NotSavedMessage).
+        if (!preview && CompleteFile(target) is null) return NotSaved();
 
         if (Local(target) is { } local)
             return PhysicalFile(Path.GetFullPath(local), VideoFiles.ContentType(local), download ? Path.GetFileName(local) : null, enableRangeProcessing: true);
@@ -283,15 +271,15 @@ public abstract class StreamControllerBase(
             return;
         }
 
-        // ffmpeg reads either the finished file or our own range-capable direct endpoint.
-        var input = CompleteFile(target) is { } complete ? Path.GetFullPath(complete) : Loopback(id, target);
-        if (input.StartsWith("http") && await OpenTorrentAsync(target, ct) is { } problem)
+        // ffmpeg reads the finished file: nothing is converted straight from a torrent (see NotSavedMessage).
+        if (CompleteFile(target) is not { } complete)
         {
-            Response.StatusCode = StatusCodes.Status502BadGateway;
+            Response.StatusCode = StatusCodes.Status409Conflict;
             Response.ContentType = "text/plain; charset=utf-8";
-            await Response.WriteAsync(problem, CancellationToken.None);
+            await Response.WriteAsync(NotSavedMessage, CancellationToken.None);
             return;
         }
+        var input = Path.GetFullPath(complete);
 
         Response.ContentType = "video/mp4";
         try
@@ -332,10 +320,9 @@ public abstract class StreamControllerBase(
         {
             var target = await ResolveAsync(id, releaseId, ct);
             if (target is null) return NotFound();
-            // A whole file on the server's disk is read straight from there, not through the torrent.
-            var input = CompleteFile(target) is { } complete ? Path.GetFullPath(complete) : Loopback(id, target);
-            if (input.StartsWith("http") && await OpenTorrentAsync(target, ct) is { } problem)
-                return StatusCode(StatusCodes.Status502BadGateway, problem);
+            // Only a whole file on the server's disk is converted (see NotSavedMessage).
+            if (CompleteFile(target) is not { } complete) return NotSaved();
+            var input = Path.GetFullPath(complete);
             var codecs = remux ? await transcoder.ProbeAsync(input, ct) : null;
             running = hls.Start(session, owner, input, start, maxKbps, maxHeight, codecs);
         }

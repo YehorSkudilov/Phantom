@@ -341,6 +341,39 @@ public class DownloadManager
         {
             // Paused or deleted.
         }
+        catch (Exception ex) when (ex is ApiException { Status: System.Net.HttpStatusCode.Conflict }
+                                       or HttpRequestException { StatusCode: System.Net.HttpStatusCode.Conflict })
+        {
+            // Not saved on the server yet: the device copies a saved one (nothing comes straight from a torrent any
+            // more). Its save on the server is asked for again (it may have been removed) and this waits for it.
+            try
+            {
+                await _api.QueueServerDownloadAsync(item.MovieId, item.ReleaseId, item.EpisodeId);
+            }
+            catch (Exception)
+            {
+                // Asked again next time round.
+            }
+            MainThread.BeginInvokeOnMainThread(() =>
+            {
+                item.Status = OfflineStatus.Queued;
+                item.Error = "Waiting for the server to save it…";
+                item.BytesPerSecond = 0;
+            });
+            lock (_queueLock)
+            {
+                _running.Remove(item);
+                _waiting.Add(item);
+            }
+            cts.Dispose();
+            await SaveAsync();
+            _ = Task.Delay(TimeSpan.FromSeconds(30)).ContinueWith(_ =>
+            {
+                lock (_queueLock) _waiting.Remove(item);
+                Kick();
+            }, TaskScheduler.Default);
+            return;
+        }
         catch (Exception ex) when (ex is HttpRequestException or IOException or ApiException or TimeoutException || NetworkState.IsConnectionError(ex))
         {
             int attempt;
