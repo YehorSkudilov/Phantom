@@ -285,9 +285,15 @@ public abstract class StreamControllerBase(
             // Said as an error, with ffmpeg's reason: the player (and the app's error message) can show why.
             Response.StatusCode = StatusCodes.Status502BadGateway;
             Response.ContentType = "text/plain; charset=utf-8";
-            await Response.WriteAsync($"The server couldn't convert this video: {ex.Message}", CancellationToken.None);
+            await Response.WriteAsync(ConversionFailure(ex), CancellationToken.None);
         }
     }
+
+    /// <summary>ffmpeg's reason, said so it can be acted on: a file it can't open at all is a fake or damaged release.</summary>
+    private static string ConversionFailure(TranscodeFailedException ex) =>
+        ex.Message.Contains("Invalid data found", StringComparison.OrdinalIgnoreCase) || ex.Message.Contains("moov atom not found", StringComparison.OrdinalIgnoreCase)
+            ? $"{Transcoder.UnreadableMessage} ({ex.Message})"
+            : $"The server couldn't convert this video: {ex.Message}";
 
     /// <summary>
     /// The same conversion as <see cref="Transcode"/> as HLS, for Apple's player (see <see cref="HlsSessions"/>). The
@@ -324,7 +330,7 @@ public abstract class StreamControllerBase(
         }
         catch (TranscodeFailedException ex)
         {
-            return StatusCode(StatusCodes.Status502BadGateway, $"The server couldn't convert this video: {ex.Message}");
+            return StatusCode(StatusCodes.Status502BadGateway, ConversionFailure(ex));
         }
         // The player resolves each segment next to the playlist but doesn't carry its query along: the token goes on each.
         var auth = $"?access_token={Uri.EscapeDataString(Token())}";

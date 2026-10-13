@@ -141,6 +141,59 @@ public class Transcoder(IOptions<PhantomOptions> options, ILogger<Transcoder> lo
         }
     }
 
+    /// <summary>
+    /// Said when a saved file can't be read as a video: a fake release (an archive or junk named as a film) or a
+    /// damaged one. Nothing on the server can help it; another version can.
+    /// </summary>
+    public const string UnreadableMessage =
+        "The saved file isn't a video the server can read: this release is probably fake or damaged. Delete it in Downloads and save another version.";
+
+    /// <summary>
+    /// Why ffprobe can't read <paramref name="path"/> as a video, or null when it can (or when there's no ffprobe to
+    /// ask, or it takes too long: only a clear answer counts).
+    /// </summary>
+    public async Task<string?> UnreadableReasonAsync(string path, CancellationToken ct)
+    {
+        var ffmpeg = options.Value.FfmpegPath;
+        var name = Path.GetFileName(ffmpeg).Replace("ffmpeg", "ffprobe", StringComparison.OrdinalIgnoreCase);
+        var dir = Path.GetDirectoryName(ffmpeg);
+        var psi = new ProcessStartInfo(string.IsNullOrEmpty(dir) ? name : Path.Combine(dir, name))
+        {
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+        };
+        foreach (var a in new[] { "-v", "error", "-show_entries", "stream=codec_type", "-of", "csv=p=0", path })
+            psi.ArgumentList.Add(a);
+        try
+        {
+            if (new FileInfo(path) is { Exists: true, Length: 0 }) return "the file is empty";
+            using var process = Process.Start(psi);
+            if (process is null) return null;
+            var error = process.StandardError.ReadToEndAsync(CancellationToken.None);
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            timeout.CancelAfter(TimeSpan.FromSeconds(30));
+            try
+            {
+                var output = await process.StandardOutput.ReadToEndAsync(timeout.Token);
+                await process.WaitForExitAsync(timeout.Token);
+                if (process.ExitCode != 0)
+                    return (await error).Trim().Split('\n').LastOrDefault(l => l.Trim().Length > 0)?.Trim() ?? $"ffprobe exited with {process.ExitCode}";
+                return output.Split('\n').Any(l => l.Trim() == "video") ? null : "there's no video in it";
+            }
+            finally
+            {
+                if (!process.HasExited) process.Kill(entireProcessTree: true);
+            }
+        }
+        catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException or OperationCanceledException or IOException)
+        {
+            if (ct.IsCancellationRequested) throw;
+            log.LogDebug(ex, "ffprobe couldn't check {Path}", path);
+            return null;
+        }
+    }
+
     /// <summary>Input, H.264 video and stereo AAC: what every player can decode.</summary>
     private static List<string> EncodeArguments(string input, double startSeconds, int? maxVideoKbps, int? maxHeight)
     {

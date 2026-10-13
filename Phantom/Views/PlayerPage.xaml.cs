@@ -52,7 +52,9 @@ public partial class PlayerPage : ContentPage
             Guard(async () =>
             {
                 // A failed conversion: the player only knows it got no video; the server knows why.
-                if (await _vm.ConversionErrorAsync() is { } reason) message += $"\n\nServer: {reason}";
+                // A file the server can't read at all says so itself, and what to do: that's the message then.
+                if (await _vm.ConversionErrorAsync() is { } reason)
+                    message = reason.Contains("probably fake or damaged") ? reason : message + $"\n\nServer: {reason}";
                 await Dialog.ErrorAsync(message, "Can't play this");
                 await Shell.Current.GoToAsync("..");
             });

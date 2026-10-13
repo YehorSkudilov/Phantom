@@ -96,8 +96,18 @@ public class ServerDownloadService(IServiceScopeFactory scopes, TorrentEngine en
             if (stats.Complete)
             {
                 var moreToCome = active.Any(o => o != d && o.ReleaseId == d.ReleaseId && o.Status != DownloadStatus.Completed);
-                release.LocalFilePath = await engine.FinalizeDownloadAsync(release, settings.SeedAfterDownload, Choice(d), moreToCome)
-                                        ?? release.LocalFilePath;
+                var saved = await engine.FinalizeDownloadAsync(release, settings.SeedAfterDownload, Choice(d), moreToCome);
+                // A fake or damaged release (an archive, or junk named as a film) would only fail when played: it's
+                // said here instead, and isn't kept as something to play.
+                if (saved is not null && scope.ServiceProvider.GetService<Transcoder>() is { IsAvailable: true } transcoder
+                    && await transcoder.UnreadableReasonAsync(saved, ct) is { } reason)
+                {
+                    log.LogWarning("Server download {Name} isn't a readable video: {Reason}", release.Name, reason);
+                    d.Status = DownloadStatus.Failed;
+                    d.Error = Transcoder.UnreadableMessage;
+                    continue;
+                }
+                release.LocalFilePath = saved ?? release.LocalFilePath;
                 d.Status = DownloadStatus.Completed;
                 d.Progress = 100;
                 d.CompletedAt = DateTime.UtcNow;
