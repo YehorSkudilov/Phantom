@@ -103,22 +103,49 @@ public static class TvNavigation
         var scroller = TabScroller();
         var density = scroller?.Resources?.DisplayMetrics?.Density ?? 2;
         var show = scroller is not null && Offset(scroller) > TopButtonFromDp * density;
-        if (button.IsVisible == show) return;
+        if (_topShown == show) return;
+        _topShown = show;
         // Leaving with focus on it: back to the bar first, so focus isn't left on nothing.
         if (!show && button.Handler?.PlatformView is AView { HasFocus: true }) FocusSelectedTab?.Invoke();
-        button.IsVisible = show;
+        _ = FadeAsync(button, show);
     }
 
-    /// <summary>Scrolls the tab's list back to its start.</summary>
+    private static bool _topShown;
+
+    /// <summary>The button fades and grows in, and fades and shrinks out, rather than popping.</summary>
+    private static async Task FadeAsync(View button, bool show)
+    {
+        button.AbortAnimation("FadeTo");
+        button.AbortAnimation("ScaleTo");
+        if (show)
+        {
+            button.Opacity = 0;
+            button.Scale = 0.8;
+            button.IsVisible = true;
+            await Task.WhenAll(button.FadeToAsync(1, 180, Easing.CubicOut), button.ScaleToAsync(1, 180, Easing.CubicOut));
+        }
+        else
+        {
+            await Task.WhenAll(button.FadeToAsync(0, 150, Easing.CubicIn), button.ScaleToAsync(0.8, 150, Easing.CubicIn));
+            if (!_topShown) button.IsVisible = false; // unless it came back meanwhile
+        }
+    }
+
+    /// <summary>
+    /// Scrolls the tab's list back to its start, gliding there. A long way down it jumps to near the top first: a
+    /// glide over hundreds of rows would take seconds (and lay out every one of them on the way).
+    /// </summary>
     public static void ScrollTabToTop()
     {
         switch (TabScroller())
         {
-            case RecyclerView list: list.ScrollToPosition(0); break;
-            case NestedScrollView scroll: scroll.ScrollTo(0, 0); break;
-            case Android.Widget.ScrollView scroll: scroll.ScrollTo(0, 0); break;
+            case RecyclerView list:
+                if (list.GetLayoutManager() is LinearLayoutManager layout && layout.FindFirstVisibleItemPosition() > 12) list.ScrollToPosition(12);
+                list.SmoothScrollToPosition(0);
+                break;
+            case NestedScrollView scroll: scroll.SmoothScrollTo(0, 0); break;
+            case Android.Widget.ScrollView scroll: scroll.SmoothScrollTo(0, 0); break;
         }
-        UpdateTopButton();
     }
 
     private static int Offset(AView scroller) => scroller is RecyclerView list ? list.ComputeVerticalScrollOffset() : scroller.ScrollY;
@@ -169,9 +196,11 @@ public static class TvNavigation
     public static bool HandleKey(Activity activity, KeyEvent e)
     {
         if (!IsTv) return false;
+        if (e.Action == KeyEventActions.Up && SwallowUps.Remove(e.KeyCode)) return true;
+        if (e.Action == KeyEventActions.Down && KeepInTrap(activity, e)) return true;
+        if (HandleSlider(activity, e)) return true;
         if (e.KeyCode == Keycode.Back) return HandleBack(activity, e);
         if (e.Action != KeyEventActions.Down) return false;
-        if (KeepInTrap(activity, e)) return true;
         if (e.KeyCode is Keycode.DpadUp or Keycode.DpadDown or Keycode.DpadLeft or Keycode.DpadRight or Keycode.DpadCenter or Keycode.Enter
             && (!OnScreen(activity.CurrentFocus) || IsContainer(activity.CurrentFocus!)) && activity.Window?.DecorView is ViewGroup page)
             return FocusFirst(page);
@@ -204,6 +233,47 @@ public static class TvNavigation
                 below.RequestFocus();
         });
         return true;
+    }
+
+    // Keys whose press was used here: their release is too, so it doesn't reach the focused view (Back's would close the page).
+    private static readonly HashSet<Keycode> SwallowUps = [];
+
+    private static bool Used(KeyEvent e)
+    {
+        SwallowUps.Add(e.KeyCode);
+        return true;
+    }
+
+    private static bool IsOk(Keycode key) => key is Keycode.DpadCenter or Keycode.Enter or Keycode.NumpadEnter or Keycode.ButtonA;
+
+    /// <summary>
+    /// Sliders, everywhere: focused, the arrows go past them like anything else, rather than moving them. OK starts
+    /// adjusting one (its ring turns the accent colour; see DpadFocus.SetAdjusting): then left and right move it, up and
+    /// down stay put, and Back (or OK) stop. The player's timeline does the same with its own preview (PlayerPage.Scrub).
+    /// </summary>
+    private static bool HandleSlider(Activity activity, KeyEvent e)
+    {
+        if (e.Action != KeyEventActions.Down || activity.CurrentFocus is not Android.Widget.AbsSeekBar slider) return false;
+        var left = e.KeyCode == Keycode.DpadLeft;
+        if (DpadFocus.IsAdjusting(slider))
+        {
+            if (e.KeyCode == Keycode.Back || IsOk(e.KeyCode))
+            {
+                DpadFocus.SetAdjusting(null);
+                return Used(e);
+            }
+            return e.KeyCode is Keycode.DpadUp or Keycode.DpadDown && Used(e);
+        }
+        if (IsOk(e.KeyCode))
+        {
+            DpadFocus.SetAdjusting(slider);
+            return Used(e);
+        }
+        if (e.KeyCode is not (Keycode.DpadLeft or Keycode.DpadRight)) return false;
+        var next = slider.FocusSearch(left ? FocusSearchDirection.Left : FocusSearchDirection.Right);
+        if (next is not null && next != slider && !(BarView() is { } bar && InBar(next, bar))) next.RequestFocus();
+        else SideToBar(activity, left);
+        return Used(e);
     }
 
     /// <summary>

@@ -542,19 +542,25 @@ public partial class PlayerPage : ContentPage
     {
         var ready = !Buffering.IsVisible;
         var hidden = !Controls.IsVisible;
+        // Another slider being adjusted (the volume): its keys are its own (see TvNavigation.HandleSlider).
+        if (!_scrubbing && Platform.CurrentActivity?.CurrentFocus is Android.Widget.AbsSeekBar adjusting && Phantom.Droid.DpadFocus.IsAdjusting(adjusting))
+            return false;
+        var ok = key is Android.Views.Keycode.DpadCenter or Android.Views.Keycode.Enter or Android.Views.Keycode.NumpadEnter or Android.Views.Keycode.ButtonA;
         switch (key)
         {
-            // Moving along the timeline (see Scrub): OK goes there, Back goes back to where it was, up or down go there
-            // and on to the other controls.
-            case Android.Views.Keycode.DpadCenter or Android.Views.Keycode.Enter or Android.Views.Keycode.NumpadEnter or Android.Views.Keycode.ButtonA when _scrubbing:
+            // The timeline, as every slider on a TV: OK starts moving along it (see Scrub); then OK goes there, Back goes
+            // back to where it was, and up and down stay put.
+            case var _ when ok && _scrubbing:
                 EndScrub(go: true);
                 return true;
             case Android.Views.Keycode.Back when _scrubbing:
                 EndScrub(go: false);
                 return true;
             case Android.Views.Keycode.DpadUp or Android.Views.Keycode.DpadDown when _scrubbing:
-                EndScrub(go: true);
-                return false;
+                return true;
+            case var _ when ok && ready && !hidden && IsFocused(Seek):
+                StartScrub();
+                return true;
             case Android.Views.Keycode.MediaPlayPause:
                 OnPlayPause(null, EventArgs.Empty);
                 return true;
@@ -578,7 +584,7 @@ public partial class PlayerPage : ContentPage
             case Android.Views.Keycode.Back when !hidden && ready:
                 Controls.IsVisible = false;
                 return true;
-            case Android.Views.Keycode.DpadLeft or Android.Views.Keycode.DpadRight when ready && !hidden && IsFocused(Seek):
+            case Android.Views.Keycode.DpadLeft or Android.Views.Keycode.DpadRight when _scrubbing:
                 Scrub(key == Android.Views.Keycode.DpadLeft ? -1 : 1, repeat);
                 return true;
             case Android.Views.Keycode.DpadLeft or Android.Views.Keycode.DpadRight when ready && hidden:
@@ -602,21 +608,25 @@ public partial class PlayerPage : ContentPage
     // ---------- Moving along the timeline with the remote ----------
 
     /// <summary>
-    /// Left or right on the timeline: the movie pauses and the position moves along it, showing the frame there (over
+    /// Left or right on the timeline, once OK has started moving along it (StartScrub): the movie is paused and the position moves along it, showing the frame there (over
     /// the whole picture as well as above the bar); held, it moves faster the longer it's held. Nothing is loaded until
     /// OK (see EndScrub). A slider moved by its keys never says it's being dragged, so it's done here.
     /// </summary>
+    private void StartScrub()
+    {
+        if (_vm.TotalDuration(Media.Duration) <= TimeSpan.Zero) return;
+        _scrubbing = _seeking = true;
+        _scrubAt = _scrubFrom = _vm.ActualPosition(Media.Position);
+        _scrubResume = Media.CurrentState is not (MediaElementState.Paused or MediaElementState.Stopped);
+        Media.Pause();
+        if (Seek.Handler?.PlatformView is Android.Views.View seek) Phantom.Droid.DpadFocus.SetAdjusting(seek);
+        ShowControls();
+    }
+
     private void Scrub(int direction, int repeat)
     {
         var total = _vm.TotalDuration(Media.Duration);
         if (total <= TimeSpan.Zero) return;
-        if (!_scrubbing)
-        {
-            _scrubbing = _seeking = true;
-            _scrubAt = _scrubFrom = _vm.ActualPosition(Media.Position);
-            _scrubResume = Media.CurrentState is not (MediaElementState.Paused or MediaElementState.Stopped);
-            Media.Pause();
-        }
         var step = TimeSpan.FromSeconds(repeat switch { < 4 => 10, < 12 => 30, < 24 => 60, _ => 180 });
         var at = _scrubAt + direction * step;
         _scrubAt = at < TimeSpan.Zero ? TimeSpan.Zero : at > total - TimeSpan.FromSeconds(1) ? total - TimeSpan.FromSeconds(1) : at;
@@ -630,6 +640,7 @@ public partial class PlayerPage : ContentPage
     {
         if (!_scrubbing) return;
         _scrubbing = _seeking = false;
+        Phantom.Droid.DpadFocus.SetAdjusting(null);
         _preview?.Cancel();
         _previewUrl = null;
         SeekPreview.IsVisible = false;

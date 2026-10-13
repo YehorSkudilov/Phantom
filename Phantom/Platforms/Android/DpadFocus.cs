@@ -73,6 +73,22 @@ public static class DpadFocus
         AddRing(view);
     }
 
+    private static WeakReference<AView>? _adjusting;
+
+    /// <summary>
+    /// The slider being adjusted with the remote (see TvNavigation.HandleSlider), or null: its ring turns the app's
+    /// accent colour, so it's clear the arrows now move it rather than the focus.
+    /// </summary>
+    public static void SetAdjusting(AView? slider)
+    {
+        var before = _adjusting?.TryGetTarget(out var was) == true ? was : null;
+        _adjusting = slider is null ? null : new(slider);
+        before?.Invalidate();
+        slider?.Invalidate();
+    }
+
+    public static bool IsAdjusting(AView view) => _adjusting?.TryGetTarget(out var slider) == true && slider == view;
+
     /// <summary>
     /// Whether the view's foreground has the ring. Looked at each time rather than remembered: a list reuses its rows,
     /// and MAUI can give a reused row its own foreground again, which took the ring with it (the remote's ring then
@@ -168,6 +184,8 @@ public static class DpadFocus
     /// </summary>
     private sealed class FocusRing : Drawable
     {
+        private static readonly Android.Graphics.Color Accent = Android.Graphics.Color.ParseColor("#A78BFA");
+
         private readonly Paint _paint = new(PaintFlags.AntiAlias);
         private readonly WeakReference<AView> _view;
         private readonly float _radius;
@@ -196,7 +214,8 @@ public static class DpadFocus
 
         public override void Draw(Canvas canvas)
         {
-            if (!_focused || _view.TryGetTarget(out var view) && view.IsInTouchMode) return;
+            if (!_focused || !_view.TryGetTarget(out var view) || view.IsInTouchMode) return;
+            _paint.Color = IsAdjusting(view) ? Accent : Android.Graphics.Color.White;
             var bounds = Bounds;
             var inset = _paint.StrokeWidth / 2;
             var rect = new RectF(bounds.Left + inset, bounds.Top + inset, bounds.Right - inset, bounds.Bottom - inset);

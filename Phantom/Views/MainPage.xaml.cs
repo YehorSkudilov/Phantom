@@ -90,11 +90,15 @@ public partial class MainPage : ContentPage
         NavBar.WidthRequest = compact ? _tabs.Count * 80 + 16 : -1;
     }
 
-    private void OnTopClicked(object? sender, EventArgs e)
+    private async void OnTopClicked(object? sender, EventArgs e)
     {
 #if ANDROID
         Phantom.Droid.TvNavigation.ScrollTabToTop();
         FocusSelectedTab();
+        // A little press: in, and back out.
+        TopButton.AbortAnimation("ScaleTo");
+        await TopButton.ScaleToAsync(0.85, 80, Easing.CubicOut);
+        await TopButton.ScaleToAsync(1, 140, Easing.CubicOut);
 #endif
     }
 
