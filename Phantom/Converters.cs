@@ -1,4 +1,5 @@
 using System.Globalization;
+using Phantom.Shared;
 
 namespace Phantom;
 
@@ -123,11 +124,21 @@ public class InitialConverter : IValueConverter
     public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture) => throw new NotSupportedException();
 }
 
-/// <summary>A profile's picture (a Material icon name, see ProfileAvatars), drawn in white; null for none.</summary>
+/// <summary>
+/// A profile's picture (see ProfileAvatars): an emoji, in its own colours, or one of the first set's Material icons in
+/// white; null for none.
+/// </summary>
 public class AvatarIconConverter : IValueConverter
 {
-    public object? Convert(object? value, Type targetType, object? parameter, CultureInfo culture) =>
-        value is string { Length: > 0 } glyph ? Controls.IconExtension.Create(glyph, Colors.White, size: 64) : null;
+    public object? Convert(object? value, Type targetType, object? parameter, CultureInfo culture) => Create(value as string);
+
+    public static ImageSource? Create(string? avatar, double size = 64) => avatar switch
+    {
+        null or "" => null,
+        _ when ProfileAvatars.Legacy.Contains(avatar) => Controls.IconExtension.Create(avatar, Colors.White, size: size),
+        // The system's font: its emoji are drawn in colour.
+        _ => new FontImageSource { Glyph = avatar, Size = size, Color = Colors.White },
+    };
 
     public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture) => throw new NotSupportedException();
 }

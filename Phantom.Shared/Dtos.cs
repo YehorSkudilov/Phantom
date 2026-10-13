@@ -30,16 +30,28 @@ public record CreateProfileRequest(string Username, string? Pin, string? MaxCont
 /// </summary>
 public record UpdateProfileRequest(string? Username, string? Avatar);
 
-/// <summary>The pictures a profile can have: Material icon names, drawn on its colour.</summary>
+/// <summary>The pictures a profile can have, drawn on its colour.</summary>
 public static class ProfileAvatars
 {
+    /// <summary>The ones to pick from: emoji, in colour.</summary>
     public static readonly IReadOnlyList<string> All =
+    [
+        "👽", "🤖", "👻", "👾", "🎃", "🦄", "🐲", "🦖",
+        "🐱", "🐶", "🦊", "🐼", "🐨", "🦁", "🐯", "🐸",
+        "🐵", "🐙", "🦋", "🐧", "🦉", "🐢", "🐝", "🦈",
+        "🚀", "📺", "🎮", "🎸", "🍿", "🍕", "🍩", "🌈",
+    ];
+
+    /// <summary>The first set, Material icon names (drawn in white): still shown and kept for profiles that have one.</summary>
+    public static readonly IReadOnlyList<string> Legacy =
     [
         "face", "sentiment_very_satisfied", "pets", "cruelty_free", "emoji_nature",
         "local_florist", "rocket_launch", "sports_esports", "sports_soccer", "music_note",
         "headphones", "star", "favorite", "bolt", "local_pizza",
         "icecream", "directions_car", "flight", "wb_sunny", "theater_comedy",
     ];
+
+    public static bool IsKnown(string avatar) => All.Contains(avatar) || Legacy.Contains(avatar);
 }
 
 public record SwitchProfileRequest(int ProfileId, string? Pin);

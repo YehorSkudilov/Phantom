@@ -183,6 +183,8 @@ public class ApiTests : IClassFixture<PhantomFactory>
         var me = (await owner.GetFromJsonAsync<List<UserDto>>("/api/profiles", Json))!.Single(p => !p.IsManaged);
         Assert.Equal(HttpStatusCode.BadRequest, (await owner.PutAsJsonAsync($"/api/profiles/{me.Id}", new UpdateProfileRequest(me.Username + "z", null), Json)).StatusCode);
         Assert.Equal(HttpStatusCode.OK, (await owner.PutAsJsonAsync($"/api/profiles/{me.Id}", new UpdateProfileRequest(null, "star"), Json)).StatusCode);
+        Assert.Equal("👽", (await (await owner.PutAsJsonAsync($"/api/profiles/{profile.Id}", new UpdateProfileRequest(null, "👽"), Json))
+            .Content.ReadFromJsonAsync<UserDto>(Json))!.Avatar);
     }
 
     [Fact]

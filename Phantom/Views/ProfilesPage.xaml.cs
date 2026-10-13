@@ -36,15 +36,24 @@ public partial class ProfilesPage : ContentPage
         {
             var button = new ImageButton
             {
-                Source = Controls.IconExtension.Create(avatar ?? "text_fields", Colors.White, size: 28),
-                WidthRequest = 52, HeightRequest = 52, CornerRadius = 14, Padding = 12, Margin = 4,
+                Source = avatar is null ? Controls.IconExtension.Create("text_fields", Colors.White, size: 28) : AvatarIconConverter.Create(avatar, 40),
+                WidthRequest = 52, HeightRequest = 52, CornerRadius = 14, Padding = 10, Margin = 4,
                 BackgroundColor = (Color)Application.Current!.Resources["SurfaceRaised"],
                 Command = _vm.PickAvatarCommand, CommandParameter = avatar,
             };
-            SemanticProperties.SetDescription(button, avatar is null ? "The name's initial" : avatar.Replace('_', ' '));
+            SemanticProperties.SetDescription(button, avatar ?? "The name's initial");
             AvatarGrid.Children.Add(button);
             _avatarButtons.Add((avatar, button));
         }
+        // As many to a row as fit, each widened to fill it: a fixed size left an empty strip down the right.
+        AvatarGrid.SizeChanged += (_, _) =>
+        {
+            if (AvatarGrid.Width <= 0) return;
+            var columns = Math.Max(1, (int)(AvatarGrid.Width / 60));
+            var size = Math.Floor(AvatarGrid.Width / columns) - 8;
+            foreach (var (_, button) in _avatarButtons)
+                if (Math.Abs(button.WidthRequest - size) > 0.5) button.WidthRequest = button.HeightRequest = size;
+        };
     }
 
     /// <summary>The picture picked stands out in the profile's colour.</summary>

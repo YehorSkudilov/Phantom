@@ -285,6 +285,12 @@ public partial class PlayerViewModel(PhantomApi api, SettingsService settings, D
         set => settings.PlayerVolume = value;
     }
 
+    public double? Brightness
+    {
+        get => settings.PlayerBrightness;
+        set => settings.PlayerBrightness = value;
+    }
+
     public int SkipForward => settings.SkipForwardSeconds;
     public int SkipBack => settings.SkipBackSeconds;
 

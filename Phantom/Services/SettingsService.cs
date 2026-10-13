@@ -73,6 +73,13 @@ public class SettingsService
         set => _prefs.Set(nameof(PlayerVolume), Math.Clamp(value, 0, 1));
     }
 
+    /// <summary>The player's screen brightness (0-1), kept between movies; null until it's been set (the system's).</summary>
+    public double? PlayerBrightness
+    {
+        get => _prefs.Get(nameof(PlayerBrightness), -1.0) is var b and >= 0 ? Math.Clamp(b, 0, 1) : null;
+        set => _prefs.Set(nameof(PlayerBrightness), value is { } b ? Math.Clamp(b, 0, 1) : -1.0);
+    }
+
     /// <summary>Kept by name (not position) so new choices like Auto don't shift what people picked.</summary>
     public QualityOption StreamingQuality
     {

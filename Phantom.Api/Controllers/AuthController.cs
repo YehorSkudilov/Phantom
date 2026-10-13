@@ -128,7 +128,7 @@ public class ProfilesController(PhantomDbContext db, TokenService tokens, Passwo
             Username = name,
             ParentUserId = me.Id,
             AvatarColor = req.AvatarColor ?? "#3FA9F5",
-            Avatar = req.Avatar is { } avatar && ProfileAvatars.All.Contains(avatar) ? avatar : null,
+            Avatar = req.Avatar is { } avatar && ProfileAvatars.IsKnown(avatar) ? avatar : null,
             MaxContentRating = string.IsNullOrWhiteSpace(req.MaxContentRating) ? null : req.MaxContentRating,
         };
         if (!string.IsNullOrWhiteSpace(req.Pin)) profile.PinHash = passwords.Hash(profile, req.Pin);
@@ -175,7 +175,7 @@ public class ProfilesController(PhantomDbContext db, TokenService tokens, Passwo
         }
         if (req.Avatar is { } avatar)
         {
-            if (avatar.Length > 0 && !ProfileAvatars.All.Contains(avatar)) return BadRequest("Unknown picture.");
+            if (avatar.Length > 0 && !ProfileAvatars.IsKnown(avatar)) return BadRequest("Unknown picture.");
             profile.Avatar = avatar.Length > 0 ? avatar : null;
         }
         await db.SaveChangesAsync(ct);

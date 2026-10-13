@@ -69,9 +69,11 @@ public partial class PlayerPage : ContentPage
         // Loading from the moment the page opens: finding the torrent can take a while before there's a source at all.
         SetLoading(true);
 
-        VolumeSlider.Value = _vm.Volume;
-        Media.Volume = _vm.Volume;
+        // The device's own media volume where the app can set it (Android), else the player's (see DeviceControls).
+        Media.Volume = DeviceControls.HasDeviceVolume ? 1 : _vm.Volume;
+        VolumeSlider.Value = DeviceControls.HasDeviceVolume ? DeviceControls.GetVolume() : _vm.Volume;
         UpdateMuteIcon();
+        BrightnessIcon.IsVisible = BrightnessSlider.IsVisible = DeviceControls.HasBrightness;
         FullscreenButton.IsVisible = DeviceInfo.Platform == DevicePlatform.WinUI;
 #if IOS || MACCATALYST
         // Apple's slider only moves by dragging its thumb; a tap on the bar jumps there, as it does on Android and Windows.
@@ -85,8 +87,12 @@ public partial class PlayerPage : ContentPage
 
     private void OnVolumeChanged(object? sender, ValueChangedEventArgs e)
     {
-        Media.Volume = e.NewValue;
-        _vm.Volume = e.NewValue;
+        if (DeviceControls.HasDeviceVolume) DeviceControls.SetVolume(e.NewValue);
+        else
+        {
+            Media.Volume = e.NewValue;
+            _vm.Volume = e.NewValue;
+        }
         if (e.NewValue > 0 && Media.ShouldMute) Media.ShouldMute = false;
         UpdateMuteIcon();
     }
@@ -103,7 +109,27 @@ public partial class PlayerPage : ContentPage
     private void ChangeVolume(double by) => VolumeSlider.Value = Math.Clamp(VolumeSlider.Value + by, 0, 1);
 
     private void UpdateMuteIcon() => MuteButton.Source = IconExtension.Create(
-        Media.ShouldMute || Media.Volume == 0 ? "volume_off" : Media.Volume < 0.5 ? "volume_down" : "volume_up", Colors.White);
+        Media.ShouldMute || VolumeSlider.Value == 0 ? "volume_off" : VolumeSlider.Value < 0.5 ? "volume_down" : "volume_up", Colors.White);
+
+    // The window's brightness (the system's comes back when the player closes), kept for next time.
+    private void OnBrightnessChanged(object? sender, ValueChangedEventArgs e)
+    {
+        if (!DeviceControls.HasBrightness || !_brightnessReady) return;
+        DeviceControls.SetBrightness(e.NewValue);
+        _vm.Brightness = e.NewValue;
+    }
+
+    private bool _brightnessReady;
+
+    /// <summary>The brightness picked last time (or the system's on the slider), each time the player shows.</summary>
+    private void ApplyBrightness()
+    {
+        if (!DeviceControls.HasBrightness) return;
+        _brightnessReady = false;
+        if (_vm.Brightness is { } kept) DeviceControls.SetBrightness(kept);
+        BrightnessSlider.Value = _vm.Brightness ?? DeviceControls.GetBrightness();
+        _brightnessReady = true;
+    }
 
     private void OnAspect(object? sender, EventArgs e)
     {
@@ -441,6 +467,8 @@ public partial class PlayerPage : ContentPage
     /// </summary>
     private void ShowControls()
     {
+        // The device's volume keys change it too: the slider shows where it is now.
+        if (DeviceControls.HasDeviceVolume && !Controls.IsVisible) VolumeSlider.Value = DeviceControls.GetVolume();
         Controls.IsVisible = true;
         _hideTimer?.Stop();
         _shownAt = DateTime.UtcNow;
@@ -709,6 +737,7 @@ public partial class PlayerPage : ContentPage
     {
         base.OnAppearing();
         SetSystemBarsHidden(true);
+        ApplyBrightness();
 #if WINDOWS
         HookKeys();
 #elif ANDROID
@@ -966,6 +995,7 @@ public partial class PlayerPage : ContentPage
     protected override void OnDisappearing()
     {
         base.OnDisappearing();
+        DeviceControls.SetBrightness(null); // the system's again outside the player
         _hideTimer?.Stop();
         _skipDelay?.Cancel();
         _scrubbing = false;
