@@ -15,12 +15,15 @@ public partial class HomePage : TabView
     }
 
     /// <summary>
-    /// Loads the first time Home is shown (or again if that didn't get anything, e.g. offline). After that it's only
-    /// reloaded by pulling down: reloading on every return (from a movie, the player...) kept redrawing it.
+    /// Loads the first time Home is shown (or again if that didn't get anything, e.g. offline), showing the rows kept
+    /// from last time meanwhile. After that it's only reloaded by pulling down: reloading on every return (from a
+    /// movie, the player...) kept redrawing it.
     /// </summary>
     public override void Load()
     {
-        if (_vm.Hubs.Count == 0 && !_vm.IsBusy) _vm.RefreshCommand.Execute(null);
+        if (_vm.IsBusy || _vm.Fetched && _vm.Hubs.Count > 0) return;
+        _vm.ShowCached();
+        _vm.RefreshCommand.Execute(null);
     }
 
     // The featured banner keeps about a 16:9 backdrop's shape as the window widens, within reason, rather than a fixed
