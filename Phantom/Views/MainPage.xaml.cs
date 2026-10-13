@@ -52,6 +52,8 @@ public partial class MainPage : ContentPage
         Phantom.Droid.TvNavigation.TabHandlesBack = () => _current?.Page is TabView tab && tab.HandleBack();
         Phantom.Droid.TvNavigation.TabFocusesTop = () => _current?.Page is TabView tab && tab.FocusTop();
         Phantom.Droid.TvNavigation.FocusSelectedTab = FocusSelectedTab;
+        Phantom.Droid.TvNavigation.TopButton = new(TopButton);
+        Phantom.Droid.TvNavigation.CurrentTab = () => _current?.Page;
         Phantom.Droid.TvNavigation.ShowFirstTab = () =>
         {
             if (_current == _tabs[(int)AppTab.Discover]) return false;
@@ -86,6 +88,18 @@ public partial class MainPage : ContentPage
         var compact = Width >= CompactNavBarFrom;
         NavBar.HorizontalOptions = compact ? LayoutOptions.Center : LayoutOptions.Fill;
         NavBar.WidthRequest = compact ? _tabs.Count * 80 + 16 : -1;
+        // Beside the bar's right end, with the bar's own gap between. Moved there by its margin, not a translation: the
+        // remote finds its way by where things are laid out, and a translated button sat mid-bar for it.
+        var offset = compact ? NavBar.WidthRequest / 2 + 12 + TopButton.WidthRequest / 2 : 0;
+        TopButton.Margin = new Thickness(2 * offset, 4, 0, 10);
+    }
+
+    private void OnTopClicked(object? sender, EventArgs e)
+    {
+#if ANDROID
+        Phantom.Droid.TvNavigation.ScrollTabToTop();
+        FocusSelectedTab();
+#endif
     }
 
     /// <summary>Pops back to the tabs and switches to <paramref name="tab"/>.</summary>
@@ -144,6 +158,9 @@ public partial class MainPage : ContentPage
         if (_visible) _current?.Page.Unload();
         _current = item;
         TabContent.SetContent(item);
+#if ANDROID
+        Phantom.Droid.TvNavigation.UpdateTopButton();
+#endif
         if (!_visible) return;
         // Load once the tab has slid in, not while it slides, so the switch doesn't stutter.
         if (TabContent.IsNavigating) _loadAfterSlide = item;

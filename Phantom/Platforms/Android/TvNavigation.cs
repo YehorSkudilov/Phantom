@@ -31,6 +31,123 @@ public static class TvNavigation
     {
         if (!IsTv) return;
         activity.Window?.DecorView.ViewTreeObserver?.AddOnGlobalFocusChangeListener(new FocusWatcher());
+        activity.Window?.DecorView.ViewTreeObserver?.AddOnScrollChangedListener(new ScrollWatcher());
+    }
+
+    // ---------- Pop-ups drawn on the page ----------
+
+    private static WeakReference<AView>? _trap;
+
+    /// <summary>
+    /// A pop-up drawn on the page (not a window of its own, which Android keeps focus in by itself), such as the
+    /// Search tab's filters: focus goes into it and the arrows stay inside it until it's closed (null), when focus goes
+    /// to <paramref name="returnTo"/>. Otherwise the remote went on moving through the page behind it.
+    /// </summary>
+    public static void Trap(View? popup, View? returnTo = null)
+    {
+        if (!IsTv) return;
+        if (popup?.Handler?.PlatformView is AView inside)
+        {
+            _trap = new(inside);
+            inside.Post(() => FocusFirstIn(inside)); // once it's shown and laid out
+            return;
+        }
+        _trap = null;
+        if (returnTo?.Handler is IPlatformViewHandler handler && (handler.ContainerView ?? handler.PlatformView) is { } back)
+            back.Post(() => back.RequestFocus());
+    }
+
+    private static bool FocusFirstIn(AView container)
+    {
+        if (container is not ViewGroup group) return container.RequestFocus();
+        var first = group.GetFocusables(FocusSearchDirection.Forward)?
+            .Where(v => v.IsShown && v.GetGlobalVisibleRect(Visible))
+            .OrderBy(v => { v.GetGlobalVisibleRect(Visible); return Visible.Top; })
+            .ThenBy(v => { v.GetGlobalVisibleRect(Visible); return Visible.Left; })
+            .FirstOrDefault();
+        return first?.RequestFocus() == true;
+    }
+
+    /// <summary>The arrows inside an open pop-up: true (used) when they'd have left it.</summary>
+    private static bool KeepInTrap(Activity activity, KeyEvent e)
+    {
+        if (_trap?.TryGetTarget(out var trap) != true || !trap.IsAttachedToWindow || !trap.IsShown) return false;
+        var direction = e.KeyCode switch
+        {
+            Keycode.DpadUp => FocusSearchDirection.Up,
+            Keycode.DpadDown => FocusSearchDirection.Down,
+            Keycode.DpadLeft => FocusSearchDirection.Left,
+            Keycode.DpadRight => FocusSearchDirection.Right,
+            _ => (FocusSearchDirection?)null,
+        };
+        if (direction is not { } d) return false;
+        if (activity.CurrentFocus is not { } focused || !IsWithin(focused, trap)) return FocusFirstIn(trap) || true;
+        return focused.FocusSearch(d) is not { } next || !IsWithin(next, trap);
+    }
+
+    // ---------- Back to the top ----------
+
+    /// <summary>The button beside the bar that takes the tab back to its top (set by MainPage), and the tab shown.</summary>
+    public static WeakReference<View>? TopButton { get; set; }
+    public static Func<View?>? CurrentTab { get; set; }
+
+    /// <summary>How far down the tab has to be for the button to show.</summary>
+    private const int TopButtonFromDp = 240;
+
+    private static WeakReference<AView>? _scroller;
+
+    /// <summary>Shows the button while the tab's list is scrolled down a way (on a TV only), hides it otherwise.</summary>
+    public static void UpdateTopButton()
+    {
+        if (!IsTv || TopButton?.TryGetTarget(out var button) != true) return;
+        var scroller = TabScroller();
+        var density = scroller?.Resources?.DisplayMetrics?.Density ?? 2;
+        var show = scroller is not null && Offset(scroller) > TopButtonFromDp * density;
+        if (button.IsVisible == show) return;
+        // Leaving with focus on it: back to the bar first, so focus isn't left on nothing.
+        if (!show && button.Handler?.PlatformView is AView { HasFocus: true }) FocusSelectedTab?.Invoke();
+        button.IsVisible = show;
+    }
+
+    /// <summary>Scrolls the tab's list back to its start.</summary>
+    public static void ScrollTabToTop()
+    {
+        switch (TabScroller())
+        {
+            case RecyclerView list: list.ScrollToPosition(0); break;
+            case NestedScrollView scroll: scroll.ScrollTo(0, 0); break;
+            case Android.Widget.ScrollView scroll: scroll.ScrollTo(0, 0); break;
+        }
+        UpdateTopButton();
+    }
+
+    private static int Offset(AView scroller) => scroller is RecyclerView list ? list.ComputeVerticalScrollOffset() : scroller.ScrollY;
+
+    /// <summary>The visible tab's main list or scroll view: the first one on screen that scrolls up and down.</summary>
+    private static AView? TabScroller()
+    {
+        if (CurrentTab?.Invoke()?.Handler?.PlatformView is not AView tab || !tab.IsShown) return null;
+        if (_scroller?.TryGetTarget(out var known) == true && known.IsShown && IsWithin(known, tab)) return known;
+        var found = Find(tab);
+        _scroller = found is null ? null : new(found);
+        return found;
+
+        static AView? Find(AView view)
+        {
+            if (!view.IsShown) return null;
+            if (view is RecyclerView { } list && list.GetLayoutManager() is LinearLayoutManager { Orientation: LinearLayoutManager.Vertical }
+                || view is NestedScrollView or Android.Widget.ScrollView)
+                return view;
+            if (view is ViewGroup group)
+                for (var i = 0; i < group.ChildCount; i++)
+                    if (group.GetChildAt(i) is { } child && Find(child) is { } inner) return inner;
+            return null;
+        }
+    }
+
+    private sealed class ScrollWatcher : Java.Lang.Object, ViewTreeObserver.IOnScrollChangedListener
+    {
+        public void OnScrollChanged() => UpdateTopButton();
     }
 
     /// <summary>
@@ -54,34 +171,35 @@ public static class TvNavigation
         if (!IsTv) return false;
         if (e.KeyCode == Keycode.Back) return HandleBack(activity, e);
         if (e.Action != KeyEventActions.Down) return false;
+        if (KeepInTrap(activity, e)) return true;
         if (e.KeyCode is Keycode.DpadUp or Keycode.DpadDown or Keycode.DpadLeft or Keycode.DpadRight or Keycode.DpadCenter or Keycode.Enter
             && !OnScreen(activity.CurrentFocus) && activity.Window?.DecorView is ViewGroup page)
             return FocusFirst(page);
         if (e.KeyCode is not (Keycode.DpadUp or Keycode.DpadDown)) return false;
         if (activity.CurrentFocus is not { } focused || BarView() is not { } bar) return false;
 
-        if (IsWithin(focused, bar))
+        if (InBar(focused, bar))
         {
             // Back where the remote was on this tab, if that's still showing; else Android's nearest, upwards.
             if (_lastInPage?.TryGetTarget(out var last) == true && last.IsAttachedToWindow && last.IsShown
                 && last.GetGlobalVisibleRect(Visible) && last.RequestFocus())
                 return true;
             if (activity.Window?.DecorView is ViewGroup root
-                && FocusFinder.Instance?.FindNextFocus(root, focused, FocusSearchDirection.Up) is { } above && !IsWithin(above, bar))
+                && FocusFinder.Instance?.FindNextFocus(root, focused, FocusSearchDirection.Up) is { } above && !InBar(above, bar))
                 return above.RequestFocus();
             return false;
         }
 
         if (e.KeyCode != Keycode.DpadDown) return false;
         var next = focused.FocusSearch(FocusSearchDirection.Down);
-        if (next is not null && !IsWithin(next, bar)) return false;
+        if (next is not null && !InBar(next, bar)) return false;
         // Nothing further down laid out yet: scroll on, then go to what that brought up. At the end, on to the bar.
         if (ScrollerOf(focused) is not { } scroller) return false;
         scroller.ScrollBy(0, Math.Max(1, scroller.Height / 3));
         scroller.Post(() =>
         {
             if (!focused.IsAttachedToWindow || !focused.HasFocus) return;
-            if (focused.FocusSearch(FocusSearchDirection.Down) is { } below && BarView() is { } stillBar && !IsWithin(below, stillBar))
+            if (focused.FocusSearch(FocusSearchDirection.Down) is { } below && BarView() is { } stillBar && !InBar(below, stillBar))
                 below.RequestFocus();
         });
         return true;
@@ -105,7 +223,7 @@ public static class TvNavigation
         _backUsed = false;
         if (BarView() is not { } bar) return false;
 
-        if (activity.CurrentFocus is { } focused && IsWithin(focused, bar))
+        if (activity.CurrentFocus is { } focused && InBar(focused, bar))
         {
             _backUsed = ShowFirstTab?.Invoke() == true;
             if (_backUsed) FocusSelectedTab?.Invoke();
@@ -149,7 +267,7 @@ public static class TvNavigation
         var best = root.GetFocusables(FocusSearchDirection.Forward)?
             .Where(v => v.IsShown && v.GetGlobalVisibleRect(Visible) && Visible.Width() > 0 && Visible.Height() > 0)
             .Select(v => (View: v, Top: Visible.Top, Left: Visible.Left))
-            .OrderBy(x => bar is not null && IsWithin(x.View, bar))
+            .OrderBy(x => bar is not null && InBar(x.View, bar))
             .ThenBy(x => x.Top).ThenBy(x => x.Left)
             .Select(x => x.View)
             .FirstOrDefault();
@@ -169,7 +287,7 @@ public static class TvNavigation
                 if (newFocus.IsAttachedToWindow && newFocus.HasFocus && !OnScreen(newFocus) && newFocus.RootView is ViewGroup root)
                     FocusFirst(root);
             }, 500);
-            if (BarView() is not { } bar || IsWithin(newFocus, bar)) return;
+            if (BarView() is not { } bar || InBar(newFocus, bar)) return;
             _lastInPage = new(newFocus);
             KeepClearOfBar(newFocus, bar);
         }
@@ -202,6 +320,10 @@ public static class TvNavigation
             if (ancestor.CanScrollVertically(1)) return ancestor;
         return null;
     }
+
+    /// <summary>Whether the view is the bar's, or the back-to-top button beside it.</summary>
+    private static bool InBar(AView view, AView bar) =>
+        IsWithin(view, bar) || TopButton?.TryGetTarget(out var top) == true && top.Handler?.PlatformView is AView topView && IsWithin(view, topView);
 
     private static AView? BarView() =>
         NavBar?.TryGetTarget(out var bar) == true && bar.Handler?.PlatformView is AView view
