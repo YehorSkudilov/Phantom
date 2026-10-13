@@ -574,7 +574,24 @@ public partial class PlayerPage : ContentPage
 
     private void FocusPlayPause() => Dispatcher.Dispatch(() => (TransportControls.IsVisible ? PlayPause : (View)SubtitlesButton).Focus());
 
+    /// <summary>
+    /// The controls come up by themselves too (loading, a skip, the end): on a TV the remote then goes to them unless
+    /// it's already on one. Left on the video, which fills the screen, the arrows had nothing beyond it to go to until
+    /// the controls hid again.
+    /// </summary>
+    private void FocusControlsIfAway()
+    {
+        if (DeviceInfo.Idiom != DeviceIdiom.TV || !Controls.IsVisible) return;
+        if (Controls.Handler?.PlatformView is Android.Views.ViewGroup controls && controls.FindFocus() is not null) return;
+        FocusPlayPause();
+    }
+
     private static bool IsFocused(View view) => view.Handler?.PlatformView is Android.Views.View { IsFocused: true };
+
+    private void OnControlsChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(IsVisible)) FocusControlsIfAway();
+    }
 #endif
 
     /// <summary>Subtitles off, or on in the first available language.</summary>
@@ -597,6 +614,8 @@ public partial class PlayerPage : ContentPage
         HookKeys();
 #elif ANDROID
         MainActivity.KeyHandler = OnRemoteKey;
+        Controls.PropertyChanged -= OnControlsChanged;
+        Controls.PropertyChanged += OnControlsChanged;
 #endif
     }
 
@@ -820,6 +839,7 @@ public partial class PlayerPage : ContentPage
         if (_keyRoot is not null && _keyHandler is not null) _keyRoot.RemoveHandler(Microsoft.UI.Xaml.UIElement.KeyDownEvent, _keyHandler);
 #elif ANDROID
         if (MainActivity.KeyHandler == (Func<Android.Views.KeyEvent, bool>)OnRemoteKey) MainActivity.KeyHandler = null;
+        Controls.PropertyChanged -= OnControlsChanged;
         _usedKeys.Clear();
 #endif
         // The position is read now, then the player is stopped straight away: once this method awaits anything the page

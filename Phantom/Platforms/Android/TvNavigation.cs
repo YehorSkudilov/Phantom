@@ -173,7 +173,7 @@ public static class TvNavigation
         if (e.Action != KeyEventActions.Down) return false;
         if (KeepInTrap(activity, e)) return true;
         if (e.KeyCode is Keycode.DpadUp or Keycode.DpadDown or Keycode.DpadLeft or Keycode.DpadRight or Keycode.DpadCenter or Keycode.Enter
-            && !OnScreen(activity.CurrentFocus) && activity.Window?.DecorView is ViewGroup page)
+            && (!OnScreen(activity.CurrentFocus) || IsContainer(activity.CurrentFocus!)) && activity.Window?.DecorView is ViewGroup page)
             return FocusFirst(page);
         if (e.KeyCode is Keycode.DpadLeft or Keycode.DpadRight) return SideToBar(activity, e.KeyCode == Keycode.DpadLeft);
         if (e.KeyCode is not (Keycode.DpadUp or Keycode.DpadDown)) return false;
@@ -250,8 +250,8 @@ public static class TvNavigation
     }
 
     /// <summary>
-    /// Back on the tabs, as TV apps have it: from the page, to the nav bar (the page back at its top), so the bar
-    /// is a press away however far down the page is; from the bar, to the first tab; there, out of the app as usual.
+    /// Back on the tabs, as TV apps have it: from the page, to the nav bar (the page left where it is: the
+    /// back-to-top button beside the bar scrolls it up), so the bar is a press away however far down the page is; from the bar, to the first tab; there, out of the app as usual.
     /// Something open on the tab (the Search tab's filters) is closed first, and a tab with something at its top to
     /// go to (the Search tab's box) goes there first: a long list is as far from its top as from the bar.
     /// </summary>
@@ -275,25 +275,9 @@ public static class TvNavigation
         }
 
         if (TabHandlesBack?.Invoke() == true) return _backUsed = true;
-        if (activity.CurrentFocus is { } inPage) ScrollToTop(inPage);
-        _lastInPage = null; // Up from the bar starts again from the top of the page
+        // The page stays where it is (the back-to-top button scrolls it up), and Up from the bar comes back here.
         if (TabFocusesTop?.Invoke() == true) return _backUsed = true;
         return _backUsed = FocusSelectedTab?.Invoke() == true;
-    }
-
-    /// <summary>Every list or scroll view round the view back at its start (sideways rows stay where they are).</summary>
-    private static void ScrollToTop(AView view)
-    {
-        for (var parent = view.Parent; parent is AView ancestor; parent = ancestor.Parent)
-        {
-            if (!ancestor.CanScrollVertically(-1)) continue;
-            switch (ancestor)
-            {
-                case RecyclerView list: list.ScrollToPosition(0); break;
-                case NestedScrollView scroll: scroll.ScrollTo(0, 0); break;
-                case Android.Widget.ScrollView scroll: scroll.ScrollTo(0, 0); break;
-            }
-        }
     }
 
     /// <summary>
