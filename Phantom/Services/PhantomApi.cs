@@ -327,8 +327,8 @@ public class PhantomApi(HttpClient http, SettingsService settings)
     // ---------- Server downloads ----------
 
     public Task<List<ServerDownloadDto>> ServerDownloadsAsync() => GetAsync<List<ServerDownloadDto>>("/api/downloads");
-    public Task<ServerDownloadDto> QueueServerDownloadAsync(int movieId, int? releaseId, int? episodeId = null) =>
-        SendAsync<ServerDownloadDto>(HttpMethod.Post, "/api/downloads", new CreateServerDownloadRequest(movieId, releaseId, episodeId));
+    public Task<ServerDownloadDto> QueueServerDownloadAsync(int movieId, int? releaseId, int? episodeId = null, bool forDevice = false) =>
+        SendAsync<ServerDownloadDto>(HttpMethod.Post, "/api/downloads", new CreateServerDownloadRequest(movieId, releaseId, episodeId, forDevice));
     public Task PauseServerDownloadAsync(int id) => SendNoContentAsync(HttpMethod.Post, $"/api/downloads/{id}/pause");
     public Task ResumeServerDownloadAsync(int id) => SendNoContentAsync(HttpMethod.Post, $"/api/downloads/{id}/resume");
     public Task DeleteServerDownloadAsync(int id, bool deleteFiles) => SendNoContentAsync(HttpMethod.Delete, $"/api/downloads/{id}?deleteFiles={deleteFiles}");

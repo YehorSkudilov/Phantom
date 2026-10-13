@@ -433,6 +433,9 @@ namespace Phantom.Api.Data.Migrations
                     b.Property<string>("Error")
                         .HasColumnType("TEXT");
 
+                    b.Property<bool>("ForDevice")
+                        .HasColumnType("INTEGER");
+
                     b.Property<int?>("MovieId")
                         .HasColumnType("INTEGER");
 

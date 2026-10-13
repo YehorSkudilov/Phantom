@@ -252,6 +252,12 @@ public class ServerDownload
     public int ReleaseId { get; set; }
     public Release? Release { get; set; }
     public int? RequestedByUserId { get; set; }
+
+    /// <summary>
+    /// Fetched only so a device can copy it (a download to a phone or TV), not saved for the profile: it isn't in its
+    /// saved list, and the device has it deleted once it has its copy.
+    /// </summary>
+    public bool ForDevice { get; set; }
     public DownloadStatus Status { get; set; } = DownloadStatus.Queued;
     public double Progress { get; set; }
     public string? Error { get; set; }

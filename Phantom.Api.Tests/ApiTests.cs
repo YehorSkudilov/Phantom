@@ -296,6 +296,26 @@ public class ApiTests : IClassFixture<PhantomFactory>
     }
 
     [Fact]
+    public async Task A_download_for_a_device_isnt_a_saved_copy()
+    {
+        var client = await AdminClientAsync();
+        var id = (await client.GetFromJsonAsync<PagedResult<MovieSummaryDto>>("/api/library/movies?search=Living Dead", Json))!.Items.Single().Id;
+        var forDevice = await (await client.PostAsJsonAsync("/api/downloads", new CreateServerDownloadRequest(id, null, ForDevice: true), Json))
+            .Content.ReadFromJsonAsync<ServerDownloadDto>(Json);
+        Assert.True(forDevice!.ForDevice);
+        Assert.DoesNotContain(await client.GetFromJsonAsync<List<ServerDownloadDto>>("/api/downloads", Json) ?? [], d => d.Id == forDevice.Id);
+
+        // Saving it as well makes it the profile's: listed, and no longer the device's to delete.
+        var saved = await (await client.PostAsJsonAsync("/api/downloads", new CreateServerDownloadRequest(id, null), Json)).Content.ReadFromJsonAsync<ServerDownloadDto>(Json);
+        Assert.Equal((forDevice.Id, false), (saved!.Id, saved.ForDevice));
+        Assert.Contains(await client.GetFromJsonAsync<List<ServerDownloadDto>>("/api/downloads", Json) ?? [], d => d.Id == saved.Id);
+        // And a device download of a saved one uses it as it is.
+        Assert.False((await (await client.PostAsJsonAsync("/api/downloads", new CreateServerDownloadRequest(id, null, ForDevice: true), Json))
+            .Content.ReadFromJsonAsync<ServerDownloadDto>(Json))!.ForDevice);
+        await client.DeleteAsync($"/api/downloads/{saved.Id}?deleteFiles=true");
+    }
+
+    [Fact]
     public async Task Each_profile_has_its_own_saved_copies()
     {
         var owner = await AdminClientAsync();

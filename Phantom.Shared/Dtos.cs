@@ -366,10 +366,16 @@ public record ServerDownloadDto(
     DateTime? ExpiresAt = null,
     // For an episode MovieId is 0 and MovieTitle reads "Show · S02E05".
     int? EpisodeId = null,
-    int? ShowId = null);
+    int? ShowId = null,
+    // Only for a device to copy (see CreateServerDownloadRequest.ForDevice): the device deletes it once it has it.
+    bool ForDevice = false);
 
-/// <summary>Saves a movie, or with <see cref="EpisodeId"/> an episode (MovieId 0), on the server.</summary>
-public record CreateServerDownloadRequest(int MovieId, int? ReleaseId, int? EpisodeId = null);
+/// <summary>
+/// Saves a movie, or with <see cref="EpisodeId"/> an episode (MovieId 0), on the server. <see cref="ForDevice"/>: only
+/// so a device can download it (the server has to have it whole to send it), not saved for the profile; the device
+/// deletes it once it has its copy. One the profile has saved already is used as it is, and not deleted.
+/// </summary>
+public record CreateServerDownloadRequest(int MovieId, int? ReleaseId, int? EpisodeId = null, bool ForDevice = false);
 
 // ---------- Sources ----------
 

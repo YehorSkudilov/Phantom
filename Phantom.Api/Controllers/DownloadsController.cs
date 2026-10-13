@@ -27,7 +27,7 @@ public class DownloadsController(PhantomDbContext db, TorrentEngine engine) : Co
         var me = User.UserId();
         var admin = User.IsInRole("Admin");
         var rows = await db.ServerDownloads.AsNoTracking()
-            .Where(d => d.RequestedByUserId == me || admin && d.RequestedByUserId == null)
+            .Where(d => !d.ForDevice && (d.RequestedByUserId == me || admin && d.RequestedByUserId == null))
             .Include(d => d.Movie).Include(d => d.Release).Include(d => d.Episode).ThenInclude(e => e!.Show)
             .OrderByDescending(d => d.CreatedAt)
             .ToListAsync(ct);
@@ -64,11 +64,20 @@ public class DownloadsController(PhantomDbContext db, TorrentEngine engine) : Co
             .FirstOrDefaultAsync(d => (episode == null ? d.ReleaseId == release.Id && d.EpisodeId == null : d.EpisodeId == episode.Id)
                                       && d.RequestedByUserId == me
                                       && d.Status != DownloadStatus.Cancelled && d.Status != DownloadStatus.Failed, ct);
-        if (existing is not null) return ToDto(existing);
+        if (existing is not null)
+        {
+            // Saving one that was only being fetched for a device: it's the profile's now, and stays.
+            if (existing.ForDevice && !req.ForDevice)
+            {
+                existing.ForDevice = false;
+                await db.SaveChangesAsync(ct);
+            }
+            return ToDto(existing);
+        }
 
         var download = new ServerDownload
         {
-            MovieId = release.MovieId, EpisodeId = episode?.Id, ReleaseId = release.Id, RequestedByUserId = User.UserId(),
+            MovieId = release.MovieId, EpisodeId = episode?.Id, ReleaseId = release.Id, RequestedByUserId = User.UserId(), ForDevice = req.ForDevice,
             Movie = release.Movie, Episode = episode, Release = release,
         };
         db.ServerDownloads.Add(download);
@@ -130,6 +139,6 @@ public class DownloadsController(PhantomDbContext db, TorrentEngine engine) : Co
             stats?.Size is > 0 ? stats.Size : d.Release?.SizeBytes ?? 0,
             d.Error, d.CreatedAt, d.CompletedAt,
             d.CompletedAt is { } done && _keepDays > 0 ? done.AddDays(_keepDays) : null,
-            d.EpisodeId, d.Episode?.ShowId);
+            d.EpisodeId, d.Episode?.ShowId, d.ForDevice);
     }
 }
