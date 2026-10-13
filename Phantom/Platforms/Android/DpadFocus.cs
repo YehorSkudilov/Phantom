@@ -23,7 +23,6 @@ namespace Phantom.Droid;
 public static class DpadFocus
 {
     private static readonly ConditionalWeakTable<View, object> Watched = new();
-    private static readonly ConditionalWeakTable<AView, object> Ringed = new();
 
     public static void Register()
     {
@@ -74,10 +73,23 @@ public static class DpadFocus
         AddRing(view);
     }
 
+    /// <summary>
+    /// Whether the view's foreground has the ring. Looked at each time rather than remembered: a list reuses its rows,
+    /// and MAUI can give a reused row its own foreground again, which took the ring with it (the remote's ring then
+    /// went missing on some posters).
+    /// </summary>
+    private static bool HasRing(Drawable? drawable) => drawable switch
+    {
+        FocusRing => true,
+        LayerDrawable layers => Enumerable.Range(0, layers.NumberOfLayers).Any(i => layers.GetDrawable(i) is FocusRing),
+        _ => false,
+    };
+
     private static void AddRing(AView view)
     {
-        if (Ringed.TryGetValue(view, out _)) return;
-        Ringed.Add(view, view);
+        if (HasRing(view.Foreground)) return;
+        // A list's row on a TV: only the ring (see RingRows), whatever foreground the row was given since.
+        if (TvNavigation.IsTv && view.Parent is RecyclerView) view.Foreground = null;
         var ring = new FocusRing(view);
         view.DefaultFocusHighlightEnabled = false; // Android's own grey wash, under the ring
         view.Foreground = view.Foreground is { } existing ? new LayerDrawable([existing, ring]) : ring;
@@ -144,7 +156,6 @@ public static class DpadFocus
             // MAUI gives a selectable row Android's own highlight, which a TV draws as a square tinted block when the
             // remote is on it: there the row has the app's ring instead (round the card, in the room the poster
             // templates leave it on a TV). A phone keeps the ripple a tap makes.
-            if (TvNavigation.IsTv && !Ringed.TryGetValue(view, out _)) view.Foreground = null;
             AddRing(view);
         }
 

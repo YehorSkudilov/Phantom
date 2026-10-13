@@ -98,6 +98,13 @@ public static class TvNavigation
         {
             if (newFocus is null) return;
             DpadFocus.EnsureRing(newFocus);
+            // Focus that lands somewhere it can't be seen (a view hidden or slid away as it got it) and stays there:
+            // on to the first thing on screen. Checked a moment later, as a list may still be scrolling the view in.
+            newFocus.PostDelayed(() =>
+            {
+                if (newFocus.IsAttachedToWindow && newFocus.HasFocus && !OnScreen(newFocus) && newFocus.RootView is ViewGroup root)
+                    FocusFirst(root);
+            }, 500);
             if (BarView() is not { } bar || IsWithin(newFocus, bar)) return;
             _lastInPage = new(newFocus);
             KeepClearOfBar(newFocus, bar);
