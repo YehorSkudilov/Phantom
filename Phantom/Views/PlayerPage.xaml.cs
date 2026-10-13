@@ -307,9 +307,18 @@ public partial class PlayerPage : ContentPage
         if (!await TrySeekAsync(_vm.ResumePosition)) _pendingResume = true;
     }
 
-    /// <summary>MediaElement's SeekTo, without the exceptions iOS throws while the player isn't ready (they'd crash the app from an async void handler).</summary>
+    /// <summary>
+    /// MediaElement's SeekTo, without the exceptions it throws while the player isn't ready. On iOS those are thrown
+    /// inside the toolkit's own async void handler, where no catch here can reach them and they end the app, so there the
+    /// AVPlayer is sought directly, and only once it's ReadyToPlay. False when it isn't ready (or the seek didn't land).
+    /// </summary>
     private async Task<bool> TrySeekAsync(TimeSpan target)
     {
+#if IOS || MACCATALYST
+        var player = FindAVPlayer();
+        if (player?.CurrentItem is null || player.Status != AVFoundation.AVPlayerStatus.ReadyToPlay) return false;
+        return await player.SeekAsync(CoreMedia.CMTime.FromSeconds(target.TotalSeconds, 1000));
+#else
         try
         {
             await Media.SeekTo(target);
@@ -319,7 +328,19 @@ public partial class PlayerPage : ContentPage
         {
             return false;
         }
+#endif
     }
+
+#if IOS || MACCATALYST
+    /// <summary>The AVPlayer behind MediaElement: its view hosts an AVPlayerViewController's view, whose next responder is the controller.</summary>
+    private AVFoundation.AVPlayer? FindAVPlayer()
+    {
+        if (Media.Handler?.PlatformView is not UIKit.UIView host) return null;
+        foreach (var view in host.Subviews)
+            if (view.NextResponder is AVKit.AVPlayerViewController controller) return controller.Player;
+        return null;
+    }
+#endif
 
     private void OnPositionChanged(TimeSpan elementPosition)
     {
