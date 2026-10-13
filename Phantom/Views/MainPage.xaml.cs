@@ -88,10 +88,6 @@ public partial class MainPage : ContentPage
         var compact = Width >= CompactNavBarFrom;
         NavBar.HorizontalOptions = compact ? LayoutOptions.Center : LayoutOptions.Fill;
         NavBar.WidthRequest = compact ? _tabs.Count * 80 + 16 : -1;
-        // Beside the bar's right end, with the bar's own gap between. Moved there by its margin, not a translation: the
-        // remote finds its way by where things are laid out, and a translated button sat mid-bar for it.
-        var offset = compact ? NavBar.WidthRequest / 2 + 12 + TopButton.WidthRequest / 2 : 0;
-        TopButton.Margin = new Thickness(2 * offset, 4, 0, 10);
     }
 
     private void OnTopClicked(object? sender, EventArgs e)

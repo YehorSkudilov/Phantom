@@ -213,7 +213,8 @@ public static class TvNavigation
     /// </summary>
     private static bool SideToBar(Activity activity, bool left)
     {
-        if (activity.CurrentFocus is not { } focused || BarView() is not { } bar || InBar(focused, bar)) return false;
+        if (activity.CurrentFocus is not { } focused || BarView() is not { } bar) return false;
+        if (InBar(focused, bar)) return AlongBar(focused, bar, left);
         var next = focused.FocusSearch(left ? FocusSearchDirection.Left : FocusSearchDirection.Right);
         if (next is not null && !InBar(next, bar)) return false;
 
@@ -228,6 +229,24 @@ public static class TvNavigation
         var along = Math.Clamp(Visible.CenterX() / (double)screen, 0, 1);
         var index = Math.Clamp((int)(along * tabs.Count), 0, tabs.Count - 1);
         return tabs[index].RequestFocus();
+    }
+
+    /// <summary>
+    /// Left or Right on the bar: to the next tab along it (then the back-to-top button at the right edge), and no
+    /// further at its ends. Left to Android, it went to whatever was nearest that way, which could be a poster on the
+    /// page behind the bar.
+    /// </summary>
+    private static bool AlongBar(AView focused, AView bar, bool left)
+    {
+        var stops = bar.GetFocusables(FocusSearchDirection.Forward)?.Where(v => v.IsShown).ToList() ?? [];
+        if (TopButton?.TryGetTarget(out var top) == true && top.IsVisible && top.Handler?.PlatformView is AView topView && topView.IsShown)
+            stops.Add(topView);
+        var ordered = stops.OrderBy(v => { v.GetGlobalVisibleRect(Visible); return Visible.Left; }).ToList();
+        var at = ordered.FindIndex(v => IsWithin(focused, v));
+        if (at < 0) return false;
+        var next = at + (left ? -1 : 1);
+        if (next >= 0 && next < ordered.Count) ordered[next].RequestFocus();
+        return true;
     }
 
     /// <summary>
