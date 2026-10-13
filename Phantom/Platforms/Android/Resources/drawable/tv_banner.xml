@@ -1,9 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- The Android TV launcher's 320x180 tile: the wordmark on the brand background. -->
-<layer-list xmlns:android="http://schemas.android.com/apk/res/android"
-            android:width="320dp" android:height="180dp">
+<!-- The Android TV launcher's 320x180 tile: the wordmark on the brand background. The background carries the tile's
+     size: without it the banner's size was the wordmark's alone, and the launcher stretched that strip across the tile,
+     leaving its top and bottom empty. -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
     <item>
         <shape android:shape="rectangle">
+            <size android:width="320dp" android:height="180dp" />
             <solid android:color="#0B0B12" />
         </shape>
     </item>
