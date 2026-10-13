@@ -148,9 +148,27 @@ public partial class ProfilesViewModel(PhantomApi api, SettingsService settings)
         CanManage = settings.User is { IsManaged: false };
     });
 
-    // Not held up by the list reloading (each time the page appears): a tap then used to do nothing.
-    [RelayCommand]
-    private Task Select(UserDto profile) => RunAsync(async () =>
+    private bool _selecting;
+
+    // Not held up by the list reloading (each time the page appears): a tap then used to do nothing. Nor by a switch
+    // still running: the command disabled every tile until it ended, and one that never did left none to tap (the
+    // guard keeps a second tap from switching twice).
+    [RelayCommand(AllowConcurrentExecutions = true)]
+    private async Task Select(UserDto profile)
+    {
+        if (_selecting) return;
+        _selecting = true;
+        try
+        {
+            await SwitchTo(profile);
+        }
+        finally
+        {
+            _selecting = false;
+        }
+    }
+
+    private Task SwitchTo(UserDto profile) => RunAsync(async () =>
     {
         string? pin = null;
         var current = settings.User;
@@ -207,10 +225,23 @@ public partial class ProfilesViewModel(PhantomApi api, SettingsService settings)
     /// <summary>The account's own profile is renamed with the account (Username and password), its name being its sign-in.</summary>
     public bool CanRename => Editing?.IsManaged == true;
 
+    /// <summary>The account's owner can delete its other profiles (not the account's own).</summary>
+    public bool CanDelete => CanManage && Editing?.IsManaged == true;
+
     partial void OnEditingChanged(UserDto? value)
     {
         OnPropertyChanged(nameof(ShowEditor));
         OnPropertyChanged(nameof(CanRename));
+        OnPropertyChanged(nameof(CanDelete));
+    }
+
+    [RelayCommand]
+    private async Task DeleteEdited()
+    {
+        if (Editing is not { } profile) return;
+        var before = Profiles.Count;
+        await DeleteProfile(profile);
+        if (Profiles.Count < before) Editing = null;
     }
 
     /// <summary>Edit profiles: the account's owner picks which; any other profile edits itself.</summary>

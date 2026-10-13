@@ -35,7 +35,12 @@
                     <!-- The tile, with a see-through button over all of it: a button is what a TV remote can move to and
                          press with OK (a tap on a layout isn't, reliably). Moving to it grows the tile and rings the
                          avatar (see ProfilesPage.OnTileFocused). -->
-                    <Grid WidthRequest="104" Margin="6" Padding="4">
+                    <Grid WidthRequest="104" Margin="6" Padding="4" controls:RemoteFocus.Skip="True">
+                        <!-- A finger's tap anywhere on the tile the button doesn't take (the remote has the button) -->
+                        <Grid.GestureRecognizers>
+                            <TapGestureRecognizer Command="{Binding Source={RelativeSource AncestorType={x:Type vm:ProfilesViewModel}}, Path=SelectCommand, x:DataType=vm:ProfilesViewModel}"
+                                                  CommandParameter="{Binding .}" />
+                        </Grid.GestureRecognizers>
                         <VerticalStackLayout Spacing="8" InputTransparent="True">
                             <Border WidthRequest="88" HeightRequest="88" StrokeShape="RoundRectangle 22" BackgroundColor="{Binding AvatarColor}"
                                     Stroke="Transparent" StrokeThickness="0">
@@ -57,22 +62,17 @@
                                 Focused="OnTileFocused" Unfocused="OnTileUnfocused"
                                 SemanticProperties.Description="{Binding Username, StringFormat='Watch as {0}'}"
                                 Command="{Binding Source={RelativeSource AncestorType={x:Type vm:ProfilesViewModel}}, Path=SelectCommand, x:DataType=vm:ProfilesViewModel}"
-                                CommandParameter="{Binding .}">
-                            <FlyoutBase.ContextFlyout>
-                                <MenuFlyout>
-                                    <MenuFlyoutItem Text="Delete profile"
-                                                    Command="{Binding Source={RelativeSource AncestorType={x:Type vm:ProfilesViewModel}}, Path=DeleteProfileCommand, x:DataType=vm:ProfilesViewModel}"
-                                                    CommandParameter="{Binding .}" />
-                                </MenuFlyout>
-                            </FlyoutBase.ContextFlyout>
-                        </Button>
+                                CommandParameter="{Binding .}" />
                     </Grid>
                 </DataTemplate>
                 </BindableLayout.ItemTemplate>
             </FlexLayout>
         </ScrollView>
 
-        <HorizontalStackLayout Grid.Row="2" Spacing="10" HorizontalOptions="Center">
+        <!-- What went wrong with the last switch (a wrong PIN, the server out of reach): said, not swallowed -->
+        <Label Grid.Row="2" Text="{Binding ErrorMessage}" TextColor="{StaticResource Danger}" HorizontalTextAlignment="Center"
+               VerticalOptions="Start" Margin="0,-16,0,0" IsVisible="{Binding ErrorMessage, Converter={StaticResource HasValue}}" />
+        <HorizontalStackLayout Grid.Row="2" Spacing="10" HorizontalOptions="Center" VerticalOptions="End">
             <Button Text="+ Add profile" Style="{StaticResource SecondaryButton}" Command="{Binding AddProfileCommand}"
                     IsVisible="{Binding CanManage}" />
             <Button x:Name="EditButton" Text="Edit profiles" Style="{StaticResource SecondaryButton}" Command="{Binding EditProfilesCommand}"
@@ -113,6 +113,9 @@
                     <!-- Filled in by ProfilesPage: the initial, then every picture -->
                     <FlexLayout x:Name="AvatarGrid" Wrap="Wrap" JustifyContent="Start" />
                     <HorizontalStackLayout Spacing="10" HorizontalOptions="End">
+                        <!-- Deleting a profile was a long-press on its tile, which on Android kept the tile from taking taps -->
+                        <Button Text="Delete" Style="{StaticResource SecondaryButton}" TextColor="{StaticResource Danger}"
+                                Command="{Binding DeleteEditedCommand}" IsVisible="{Binding CanDelete}" />
                         <Button Text="Cancel" Style="{StaticResource SecondaryButton}" Command="{Binding CancelEditCommand}" />
                         <Button Text="Save" Command="{Binding SaveEditCommand}" />
                     </HorizontalStackLayout>
