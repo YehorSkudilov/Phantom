@@ -161,7 +161,7 @@ public partial class PlayerPage : ContentPage
 
     private void OnSurfaceDoubleTapped(object? sender, TappedEventArgs e)
     {
-        if (sender is not View surface || e.GetPosition(surface) is not { } at || TransportControls.IsVisible == false && Buffering.IsVisible) return;
+        if (sender is not View surface || e.GetPosition(surface) is not { } at || !Ready) return;
         if (at.X < surface.Width / 3) Guard(() => SkipAsync(-_vm.SkipBack));
         else if (at.X > surface.Width * 2 / 3) Guard(() => SkipAsync(_vm.SkipForward));
     }
@@ -276,14 +276,15 @@ public partial class PlayerPage : ContentPage
     }
 
     /// <summary>
-    /// While the movie is still loading or buffering there's nothing to control yet: only the title and close button show,
-    /// over the loading panel.
+    /// While the movie is still loading there's nothing to control yet: only the title and close button show, over the
+    /// loading panel. Once it has played, buffering shows the panel but leaves the controls usable (pause, seek, skip…).
     /// </summary>
     private void SetLoading(bool loading)
     {
         Buffering.IsVisible = loading;
-        TransportControls.IsVisible = SeekArea.IsVisible = !loading;
-        SubtitlesButton.IsVisible = QualityButton.IsVisible = SpeedButton.IsVisible = !loading;
+        var ready = Ready;
+        TransportControls.IsVisible = SeekArea.IsVisible = ready;
+        SubtitlesButton.IsVisible = QualityButton.IsVisible = SpeedButton.IsVisible = ready;
         if (loading)
         {
             // The estimate is for where playback will carry on from.
@@ -309,6 +310,9 @@ public partial class PlayerPage : ContentPage
 
     private static bool IsServerError(string? raw) =>
         raw is { } text && new[] { "401", "403", "404", "502", "503", "504", "Gateway" }.Any(code => text.Contains(code, StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>The controls can be used: it isn't loading, or it's only buffering after it has played.</summary>
+    private bool Ready => _started || !Buffering.IsVisible;
 
     private void LoadSource()
     {
@@ -465,7 +469,7 @@ public partial class PlayerPage : ContentPage
     /// Shows the controls, and hides them again once left alone: after 4 seconds while it plays, 10 otherwise (paused,
     /// or the player saying it's buffering, which it does for moments while it plays: only hiding while Playing left
     /// them up for good then). Not while the timeline is being dragged or moved along, or the loading panel (with its
-    /// Close) is up: then it looks again a second later, rather than giving up.
+    /// Close) is up before it has played: then it looks again a second later, rather than giving up.
     /// </summary>
     private void ShowControls()
     {
@@ -480,7 +484,7 @@ public partial class PlayerPage : ContentPage
         _hideTimer.Tick += (sender, _) =>
         {
             var after = TimeSpan.FromSeconds(Media.CurrentState == MediaElementState.Playing ? 4 : 10);
-            if (DateTime.UtcNow - _shownAt < after || _seeking || _scrubbing || Buffering.IsVisible) return;
+            if (DateTime.UtcNow - _shownAt < after || _seeking || _scrubbing || !Ready) return;
             Controls.IsVisible = false;
             (sender as IDispatcherTimer)?.Stop();
         };
@@ -496,7 +500,7 @@ public partial class PlayerPage : ContentPage
         // The controls and the surface under them both listen; where a platform hands one tap to both, it counts once.
         if (DateTime.UtcNow - _lastToggle < TimeSpan.FromMilliseconds(250)) return;
         _lastToggle = DateTime.UtcNow;
-        if (Controls.IsVisible && !Buffering.IsVisible) Controls.IsVisible = false; // while loading, Close stays reachable
+        if (Controls.IsVisible && Ready) Controls.IsVisible = false; // while loading, Close stays reachable
         else ShowControls();
     }
 
@@ -538,7 +542,7 @@ public partial class PlayerPage : ContentPage
     /// <summary>YouTube-style keys. Returns true when the key did something.</summary>
     private bool HandleKey(string key)
     {
-        if (Buffering.IsVisible && key is not ("Escape" or "F")) return false;
+        if (!Ready && key is not ("Escape" or "F")) return false;
         switch (key)
         {
             case "Space" or "K": OnPlayPause(null, EventArgs.Empty); break;
@@ -582,7 +586,7 @@ public partial class PlayerPage : ContentPage
     /// </summary>
     private bool HandleRemoteKey(Android.Views.Keycode key, int repeat)
     {
-        var ready = !Buffering.IsVisible;
+        var ready = Ready;
         var hidden = !Controls.IsVisible;
         // Another slider being adjusted (the volume): its keys are its own (see TvNavigation.HandleSlider).
         if (!_scrubbing && Platform.CurrentActivity?.CurrentFocus is Android.Widget.AbsSeekBar adjusting && Phantom.Droid.DpadFocus.IsAdjusting(adjusting))
