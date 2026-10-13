@@ -11,6 +11,10 @@ public partial class PlayerPage : ContentPage
 {
     private readonly PlayerViewModel _vm;
     private bool _seeking;
+    // Moving along the timeline with a TV remote (see Scrub): paused, showing the frame there over the whole picture.
+    private bool _scrubbing;
+    private bool _scrubResume;
+    private TimeSpan _scrubFrom, _scrubAt;
     private bool _pendingResume;
     private bool _started; // the current source has actually played, so a Paused state is the user's, not loading
     private IDispatcherTimer? _hideTimer;
@@ -166,7 +170,11 @@ public partial class PlayerPage : ContentPage
         _skipTarget = target;
 
         var moved = (int)Math.Round((target - from).TotalSeconds);
-        Flash(moved < 0 ? $"−{-moved}s" : $"+{moved}s", left: moved < 0);
+        // On a TV the presses get longer to add up (a remote's are slower than taps), and show the frame they'll land on
+        // above the "+30s"; the movie plays on meanwhile.
+        var tv = DeviceInfo.Idiom == DeviceIdiom.TV;
+        Flash(moved < 0 ? $"−{-moved}s" : $"+{moved}s", left: moved < 0, showFor: tv ? 1300 : 700, keepPreview: tv);
+        if (tv) PreviewAt(target, ShowSkipFrame, () => SkipPreview.IsVisible = false);
         PositionLabel.Text = TimeSpanConverter.Format(target);
         if (total > TimeSpan.Zero) Seek.Value = Math.Clamp(target / total, 0, 1);
 
@@ -174,7 +182,7 @@ public partial class PlayerPage : ContentPage
         var cts = _skipDelay = new CancellationTokenSource();
         try
         {
-            await Task.Delay(350, cts.Token);
+            await Task.Delay(tv ? 900 : 350, cts.Token);
         }
         catch (TaskCanceledException)
         {
@@ -187,9 +195,11 @@ public partial class PlayerPage : ContentPage
     private CancellationTokenSource? _flash;
 
     /// <summary>A short message over the video: "+30s", "Fill screen"...</summary>
-    private async void Flash(string text, bool? left = null)
+    /// <param name="keepPreview">A skip's: the frame above it (see SkipAsync) stays; any other message has none.</param>
+    private async void Flash(string text, bool? left = null, int showFor = 700, bool keepPreview = false)
     {
         SkipFlashText.Text = text;
+        if (!keepPreview) SkipPreview.IsVisible = false;
         SkipFlash.HorizontalOptions = left switch { true => LayoutOptions.Start, false => LayoutOptions.End, null => LayoutOptions.Center };
         SkipFlash.IsVisible = true;
         SkipFlash.Opacity = 1;
@@ -197,7 +207,7 @@ public partial class PlayerPage : ContentPage
         var cts = _flash = new CancellationTokenSource();
         try
         {
-            await Task.Delay(700, cts.Token);
+            await Task.Delay(showFor, cts.Token);
             await SkipFlash.FadeToAsync(0, 250);
             if (!cts.IsCancellationRequested) SkipFlash.IsVisible = false;
         }
@@ -518,7 +528,7 @@ public partial class PlayerPage : ContentPage
     private bool OnRemoteKey(Android.Views.KeyEvent e)
     {
         if (e.Action == Android.Views.KeyEventActions.Up) return _usedKeys.Remove(e.KeyCode);
-        if (e.Action != Android.Views.KeyEventActions.Down || !HandleRemoteKey(e.KeyCode)) return false;
+        if (e.Action != Android.Views.KeyEventActions.Down || !HandleRemoteKey(e.KeyCode, e.RepeatCount)) return false;
         _usedKeys.Add(e.KeyCode);
         return true;
     }
@@ -528,12 +538,23 @@ public partial class PlayerPage : ContentPage
     /// plays or pauses and up or down bring the controls up. With them up, the arrows move between them as usual (on
     /// the seek bar, left and right skip) and Back hides them before it closes the player. The media keys always work.
     /// </summary>
-    private bool HandleRemoteKey(Android.Views.Keycode key)
+    private bool HandleRemoteKey(Android.Views.Keycode key, int repeat)
     {
         var ready = !Buffering.IsVisible;
         var hidden = !Controls.IsVisible;
         switch (key)
         {
+            // Moving along the timeline (see Scrub): OK goes there, Back goes back to where it was, up or down go there
+            // and on to the other controls.
+            case Android.Views.Keycode.DpadCenter or Android.Views.Keycode.Enter or Android.Views.Keycode.NumpadEnter or Android.Views.Keycode.ButtonA when _scrubbing:
+                EndScrub(go: true);
+                return true;
+            case Android.Views.Keycode.Back when _scrubbing:
+                EndScrub(go: false);
+                return true;
+            case Android.Views.Keycode.DpadUp or Android.Views.Keycode.DpadDown when _scrubbing:
+                EndScrub(go: true);
+                return false;
             case Android.Views.Keycode.MediaPlayPause:
                 OnPlayPause(null, EventArgs.Empty);
                 return true;
@@ -557,9 +578,11 @@ public partial class PlayerPage : ContentPage
             case Android.Views.Keycode.Back when !hidden && ready:
                 Controls.IsVisible = false;
                 return true;
-            case Android.Views.Keycode.DpadLeft or Android.Views.Keycode.DpadRight when ready && (hidden || IsFocused(Seek)):
-                // A slider moved by its keys never says it's being dragged, so it would move without seeking.
-                if (!hidden) ShowControls();
+            case Android.Views.Keycode.DpadLeft or Android.Views.Keycode.DpadRight when ready && !hidden && IsFocused(Seek):
+                Scrub(key == Android.Views.Keycode.DpadLeft ? -1 : 1, repeat);
+                return true;
+            case Android.Views.Keycode.DpadLeft or Android.Views.Keycode.DpadRight when ready && hidden:
+                // Skips add up while the movie plays on (see SkipAsync); the controls stay down.
                 Guard(() => SkipAsync(key == Android.Views.Keycode.DpadLeft ? -_vm.SkipBack : _vm.SkipForward));
                 return true;
             case Android.Views.Keycode.DpadCenter or Android.Views.Keycode.Enter or Android.Views.Keycode.NumpadEnter or Android.Views.Keycode.ButtonA when hidden:
@@ -574,6 +597,52 @@ public partial class PlayerPage : ContentPage
         // Moving between the controls keeps them up.
         if (!hidden) ShowControls();
         return false;
+    }
+
+    // ---------- Moving along the timeline with the remote ----------
+
+    /// <summary>
+    /// Left or right on the timeline: the movie pauses and the position moves along it, showing the frame there (over
+    /// the whole picture as well as above the bar); held, it moves faster the longer it's held. Nothing is loaded until
+    /// OK (see EndScrub). A slider moved by its keys never says it's being dragged, so it's done here.
+    /// </summary>
+    private void Scrub(int direction, int repeat)
+    {
+        var total = _vm.TotalDuration(Media.Duration);
+        if (total <= TimeSpan.Zero) return;
+        if (!_scrubbing)
+        {
+            _scrubbing = _seeking = true;
+            _scrubAt = _scrubFrom = _vm.ActualPosition(Media.Position);
+            _scrubResume = Media.CurrentState is not (MediaElementState.Paused or MediaElementState.Stopped);
+            Media.Pause();
+        }
+        var step = TimeSpan.FromSeconds(repeat switch { < 4 => 10, < 12 => 30, < 24 => 60, _ => 180 });
+        var at = _scrubAt + direction * step;
+        _scrubAt = at < TimeSpan.Zero ? TimeSpan.Zero : at > total - TimeSpan.FromSeconds(1) ? total - TimeSpan.FromSeconds(1) : at;
+        ShowControls();
+        PositionLabel.Text = TimeSpanConverter.Format(_scrubAt);
+        Seek.Value = Math.Clamp(_scrubAt / total, 0, 1); // shows the frame there (OnSeekValueChanged)
+    }
+
+    /// <summary>Done moving along the timeline: to where it got to (or back where it was), playing again if it was.</summary>
+    private void EndScrub(bool go)
+    {
+        if (!_scrubbing) return;
+        _scrubbing = _seeking = false;
+        _preview?.Cancel();
+        _previewUrl = null;
+        SeekPreview.IsVisible = false;
+        FullPreview.IsVisible = false;
+        var total = _vm.TotalDuration(Media.Duration);
+        if (go) Guard(() => SeekToAsync(_scrubAt));
+        else if (total > TimeSpan.Zero)
+        {
+            Seek.Value = Math.Clamp(_scrubFrom / total, 0, 1);
+            PositionLabel.Text = TimeSpanConverter.Format(_scrubFrom);
+        }
+        if (_scrubResume) Media.Play();
+        ShowControls();
     }
 
     private void FocusPlayPause() => Dispatcher.Dispatch(() => (TransportControls.IsVisible ? PlayPause : (View)SubtitlesButton).Focus());
@@ -707,7 +776,7 @@ public partial class PlayerPage : ContentPage
     // While dragging: show where the drag would land, and (after a short pause, so a fast drag doesn't ask the server
     // for every frame on the way) a preview frame from there. Only one frame is ever being fetched: moving on cancels
     // the request, so the server stops pulling that part of the torrent and playback isn't kept waiting behind it.
-    private async void OnSeekValueChanged(object? sender, ValueChangedEventArgs e)
+    private void OnSeekValueChanged(object? sender, ValueChangedEventArgs e)
     {
         if (!_seeking || !double.IsFinite(e.NewValue)) return;
         var total = _vm.TotalDuration(Media.Duration);
@@ -719,15 +788,23 @@ public partial class PlayerPage : ContentPage
         var half = SeekPreview.WidthRequest / 2;
         SeekPreview.TranslationX = Math.Clamp(Seek.Width * e.NewValue - half, 0, Math.Max(0, Seek.Width - SeekPreview.WidthRequest));
 
-        // Straight from the previews already downloaded (all of them, once the server has made them): the exact one,
-        // or the nearest while the exact one is fetched.
+        PreviewAt(at, ShowPreviewFrame, () => SeekPreviewImage.IsVisible = false);
+    }
+
+    /// <summary>
+    /// The preview frame at <paramref name="at"/>, given to <paramref name="show"/>: straight from the previews already
+    /// downloaded (all of them, once the server has made them), the exact one or the nearest while the exact one is
+    /// fetched. <paramref name="none"/> when there's none at all.
+    /// </summary>
+    private async void PreviewAt(TimeSpan at, Action<byte[]> show, Action none)
+    {
         var frame = _vm.PreviewFrame(at, out var exact);
-        if (frame is not null) ShowPreviewFrame(frame);
+        if (frame is not null) show(frame);
         if (exact) return;
 
         if (_vm.ThumbnailUrl(at) is not { } url)
         {
-            if (frame is null) SeekPreviewImage.IsVisible = false;
+            if (frame is null) none();
             return;
         }
         if (url == _previewUrl) return; // same frame (they're 10 s apart), already on its way
@@ -741,8 +818,8 @@ public partial class PlayerPage : ContentPage
             if (jpeg is not null) _vm.RememberPreviewFrame(at, jpeg); // a miss may be a timeout, so it's asked again next time
             if (cts.IsCancellationRequested) return;
             // The frame on show stays up while the next one loads; only hide it when there's none at all.
-            if (jpeg is not null) ShowPreviewFrame(jpeg);
-            else if (frame is null) SeekPreviewImage.IsVisible = false;
+            if (jpeg is not null) show(jpeg);
+            else if (frame is null) none();
         }
         catch (OperationCanceledException)
         {
@@ -755,12 +832,24 @@ public partial class PlayerPage : ContentPage
         }
     }
 
+    private byte[]? _skipFrame;
+
+    private void ShowSkipFrame(byte[] jpeg)
+    {
+        SkipPreview.IsVisible = true;
+        if (ReferenceEquals(jpeg, _skipFrame)) return;
+        _skipFrame = jpeg;
+        SkipPreviewImage.Source = ImageSource.FromStream(() => new MemoryStream(jpeg));
+    }
+
     private void ShowPreviewFrame(byte[] jpeg)
     {
         SeekPreviewImage.IsVisible = true;
+        if (_scrubbing) FullPreview.IsVisible = true;
         if (ReferenceEquals(jpeg, _shownFrame)) return; // the same picture: no need to decode it again
         _shownFrame = jpeg;
         SeekPreviewImage.Source = ImageSource.FromStream(() => new MemoryStream(jpeg));
+        if (_scrubbing) FullPreview.Source = ImageSource.FromStream(() => new MemoryStream(jpeg));
     }
 
     private DateTime _dragEnded;
@@ -833,6 +922,7 @@ public partial class PlayerPage : ContentPage
         base.OnDisappearing();
         _hideTimer?.Stop();
         _skipDelay?.Cancel();
+        _scrubbing = false;
         _preview?.Cancel();
         _vm.StopLoadingStatus();
         _vm.StopPreviewFrames();

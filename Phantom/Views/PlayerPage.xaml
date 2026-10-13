@@ -25,6 +25,9 @@
                               Aspect="AspectFit" MetadataTitle="{Binding Title}" MetadataArtworkUrl="{Binding PosterUrl}"
                               Speed="{Binding Speed}" />
 
+        <!-- TV, moving along the timeline with the remote (paused): the frame there, over the whole picture. -->
+        <Image x:Name="FullPreview" IsVisible="False" Aspect="AspectFit" InputTransparent="True" BackgroundColor="Black" />
+
         <!-- Subtitles are rendered by Phantom (MediaElement has no subtitle support). -->
         <Label Text="{Binding SubtitleText}" FontSize="{Binding SubtitleSize}" TextColor="White" BackgroundColor="#99000000"
                Padding="10,4" HorizontalOptions="Center" VerticalOptions="End" Margin="24,0,24,96"
@@ -56,7 +59,13 @@
         <!-- "−10s" / "+30s" after a double-tap or arrow key -->
         <Border x:Name="SkipFlash" IsVisible="False" Opacity="0" VerticalOptions="Center" Padding="18,10" Margin="60,0"
                 BackgroundColor="#990B0B12" StrokeShape="RoundRectangle 24" InputTransparent="True">
-            <Label x:Name="SkipFlashText" TextColor="White" FontFamily="OpenSansSemibold" FontSize="18" />
+            <VerticalStackLayout Spacing="8">
+                <!-- TV skips: the frame they'll land on -->
+                <Border x:Name="SkipPreview" IsVisible="False" StrokeShape="RoundRectangle 10" StrokeThickness="0" WidthRequest="240" HeightRequest="135">
+                    <Image x:Name="SkipPreviewImage" Aspect="AspectFill" />
+                </Border>
+                <Label x:Name="SkipFlashText" TextColor="White" FontFamily="OpenSansSemibold" FontSize="18" HorizontalOptions="Center" />
+            </VerticalStackLayout>
         </Border>
 
         <!-- Controls overlay -->
