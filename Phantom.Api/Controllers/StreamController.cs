@@ -133,6 +133,30 @@ public abstract class StreamControllerBase(
         $"http://127.0.0.1:{HttpContext.Connection.LocalPort}{RouteBase(id)}/direct?releaseId={target.Release.Id}&access_token={Uri.EscapeDataString(Token())}"
         + (preview ? "&preview=true" : "");
 
+    /// <summary>
+    /// Opens the torrent's video here before ffmpeg is pointed at <see cref="Loopback"/>: when that can't be done, ffmpeg
+    /// only reports "Server returned 5XX", so the reason is found and said here instead. Null when it opened.
+    /// </summary>
+    private async Task<string?> OpenTorrentAsync(StreamTarget target, CancellationToken ct)
+    {
+        try
+        {
+            var media = await engine.OpenAsync(target.Release, ct, target.Choice);
+            if (media is null) return "This release hasn't got that episode. Try another version.";
+            media.Stream?.Dispose();
+            return null;
+        }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+        {
+            return "Nobody sharing this torrent could be reached to start it. Try again later, or choose another source.";
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            log.LogWarning(ex, "Couldn't open {Release} to convert it", target.Release.Name);
+            return $"The torrent couldn't be read ({ex.Message}). Try again, or choose another source.";
+        }
+    }
+
     /// <summary>Starts the torrent (if needed) and tells the client how to play it.</summary>
     [HttpGet("info")]
     public async Task<ActionResult<StreamInfoDto>> Info(int id, [FromQuery] int? releaseId, CancellationToken ct)
@@ -226,7 +250,15 @@ public abstract class StreamControllerBase(
         if (Local(target) is { } local)
             return PhysicalFile(Path.GetFullPath(local), VideoFiles.ContentType(local), download ? Path.GetFileName(local) : null, enableRangeProcessing: true);
 
-        var media = await engine.OpenAsync(target.Release, ct, target.Choice, wait: !preview);
+        TorrentMedia? media;
+        try
+        {
+            media = await engine.OpenAsync(target.Release, ct, target.Choice, wait: !preview);
+        }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+        {
+            return StatusCode(StatusCodes.Status504GatewayTimeout, "Could not fetch torrent metadata (no peers?).");
+        }
         if (media is null) return NotFound();
         engine.Touch(target.Release.InfoHash);
         var name = Path.GetFileName(media.FileName);
@@ -253,6 +285,13 @@ public abstract class StreamControllerBase(
 
         // ffmpeg reads either the finished file or our own range-capable direct endpoint.
         var input = CompleteFile(target) is { } complete ? Path.GetFullPath(complete) : Loopback(id, target);
+        if (input.StartsWith("http") && await OpenTorrentAsync(target, ct) is { } problem)
+        {
+            Response.StatusCode = StatusCodes.Status502BadGateway;
+            Response.ContentType = "text/plain; charset=utf-8";
+            await Response.WriteAsync(problem, CancellationToken.None);
+            return;
+        }
 
         Response.ContentType = "video/mp4";
         try
@@ -295,6 +334,8 @@ public abstract class StreamControllerBase(
             if (target is null) return NotFound();
             // A whole file on the server's disk is read straight from there, not through the torrent.
             var input = CompleteFile(target) is { } complete ? Path.GetFullPath(complete) : Loopback(id, target);
+            if (input.StartsWith("http") && await OpenTorrentAsync(target, ct) is { } problem)
+                return StatusCode(StatusCodes.Status502BadGateway, problem);
             var codecs = remux ? await transcoder.ProbeAsync(input, ct) : null;
             running = hls.Start(session, owner, input, start, maxKbps, maxHeight, codecs);
         }

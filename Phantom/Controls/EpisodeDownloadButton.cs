@@ -107,6 +107,13 @@ public class EpisodeDownloadButton : Button
         var resources = Application.Current!.Resources;
         if (progress is { } p)
         {
+            // A pill's rounded ends hide the first and last few percent of a fill drawn edge to edge (5% of a wide
+            // episode button is all inside its curve): the fill runs between the curves, so any progress shows.
+            if (button.Width > 0 && p > 0 && p < 1)
+            {
+                var curve = Math.Min(button.CornerRadius, button.Height / 2) / button.Width;
+                p = curve + p * (1 - 2 * curve);
+            }
             button.Background = ProgressLook.Fill(p, (Color)resources["SurfaceRaised"]);
             button.BorderWidth = 1.5;
             if (!running) ProgressLook.Pulse(button, c => button.BorderColor = c, on: true);
