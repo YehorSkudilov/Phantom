@@ -366,13 +366,21 @@ public partial class PlayerPage : ContentPage
     /// <summary>
     /// Jumps to where the movie was left off. On iOS MediaOpened comes when the item is ready but the player may not be,
     /// and SeekTo throws until it is, so a failed attempt is retried when it starts playing (see OnStateChanged).
+    /// Only while it's still at the start, though: a seek can land and still be reported as failed (iOS does when
+    /// buffering cuts it short), and retrying that one sent the movie back to the same place each time it buffered and
+    /// played on, while its progress went unsaved (see OnPositionChanged), so it came back there next time too.
     /// </summary>
     private async Task TryResumeAsync()
     {
         if (!_pendingResume) return;
         _pendingResume = false;
-        if (!await TrySeekAsync(_vm.ResumePosition)) _pendingResume = true;
+        if (ResumeLanded()) return;
+        if (!await TrySeekAsync(_vm.ResumePosition) && !ResumeLanded()) _pendingResume = true;
     }
+
+    /// <summary>Playing from where it was left off (near enough), or well into the movie anyway.</summary>
+    private bool ResumeLanded() =>
+        Media.Position > TimeSpan.FromSeconds(10) || Media.Position >= _vm.ResumePosition - TimeSpan.FromSeconds(2);
 
     /// <summary>
     /// MediaElement's SeekTo, without the exceptions it throws while the player isn't ready. On iOS those are thrown
