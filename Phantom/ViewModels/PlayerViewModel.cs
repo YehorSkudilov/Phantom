@@ -31,6 +31,9 @@ public partial class PlayerViewModel(PhantomApi api, SettingsService settings, D
     private int? _releaseId;
     private List<int> _queue = [];
     private TimeSpan _runtime;
+    // The file's exact length, once this device's player has said it playing the file itself (a conversion only
+    // knows what it has converted so far). Better than the listing's runtime, which is in whole minutes.
+    private TimeSpan _knownLength;
     private EpisodeDto? _nextEpisode;
     private OfflineDownload? _nextOffline; // the show's next downloaded episode, when playing one offline
 
@@ -473,6 +476,7 @@ public partial class PlayerViewModel(PhantomApi api, SettingsService settings, D
     private Task Load() => RunAsync(async () =>
     {
         _forceConvert = _remuxFailed = false;
+        _knownLength = TimeSpan.Zero;
         LoadingText = "Opening…";
         LoadingDetail = null;
         LoadingProgress = -1;
@@ -668,9 +672,18 @@ public partial class PlayerViewModel(PhantomApi api, SettingsService settings, D
         _ => null,
     };
 
-    /// <summary>The movie's full length while casting <paramref name="media"/>, of which the TV knows <paramref name="castDuration"/>.</summary>
-    public TimeSpan CastLength(TimeSpan castDuration, CastMedia media) =>
-        castDuration > TimeSpan.Zero ? media.Offset + castDuration : _runtime;
+    /// <summary>
+    /// The movie's full length while casting <paramref name="media"/>, of which the TV says <paramref name="castDuration"/>.
+    /// That's the file's length when it plays the file itself, but of a conversion only as much as it has been sent so
+    /// far, which made a movie look a few seconds long: then it's the length known from playing here, or the listing's.
+    /// </summary>
+    public TimeSpan CastLength(TimeSpan castDuration, CastMedia media)
+    {
+        if (!media.Converted && castDuration > TimeSpan.Zero) return castDuration;
+        var known = _knownLength > TimeSpan.Zero ? _knownLength : _runtime;
+        var sent = media.Offset + castDuration;
+        return known > sent ? known : sent;
+    }
 
     /// <summary>The cast device's position, as OnPosition is this device's: subtitles here, and progress saved.</summary>
     public void OnCastPosition(TimeSpan position, TimeSpan total, bool playing)
@@ -717,6 +730,7 @@ public partial class PlayerViewModel(PhantomApi api, SettingsService settings, D
     {
         var position = elementPosition + TranscodeOffset;
         _playedTo = position;
+        if (!IsTranscoding && duration > TimeSpan.Zero) _knownLength = duration;
         if (_cues.Count > 0) SubtitleText = SubtitleParser.CueAt(_cues, position)?.Text;
         if (DateTime.UtcNow - _lastReport > TimeSpan.FromSeconds(10))
             _ = ReportAsync(position, duration, playing ? PlayerState.Playing : PlayerState.Paused);
