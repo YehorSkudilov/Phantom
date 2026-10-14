@@ -33,7 +33,9 @@ public partial class PlayerPage : ContentPage
 
         // While casting, this device's player is stopped: what it says then is about nothing on show.
         Media.MediaOpened += (_, _) => Dispatcher.Dispatch(() => { if (_cast is null) OnOpened(); });
-        Media.PositionChanged += (_, e) => Dispatcher.Dispatch(() => { if (_cast is null) OnPositionChanged(e.Position); });
+        // Only where the platform's player can't be asked directly (see OnPlayerTick): the two together, one of them stale,
+        // would look like the position jumping back.
+        Media.PositionChanged += (_, e) => Dispatcher.Dispatch(() => { if (_cast is null && PlayerPositionNow() is null) OnPositionChanged(e.Position); });
         Media.StateChanged += (_, e) => Dispatcher.Dispatch(() => { if (_cast is null) OnStateChanged(e.NewState); });
         Media.MediaEnded += (_, _) => Dispatcher.Dispatch(() => { if (_cast is null) OnEnded(); });
         Media.MediaFailed += (_, e) => Dispatcher.Dispatch(() =>
@@ -356,6 +358,46 @@ public partial class PlayerPage : ContentPage
     // ---------- The player's own buffer, on the timeline ----------
 
     private IDispatcherTimer? _playerBufferTimer;
+
+    /// <summary>
+    /// Twice a second: the player's buffer on the timeline, and where it is. MediaElement says where it is with
+    /// PositionChanged, but those can stop coming while it plays on (the timeline then sat at 0:00), so the platform's
+    /// player is asked instead, once it has started playing.
+    /// </summary>
+    private void OnPlayerTick()
+    {
+        UpdatePlayerBufferTrack();
+        if (_cast is not null) return;
+        try
+        {
+            if (_started && PlayerPositionNow() is { } at) OnPositionChanged(at);
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Player position: {ex.Message}");
+        }
+    }
+
+    /// <summary>Where the platform's player is in its source (null where it can't say).</summary>
+    private TimeSpan? PlayerPositionNow()
+    {
+#if ANDROID
+        return Media.Handler?.PlatformView is Android.Views.View view && FindPlayerView(view)?.Player is { } player
+            ? TimeSpan.FromMilliseconds(Math.Max(0, player.CurrentPosition))
+            : null;
+#elif IOS || MACCATALYST
+        return FindAVPlayer()?.CurrentItem is { } item && double.IsFinite(item.CurrentTime.Seconds)
+            ? TimeSpan.FromSeconds(Math.Max(0, item.CurrentTime.Seconds))
+            : null;
+#elif WINDOWS
+        return Media.Handler?.PlatformView is Microsoft.UI.Xaml.DependencyObject root
+               && FindChild<Microsoft.UI.Xaml.Controls.MediaPlayerElement>(root)?.MediaPlayer?.PlaybackSession is { } session
+            ? session.Position
+            : null;
+#else
+        return null;
+#endif
+    }
 
     /// <summary>
     /// The timeline's third shade: how far ahead this device's player has the video loaded, read from the platform's
@@ -820,7 +862,6 @@ public partial class PlayerPage : ContentPage
         try
         {
             Media.Stop();
-            Media.Source = null;
         }
         catch (Exception ex)
         {
@@ -1197,7 +1238,7 @@ public partial class PlayerPage : ContentPage
         _playerBufferTimer?.Stop();
         _playerBufferTimer = Dispatcher.CreateTimer();
         _playerBufferTimer.Interval = TimeSpan.FromMilliseconds(500);
-        _playerBufferTimer.Tick += (_, _) => UpdatePlayerBufferTrack();
+        _playerBufferTimer.Tick += (_, _) => OnPlayerTick();
         _playerBufferTimer.Start();
 #if WINDOWS
         HookKeys();
