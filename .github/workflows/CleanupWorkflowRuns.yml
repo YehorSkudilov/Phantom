@@ -1,0 +1,71 @@
+name: Clean Runs
+
+on:
+  workflow_dispatch:
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+
+    permissions:
+      actions: write
+
+    steps:
+      - name: Delete all artifacts and workflow runs
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          echo "======================================"
+          echo "Deleting all GitHub Actions artifacts"
+          echo "======================================"
+
+          while true; do
+            ARTIFACTS=$(gh api \
+              --paginate \
+              "repos/$REPO/actions/artifacts?per_page=100" \
+              --jq '.artifacts[].id')
+
+            if [ -z "$ARTIFACTS" ]; then
+              echo "No artifacts remaining."
+              break
+            fi
+
+            while read -r ARTIFACT_ID; do
+              if [ -n "$ARTIFACT_ID" ]; then
+                echo "Deleting artifact: $ARTIFACT_ID"
+                gh api \
+                  --method DELETE \
+                  "repos/$REPO/actions/artifacts/$ARTIFACT_ID" || true
+              fi
+            done <<< "$ARTIFACTS"
+          done
+
+          echo "======================================"
+          echo "Deleting all GitHub Actions workflow runs"
+          echo "======================================"
+
+          while true; do
+            RUNS=$(gh run list \
+              --repo "$REPO" \
+              --limit 100 \
+              --json databaseId \
+              --jq '.[].databaseId')
+
+            if [ -z "$RUNS" ]; then
+              echo "No workflow runs remaining."
+              break
+            fi
+
+            while read -r RUN_ID; do
+              if [ -n "$RUN_ID" ]; then
+                echo "Deleting workflow run: $RUN_ID"
+                gh run delete "$RUN_ID" \
+                  --repo "$REPO" || true
+              fi
+            done <<< "$RUNS"
+          done
+
+          echo "======================================"
+          echo "Cleanup complete"
+          echo "======================================"
