@@ -11,7 +11,7 @@
             <Label Text="Search" Style="{StaticResource H1}" VerticalOptions="Center" />
             <!-- Filters (and sort) live in one popup; a dot shows while any filter narrows the library -->
             <Grid Grid.Column="1">
-                <ImageButton Style="{StaticResource IconButton}" Source="{controls:Icon tune}" Command="{Binding ToggleFiltersCommand}"
+                <ImageButton x:Name="FiltersButton" Style="{StaticResource IconButton}" Source="{controls:Icon tune}" Command="{Binding ToggleFiltersCommand}"
                              SemanticProperties.Description="Filters and sort" ToolTipProperties.Text="Filters and sort" />
                 <Border WidthRequest="9" HeightRequest="9" StrokeShape="RoundRectangle 4.5" BackgroundColor="{StaticResource Primary}"
                         HorizontalOptions="End" VerticalOptions="Start" Margin="0,9,9,0" InputTransparent="True"
@@ -174,7 +174,7 @@
                     <TapGestureRecognizer Command="{Binding CloseFiltersCommand}" />
                 </BoxView.GestureRecognizers>
             </BoxView>
-            <Border Style="{StaticResource Card}" Padding="16,8,16,16" Margin="8,0,8,92"
+            <Border x:Name="FiltersCard" Style="{StaticResource Card}" Padding="16,8,16,16" Margin="8,0,8,92"
                     VerticalOptions="End" MaximumWidthRequest="480" BackgroundColor="{StaticResource Surface}">
                 <Border.Shadow>
                     <Shadow Brush="Black" Opacity="0.45" Radius="24" Offset="0,8" />

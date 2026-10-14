@@ -23,7 +23,6 @@ namespace Phantom.Droid;
 public static class DpadFocus
 {
     private static readonly ConditionalWeakTable<View, object> Watched = new();
-    private static readonly ConditionalWeakTable<AView, object> Ringed = new();
 
     public static void Register()
     {
@@ -61,10 +60,52 @@ public static class DpadFocus
         else if (platform.Focusable && platform is not ViewGroup) AddRing(platform);
     }
 
+    /// <summary>
+    /// A ring on whatever the remote has just focused, if it hasn't one: the views above are ringed as they're made,
+    /// but some take focus that aren't seen then (a search box's text field inside it, a picker...). Lists and scroll
+    /// views are left alone: they only hold focus on the way to what's in them. So is anything near the size of the
+    /// screen (the video): a ring round the edge of it says nothing.
+    /// </summary>
+    internal static void EnsureRing(AView view)
+    {
+        if (view is RecyclerView or Android.Widget.ScrollView or AndroidX.Core.Widget.NestedScrollView or Android.Widget.HorizontalScrollView) return;
+        if (view.RootView is { Width: > 0 } root && view.Width > root.Width * 0.9 && view.Height > root.Height * 0.9) return;
+        AddRing(view);
+    }
+
+    private static WeakReference<AView>? _adjusting;
+
+    /// <summary>
+    /// The slider being adjusted with the remote (see TvNavigation.HandleSlider), or null: its ring turns the app's
+    /// accent colour, so it's clear the arrows now move it rather than the focus.
+    /// </summary>
+    public static void SetAdjusting(AView? slider)
+    {
+        var before = _adjusting?.TryGetTarget(out var was) == true ? was : null;
+        _adjusting = slider is null ? null : new(slider);
+        before?.Invalidate();
+        slider?.Invalidate();
+    }
+
+    public static bool IsAdjusting(AView view) => _adjusting?.TryGetTarget(out var slider) == true && slider == view;
+
+    /// <summary>
+    /// Whether the view's foreground has the ring. Looked at each time rather than remembered: a list reuses its rows,
+    /// and MAUI can give a reused row its own foreground again, which took the ring with it (the remote's ring then
+    /// went missing on some posters).
+    /// </summary>
+    private static bool HasRing(Drawable? drawable) => drawable switch
+    {
+        FocusRing => true,
+        LayerDrawable layers => Enumerable.Range(0, layers.NumberOfLayers).Any(i => layers.GetDrawable(i) is FocusRing),
+        _ => false,
+    };
+
     private static void AddRing(AView view)
     {
-        if (Ringed.TryGetValue(view, out _)) return;
-        Ringed.Add(view, view);
+        if (HasRing(view.Foreground)) return;
+        // A list's row on a TV: only the ring (see RingRows), whatever foreground the row was given since.
+        if (TvNavigation.IsTv && view.Parent is RecyclerView) view.Foreground = null;
         var ring = new FocusRing(view);
         view.DefaultFocusHighlightEnabled = false; // Android's own grey wash, under the ring
         view.Foreground = view.Foreground is { } existing ? new LayerDrawable([existing, ring]) : ring;
@@ -126,7 +167,13 @@ public static class DpadFocus
 
     private sealed class RingRows : Java.Lang.Object, RecyclerView.IOnChildAttachStateChangeListener
     {
-        public void OnChildViewAttachedToWindow(AView view) => AddRing(view);
+        public void OnChildViewAttachedToWindow(AView view)
+        {
+            // MAUI gives a selectable row Android's own highlight, which a TV draws as a square tinted block when the
+            // remote is on it: there the row has the app's ring instead (round the card, in the room the poster
+            // templates leave it on a TV). A phone keeps the ripple a tap makes.
+            AddRing(view);
+        }
 
         public void OnChildViewDetachedFromWindow(AView view) { }
     }
@@ -137,6 +184,8 @@ public static class DpadFocus
     /// </summary>
     private sealed class FocusRing : Drawable
     {
+        private static readonly Android.Graphics.Color Accent = Android.Graphics.Color.ParseColor("#A78BFA");
+
         private readonly Paint _paint = new(PaintFlags.AntiAlias);
         private readonly WeakReference<AView> _view;
         private readonly float _radius;
@@ -165,7 +214,8 @@ public static class DpadFocus
 
         public override void Draw(Canvas canvas)
         {
-            if (!_focused || _view.TryGetTarget(out var view) && view.IsInTouchMode) return;
+            if (!_focused || !_view.TryGetTarget(out var view) || view.IsInTouchMode) return;
+            _paint.Color = IsAdjusting(view) ? Accent : Android.Graphics.Color.White;
             var bounds = Bounds;
             var inset = _paint.StrokeWidth / 2;
             var rect = new RectF(bounds.Left + inset, bounds.Top + inset, bounds.Right - inset, bounds.Bottom - inset);

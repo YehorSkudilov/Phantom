@@ -22,7 +22,16 @@ public class MainActivity : MauiAppCompatActivity
 
     public override bool DispatchKeyEvent(KeyEvent? e)
     {
-        if (e is not null && KeyHandler?.Invoke(e) == true) return true;
+        if (e is not null && (KeyHandler?.Invoke(e) == true || Droid.TvNavigation.HandleKey(this, e))) return true;
         return base.DispatchKeyEvent(e);
+    }
+
+    protected override void OnCreate(Bundle? savedInstanceState)
+    {
+        base.OnCreate(savedInstanceState);
+        // The app's own over MAUI's theme (Resources/values/styles.xml): no highlight painted on a list's selected row.
+        if (Resources?.GetIdentifier("PhantomThemeOverrides", "style", PackageName) is int overrides and not 0)
+            Theme?.ApplyStyle(overrides, true);
+        Droid.TvNavigation.Attach(this);
     }
 }

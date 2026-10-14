@@ -89,6 +89,23 @@ public static class MauiProgram
         });
         // A TV remote reaches everything that can be tapped, and shows where it is (see DpadFocus).
         Phantom.Droid.DpadFocus.Register();
+        // Pickers (a show's source, a season, settings) rounded like the app's other fields and buttons, rather than
+        // Android's square box with a line under it. Picker has no CornerRadius, so its background is drawn here.
+        Microsoft.Maui.Handlers.PickerHandler.Mapper.AppendToMapping(nameof(IView.Background), (handler, view) =>
+        {
+            var field = handler.PlatformView;
+            var density = field.Resources?.DisplayMetrics?.Density ?? 2;
+            var shape = new Android.Graphics.Drawables.GradientDrawable();
+            shape.SetCornerRadius(10 * density);
+            shape.SetColor(Microsoft.Maui.Platform.ColorExtensions.ToPlatform((view as VisualElement)?.BackgroundColor ?? Colors.Transparent));
+            field.Background = shape;
+            var side = (int)(12 * density);
+            field.SetPadding(side, field.PaddingTop, side, field.PaddingBottom);
+        });
+        // A TV draws the nav bar's blur by redrawing what's behind it, up to 30 times a second on Android before 12,
+        // which is much of what a TV box's CPU has: there it's redrawn a few times a second, which looks the same
+        // behind a bar that only slides as the page scrolls.
+        if (DeviceInfo.Idiom == DeviceIdiom.TV) AppSkeleton.RealtimeBlurView.MinCaptureIntervalMs = 200;
 #endif
 
 #if WINDOWS

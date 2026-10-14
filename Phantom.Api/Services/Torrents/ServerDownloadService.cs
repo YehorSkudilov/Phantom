@@ -96,8 +96,18 @@ public class ServerDownloadService(IServiceScopeFactory scopes, TorrentEngine en
             if (stats.Complete)
             {
                 var moreToCome = active.Any(o => o != d && o.ReleaseId == d.ReleaseId && o.Status != DownloadStatus.Completed);
-                release.LocalFilePath = await engine.FinalizeDownloadAsync(release, settings.SeedAfterDownload, Choice(d), moreToCome)
-                                        ?? release.LocalFilePath;
+                var saved = await engine.FinalizeDownloadAsync(release, settings.SeedAfterDownload, Choice(d), moreToCome);
+                // A fake or damaged release (an archive, or junk named as a film) would only fail when played: it's
+                // said here instead, and isn't kept as something to play.
+                if (saved is not null && scope.ServiceProvider.GetService<Transcoder>() is { IsAvailable: true } transcoder
+                    && await transcoder.UnreadableReasonAsync(saved, ct) is { } reason)
+                {
+                    log.LogWarning("Server download {Name} isn't a readable video: {Reason}", release.Name, reason);
+                    d.Status = DownloadStatus.Failed;
+                    d.Error = Transcoder.UnreadableMessage;
+                    continue;
+                }
+                release.LocalFilePath = saved ?? release.LocalFilePath;
                 d.Status = DownloadStatus.Completed;
                 d.Progress = 100;
                 d.CompletedAt = DateTime.UtcNow;
@@ -115,8 +125,14 @@ public class ServerDownloadService(IServiceScopeFactory scopes, TorrentEngine en
         if (DateTime.UtcNow - _lastEviction > TimeSpan.FromMinutes(10))
         {
             _lastEviction = DateTime.UtcNow;
-            await engine.EvictIdleAsync(TimeSpan.FromHours(Math.Max(1, settings.StreamCacheHours)));
-            await engine.EnforceCacheLimitAsync((long)settings.MaxStreamCacheGb << 30);
+            // Never a torrent a server download still needs (one saving, or paused, which isn't loaded to protect itself).
+            var needed = (await db.ServerDownloads.AsNoTracking()
+                    .Where(x => x.Status != DownloadStatus.Completed && x.Status != DownloadStatus.Cancelled && x.Status != DownloadStatus.Failed)
+                    .Select(x => x.Release!.InfoHash).ToListAsync(ct))
+                .Select(h => h.ToLowerInvariant()).ToHashSet();
+            // Nothing streams from a torrent any more (only saved files play): any stream cache is left over, and goes
+            // once nothing has read it for a while.
+            await engine.EvictIdleAsync(TimeSpan.FromMinutes(10), needed);
         }
         await engine.EnsureFreeSpaceAsync();
 
@@ -145,7 +161,7 @@ public class ServerDownloadService(IServiceScopeFactory scopes, TorrentEngine en
     /// <summary>
     /// Removes a server download, stopping it if it's still going, and with <paramref name="deleteFiles"/> its files.
     /// An episode saved from a pack that other episodes were saved from too only takes its own file with it: the
-    /// torrent carries on for the others.
+    /// torrent carries on for the others. A video another profile has saved too keeps its file for that profile.
     /// </summary>
     public static async Task RemoveAsync(PhantomDbContext db, TorrentEngine engine, ServerDownload d, bool deleteFiles, CancellationToken ct)
     {
@@ -155,7 +171,11 @@ public class ServerDownloadService(IServiceScopeFactory scopes, TorrentEngine en
             .ToListAsync(ct);
         db.ServerDownloads.Remove(d);
 
-        if (others.Count > 0 && d.EpisodeId is not null)
+        // Another profile has this very video saved too: only this entry goes; the torrent and file stay for it.
+        if (others.Any(o => o.EpisodeId == d.EpisodeId))
+        {
+        }
+        else if (others.Count > 0 && d.EpisodeId is not null)
         {
             await engine.KeepEpisodesAsync(release, others.Select(Choice));
             if (deleteFiles) engine.DeleteSavedEpisode(release, Choice(d));

@@ -162,6 +162,32 @@ public class ApiTests : IClassFixture<PhantomFactory>
     }
 
     [Fact]
+    public async Task Profiles_can_be_renamed_and_given_a_picture()
+    {
+        var owner = await AdminClientAsync();
+        var name = "pic" + Guid.NewGuid().ToString("N")[..6];
+        var profile = await (await owner.PostAsJsonAsync("/api/profiles", new CreateProfileRequest(name, null, null, null, "pets"), Json))
+            .Content.ReadFromJsonAsync<UserDto>(Json);
+        Assert.Equal("pets", profile!.Avatar);
+
+        var renamed = await (await owner.PutAsJsonAsync($"/api/profiles/{profile.Id}", new UpdateProfileRequest(name + "x", "rocket_launch"), Json))
+            .Content.ReadFromJsonAsync<UserDto>(Json);
+        Assert.Equal((name + "x", "rocket_launch"), (renamed!.Username, renamed.Avatar));
+        var listed = (await owner.GetFromJsonAsync<List<UserDto>>("/api/profiles", Json))!.Single(p => p.Id == profile.Id);
+        Assert.Equal((name + "x", "rocket_launch"), (listed.Username, listed.Avatar));
+
+        // Back to the initial; an unknown picture and renaming the account's own profile here are refused.
+        Assert.Null((await (await owner.PutAsJsonAsync($"/api/profiles/{profile.Id}", new UpdateProfileRequest(null, ""), Json))
+            .Content.ReadFromJsonAsync<UserDto>(Json))!.Avatar);
+        Assert.Equal(HttpStatusCode.BadRequest, (await owner.PutAsJsonAsync($"/api/profiles/{profile.Id}", new UpdateProfileRequest(null, "nope"), Json)).StatusCode);
+        var me = (await owner.GetFromJsonAsync<List<UserDto>>("/api/profiles", Json))!.Single(p => !p.IsManaged);
+        Assert.Equal(HttpStatusCode.BadRequest, (await owner.PutAsJsonAsync($"/api/profiles/{me.Id}", new UpdateProfileRequest(me.Username + "z", null), Json)).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await owner.PutAsJsonAsync($"/api/profiles/{me.Id}", new UpdateProfileRequest(null, "star"), Json)).StatusCode);
+        Assert.Equal("👽", (await (await owner.PutAsJsonAsync($"/api/profiles/{profile.Id}", new UpdateProfileRequest(null, "👽"), Json))
+            .Content.ReadFromJsonAsync<UserDto>(Json))!.Avatar);
+    }
+
+    [Fact]
     public async Task Managed_profile_with_pin_hides_restricted_titles()
     {
         var owner = await AdminClientAsync();
@@ -255,6 +281,63 @@ public class ApiTests : IClassFixture<PhantomFactory>
 
         var del = await client.DeleteAsync($"/api/downloads/{a.Id}?deleteFiles=true");
         Assert.Equal(HttpStatusCode.NoContent, del.StatusCode);
+    }
+
+    [Fact]
+    public async Task Only_what_is_saved_on_the_server_plays()
+    {
+        var client = await AdminClientAsync();
+        var id = (await client.GetFromJsonAsync<PagedResult<MovieSummaryDto>>("/api/library/movies?search=Nosferatu", Json))!.Items.Single().Id;
+        // Not saved (the tests' releases have no files): no streaming from the torrent, but a reason to show.
+        var info = await client.GetAsync($"/api/stream/{id}/info");
+        Assert.Equal(HttpStatusCode.Conflict, info.StatusCode);
+        Assert.Contains("isn't saved on the server", await info.Content.ReadAsStringAsync());
+        Assert.Equal(HttpStatusCode.Conflict, (await client.GetAsync($"/api/stream/{id}/direct")).StatusCode);
+    }
+
+    [Fact]
+    public async Task A_download_for_a_device_isnt_a_saved_copy()
+    {
+        var client = await AdminClientAsync();
+        var id = (await client.GetFromJsonAsync<PagedResult<MovieSummaryDto>>("/api/library/movies?search=Living Dead", Json))!.Items.Single().Id;
+        var forDevice = await (await client.PostAsJsonAsync("/api/downloads", new CreateServerDownloadRequest(id, null, ForDevice: true), Json))
+            .Content.ReadFromJsonAsync<ServerDownloadDto>(Json);
+        Assert.True(forDevice!.ForDevice);
+        Assert.DoesNotContain(await client.GetFromJsonAsync<List<ServerDownloadDto>>("/api/downloads", Json) ?? [], d => d.Id == forDevice.Id);
+
+        // Saving it as well makes it the profile's: listed, and no longer the device's to delete.
+        var saved = await (await client.PostAsJsonAsync("/api/downloads", new CreateServerDownloadRequest(id, null), Json)).Content.ReadFromJsonAsync<ServerDownloadDto>(Json);
+        Assert.Equal((forDevice.Id, false), (saved!.Id, saved.ForDevice));
+        Assert.Contains(await client.GetFromJsonAsync<List<ServerDownloadDto>>("/api/downloads", Json) ?? [], d => d.Id == saved.Id);
+        // And a device download of a saved one uses it as it is.
+        Assert.False((await (await client.PostAsJsonAsync("/api/downloads", new CreateServerDownloadRequest(id, null, ForDevice: true), Json))
+            .Content.ReadFromJsonAsync<ServerDownloadDto>(Json))!.ForDevice);
+        await client.DeleteAsync($"/api/downloads/{saved.Id}?deleteFiles=true");
+    }
+
+    [Fact]
+    public async Task Each_profile_has_its_own_saved_copies()
+    {
+        var owner = await AdminClientAsync();
+        var id = (await owner.GetFromJsonAsync<PagedResult<MovieSummaryDto>>("/api/library/movies?search=General", Json))!.Items.Single().Id;
+        var mine = await (await owner.PostAsJsonAsync("/api/downloads", new CreateServerDownloadRequest(id, null), Json)).Content.ReadFromJsonAsync<ServerDownloadDto>(Json);
+
+        var profile = await (await owner.PostAsJsonAsync("/api/profiles", new CreateProfileRequest("dl" + Guid.NewGuid().ToString("N")[..6], null, null, null), Json))
+            .Content.ReadFromJsonAsync<UserDto>(Json);
+        var auth = await (await owner.PostAsJsonAsync("/api/profiles/switch", new SwitchProfileRequest(profile!.Id, null), Json)).Content.ReadFromJsonAsync<AuthResponse>(Json);
+        var other = _factory.CreateClient();
+        other.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", auth!.Token);
+
+        // The other profile doesn't see (or manage) the owner's copy, and saving the same is an entry of its own.
+        Assert.DoesNotContain(await other.GetFromJsonAsync<List<ServerDownloadDto>>("/api/downloads", Json) ?? [], d => d.Id == mine!.Id);
+        Assert.Equal(HttpStatusCode.NotFound, (await other.DeleteAsync($"/api/downloads/{mine!.Id}?deleteFiles=true")).StatusCode);
+        var theirs = await (await other.PostAsJsonAsync("/api/downloads", new CreateServerDownloadRequest(id, null), Json)).Content.ReadFromJsonAsync<ServerDownloadDto>(Json);
+        Assert.NotEqual(mine.Id, theirs!.Id);
+
+        // Removing theirs leaves the owner's.
+        Assert.Equal(HttpStatusCode.NoContent, (await other.DeleteAsync($"/api/downloads/{theirs.Id}?deleteFiles=true")).StatusCode);
+        Assert.Contains(await owner.GetFromJsonAsync<List<ServerDownloadDto>>("/api/downloads", Json) ?? [], d => d.Id == mine.Id);
+        await owner.DeleteAsync($"/api/downloads/{mine.Id}?deleteFiles=true");
     }
 
     [Fact]

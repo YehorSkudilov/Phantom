@@ -99,6 +99,15 @@
     </Style>
 
     <!-- Icon-only button: Source="{controls:Icon name}". Give it a SemanticProperties.Description. -->
+    <!-- A small round button over a poster's top-right corner (Downloads' pause and delete) -->
+    <Style x:Key="CornerButton" TargetType="ImageButton">
+        <Setter Property="BackgroundColor" Value="#B3000000" />
+        <Setter Property="WidthRequest" Value="30" />
+        <Setter Property="HeightRequest" Value="30" />
+        <Setter Property="Padding" Value="6" />
+        <Setter Property="CornerRadius" Value="15" />
+    </Style>
+
     <Style x:Key="IconButton" TargetType="ImageButton">
         <Setter Property="BackgroundColor" Value="Transparent" />
         <Setter Property="WidthRequest" Value="44" />
@@ -147,9 +156,11 @@
         <Setter Property="TextColor" Value="{StaticResource TextPrimary}" />
         <Setter Property="PlaceholderColor" Value="{StaticResource TextSecondary}" />
         <Setter Property="CancelButtonColor" Value="{StaticResource TextSecondary}" />
+        <Setter Property="SearchIconColor" Value="{StaticResource TextPrimary}" />
         <Setter Property="BackgroundColor" Value="{StaticResource Surface}" />
     </Style>
 
+    <!-- Its corners are rounded like the app's fields and buttons in MauiProgram (Picker has no CornerRadius) -->
     <Style TargetType="Picker">
         <Setter Property="TextColor" Value="{StaticResource TextPrimary}" />
         <Setter Property="TitleColor" Value="{StaticResource TextSecondary}" />

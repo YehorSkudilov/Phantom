@@ -128,6 +128,7 @@ public class ProfilesController(PhantomDbContext db, TokenService tokens, Passwo
             Username = name,
             ParentUserId = me.Id,
             AvatarColor = req.AvatarColor ?? "#3FA9F5",
+            Avatar = req.Avatar is { } avatar && ProfileAvatars.IsKnown(avatar) ? avatar : null,
             MaxContentRating = string.IsNullOrWhiteSpace(req.MaxContentRating) ? null : req.MaxContentRating,
         };
         if (!string.IsNullOrWhiteSpace(req.Pin)) profile.PinHash = passwords.Hash(profile, req.Pin);
@@ -148,6 +149,37 @@ public class ProfilesController(PhantomDbContext db, TokenService tokens, Passwo
         if (target.Id == owner.Id && User.UserId() != owner.Id && !passwords.Verify(owner, owner.PasswordHash, req.Pin ?? ""))
             return Unauthorized();
         return tokens.Issue(target);
+    }
+
+    /// <summary>
+    /// Renames a profile and/or changes its picture: the account's owner any of its profiles, a profile itself. The
+    /// account's own profile isn't renamed here (its name is the account's sign-in; see AuthController.UpdateAccount).
+    /// </summary>
+    [HttpPut("{id:int}")]
+    public async Task<ActionResult<UserDto>> Update(int id, UpdateProfileRequest req, CancellationToken ct)
+    {
+        var owner = await OwnerAsync(ct);
+        var profile = await db.Users.FindAsync([id], ct);
+        if (owner is null || profile is null || (profile.Id != owner.Id && profile.ParentUserId != owner.Id)) return NotFound();
+        if (User.UserId() != owner.Id && User.UserId() != profile.Id) return Forbid();
+
+        if (req.Username is { } rename && rename.Trim() != profile.Username)
+        {
+            var name = rename.Trim();
+            if (profile.ParentUserId is null) return BadRequest("The account's own profile is renamed with the account, under Username and password.");
+            if (name.Length == 0) return BadRequest("Name is required.");
+            if (name.Equals(owner.Username, StringComparison.OrdinalIgnoreCase)
+                || await db.Users.AnyAsync(u => u.ParentUserId == owner.Id && u.Id != profile.Id && u.Username == name, ct))
+                return Conflict("You already have a profile with that name.");
+            profile.Username = name;
+        }
+        if (req.Avatar is { } avatar)
+        {
+            if (avatar.Length > 0 && !ProfileAvatars.IsKnown(avatar)) return BadRequest("Unknown picture.");
+            profile.Avatar = avatar.Length > 0 ? avatar : null;
+        }
+        await db.SaveChangesAsync(ct);
+        return TokenService.ToDto(profile);
     }
 
     [HttpDelete("{id:int}")]

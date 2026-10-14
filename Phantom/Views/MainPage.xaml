@@ -2,6 +2,7 @@
 <ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
              xmlns:skeleton="clr-namespace:AppSkeleton;assembly=AppSkeleton"
+             xmlns:controls="clr-namespace:Phantom.Controls"
              x:Class="Phantom.Views.MainPage"
              Shell.NavBarIsVisible="False">
 
@@ -19,5 +20,12 @@
                           LabelColor="{StaticResource TextSecondary}"
                           TintColor="{StaticResource GlassTint}"
                           TintOpacity="{StaticResource GlassTintOpacity}" />
+
+        <!-- TV: back to the top of the tab, at the screen's right edge, level with the bar (Right from its last tab
+             reaches it). Shown once the tab is scrolled down a way (see TvNavigation). -->
+        <ImageButton x:Name="TopButton" Grid.Row="1" Grid.RowSpan="2" Margin="0,4,16,10" IsVisible="False"
+                     HorizontalOptions="End" WidthRequest="54" HeightRequest="54" CornerRadius="27" Padding="13"
+                     BackgroundColor="{StaticResource SurfaceRaised}" Source="{controls:Icon keyboard_double_arrow_up}"
+                     Clicked="OnTopClicked" SemanticProperties.Description="Back to the top" />
     </Grid>
 </ContentPage>

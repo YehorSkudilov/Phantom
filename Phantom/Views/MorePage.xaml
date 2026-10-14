@@ -13,7 +13,12 @@
                 <VerticalStackLayout>
                     <Grid ColumnDefinitions="Auto,*" ColumnSpacing="14" Padding="16,14">
                         <Border WidthRequest="56" HeightRequest="56" StrokeShape="RoundRectangle 16" BackgroundColor="{Binding AvatarColor}">
-                            <Label Text="{Binding Initial}" FontSize="24" FontFamily="OpenSansSemibold" HorizontalOptions="Center" VerticalOptions="Center" />
+                            <Grid>
+                                <Label Text="{Binding Initial}" FontSize="24" FontFamily="OpenSansSemibold" HorizontalOptions="Center" VerticalOptions="Center"
+                                       IsVisible="{Binding Avatar, Converter={StaticResource HasValue}, ConverterParameter=invert}" />
+                                <Image Source="{Binding Avatar, Converter={StaticResource AvatarIcon}}" WidthRequest="34" HeightRequest="34"
+                                       IsVisible="{Binding Avatar, Converter={StaticResource HasValue}}" />
+                            </Grid>
                         </Border>
                         <!-- The profile in use, and the account it belongs to -->
                         <VerticalStackLayout Grid.Column="1" VerticalOptions="Center">

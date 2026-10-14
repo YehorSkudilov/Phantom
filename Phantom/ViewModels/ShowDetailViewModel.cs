@@ -43,7 +43,7 @@ public partial class ShowDetailViewModel(PhantomApi api, SettingsService setting
     private bool _watchingPlaylists;
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(Meta), nameof(GenreText), nameof(Creators), nameof(PlayLabel), nameof(CanPlay), nameof(NextProgress),
+    [NotifyPropertyChangedFor(nameof(Meta), nameof(GenreText), nameof(Creators), nameof(PlayLabel), nameof(PlayNotice), nameof(CanPlay), nameof(NextProgress),
         nameof(IsOnWatchlist), nameof(WatchlistLabel), nameof(WatchlistGlyph), nameof(IsWatched), nameof(WatchedLabel),
         nameof(IsSeasonWatched), nameof(SeasonWatchedLabel), nameof(IsRated), nameof(RateLabel))]
     private ShowDetailDto? show;
@@ -59,9 +59,27 @@ public partial class ShowDetailViewModel(PhantomApi api, SettingsService setting
 
     public bool CanPlay => Show?.NextEpisode is not null;
 
-    /// <summary>"Play S1:E1", "Resume S2:E5", or "Play S3:E1" once a season is done.</summary>
+    /// <summary>
+    /// "Play S1:E1", "Resume S2:E5", or "Play S3:E1" once a season is done; "Save S1:E1 to watch" (or how far saving
+    /// it has got) while it isn't saved, as nothing plays straight from a torrent (see IsReady).
+    /// </summary>
     public string PlayLabel => Show?.NextEpisode is not { } next ? "Nothing to play yet"
-        : $"{(InProgress(next) ? "Resume" : "Play")} S{next.SeasonNumber}:E{next.EpisodeNumber}";
+        : IsReady(next) ? $"{(InProgress(next) ? "Resume" : "Play")} S{next.SeasonNumber}:E{next.EpisodeNumber}"
+        : server.ForEpisode(next.Id) is { } saving && ServerDownloadTracker.IsRunning(saving)
+            ? $"Saving S{next.SeasonNumber}:E{next.EpisodeNumber} · {saving.Progress / 100:0%}"
+            : $"Save S{next.SeasonNumber}:E{next.EpisodeNumber} to watch";
+
+    /// <summary>
+    /// An episode can play: it's downloaded on this device, or saved on the server. Playing straight from a torrent is
+    /// gone (it often couldn't start, and was slow when it did): until then, play saves it.
+    /// </summary>
+    public bool IsReady(EpisodeDto episode) =>
+        downloads.FindEpisode(episode.Id) is { IsComplete: true } || server.ForEpisode(episode.Id) is { Status: DownloadStatus.Completed };
+
+    /// <summary>Under Play before the next episode is saved: why it saves first. Once saving, the button says how far it's got.</summary>
+    public string PlayNotice => Show?.NextEpisode is not { } next || IsReady(next)
+                                || server.ForEpisode(next.Id) is { } saving && ServerDownloadTracker.IsRunning(saving) ? ""
+            : "Episodes play once they're saved on the server: playing straight from a torrent was too unreliable. Save an episode (or a whole season) and Play works as soon as it's done.";
 
     public double NextProgress => Show?.NextEpisode is { } next && InProgress(next) ? next.Playback.ProgressPercent / 100 : 0;
 
@@ -190,6 +208,11 @@ public partial class ShowDetailViewModel(PhantomApi api, SettingsService setting
             await ToastAsync("No copy of this episode has been found yet.");
             return;
         }
+        if (!IsReady(episode))
+        {
+            await SaveToWatchAsync(episode);
+            return;
+        }
         // The season's picked source, when it's this episode's season (the server falls back if it hasn't got it).
         var release = SelectedSource?.ReleaseId is { } rid && episode.SeasonNumber == SelectedSeason?.Number ? $"&releaseId={rid}" : "";
         await GoToAsync($"{nameof(Views.PlayerPage)}?episode={episode.Id}&resume={InProgress(episode)}{release}");
@@ -242,7 +265,7 @@ public partial class ShowDetailViewModel(PhantomApi api, SettingsService setting
 
     /// <summary>
     /// An episode's Save on server button: the server downloads and keeps just that episode. Pressed again once it's
-    /// there (or on its way), an admin can stop or remove it.
+    /// there (or on its way), it can be stopped or removed.
     /// </summary>
     [RelayCommand]
     private async Task SaveEpisodeOnServer(EpisodeDto? episode)
@@ -255,6 +278,30 @@ public partial class ShowDetailViewModel(PhantomApi api, SettingsService setting
         }
         if (server.ForEpisode(episode.Id) is { } d) await RemoveFromServerAsync([d], EpisodeName(episode));
         else await SaveOnServerAsync([episode], $"S{episode.SeasonNumber}:E{episode.EpisodeNumber}");
+    }
+
+    /// <summary>Play on an episode that isn't saved yet: saves it, resumes its save, or says how far that's got.</summary>
+    private async Task SaveToWatchAsync(EpisodeDto episode)
+    {
+        var name = $"S{episode.SeasonNumber}:E{episode.EpisodeNumber}";
+        switch (server.ForEpisode(episode.Id))
+        {
+            case { } saving when ServerDownloadTracker.IsRunning(saving):
+                await Dialog.AlertAsync("Saving on the server", $"{name} is {saving.Progress / 100:0%} saved. It plays once it's saved.");
+                break;
+            case { Status: DownloadStatus.Paused } paused:
+                await RunAsync(async () =>
+                {
+                    await api.ResumeServerDownloadAsync(paused.Id);
+                    await server.RefreshAsync();
+                    await ToastAsync($"Saving {name} on the server");
+                }, showBusy: false);
+                break;
+            default:
+                if (await Dialog.ConfirmAsync("Save to watch", $"{name} isn't saved on the server yet, and episodes play once they are. Save it now?", "Save"))
+                    await SaveOnServerAsync([episode], name);
+                break;
+        }
     }
 
     // ---------- What's on the server ----------
@@ -282,7 +329,19 @@ public partial class ShowDetailViewModel(PhantomApi api, SettingsService setting
         : "Save on server";
 
     /// <summary>Some of the show is on the server (highlights the show's Save on server tile).</summary>
-    public bool HasOnServer => Episodes.Any(e => server.ForEpisode(e.Id) is not null);
+    public bool HasOnServer => server.ForShow(_id).Count > 0;
+
+    /// <summary>Some of the show's episodes are being saved: its tile fills as they go, as the season's does.</summary>
+    public bool IsShowSavingOnServer => server.ForShow(_id).Any(ServerDownloadTracker.IsRunning);
+
+    /// <summary>How far the show's copies on the server have got, all together (0 to 1).</summary>
+    public double ShowServerProgress => server.ForShow(_id) is { Count: > 0 } d
+        ? d.Average(x => x.Status == DownloadStatus.Completed ? 100 : x.Progress) / 100
+        : 0;
+
+    public string ShowServerLabel => IsShowSavingOnServer ? $"Saving {ShowServerProgress:0%}"
+        : HasOnServer ? "On server"
+        : "Save on server";
 
     /// <summary>Follows what's on the server while the page is on screen (the page starts and stops it).</summary>
     public void WatchServer(bool on)
@@ -307,20 +366,20 @@ public partial class ShowDetailViewModel(PhantomApi api, SettingsService setting
         OnPropertyChanged(nameof(SeasonServerProgress));
         OnPropertyChanged(nameof(SeasonServerLabel));
         OnPropertyChanged(nameof(HasOnServer));
+        OnPropertyChanged(nameof(IsShowSavingOnServer));
+        OnPropertyChanged(nameof(ShowServerProgress));
+        OnPropertyChanged(nameof(ShowServerLabel));
+        OnPropertyChanged(nameof(PlayLabel));
+        OnPropertyChanged(nameof(PlayNotice));
     }
 
     /// <summary>
-    /// Copies on the server, pressed again: an admin can stop them (while saving) or remove them, after saying so;
-    /// anyone else hears how they're doing.
+    /// Copies on the server, pressed again: this profile's own, which it can stop (while saving) or remove, after
+    /// saying so.
     /// </summary>
     private Task RemoveFromServerAsync(IReadOnlyList<ServerDownloadDto> copies, string name) => RunAsync(async () =>
     {
         var running = copies.Any(ServerDownloadTracker.IsRunning);
-        if (settings.User?.IsAdmin != true)
-        {
-            await ToastAsync(running ? $"Saving on the server ({copies.Average(c => c.Progress) / 100:0%})" : "Saved on the server");
-            return;
-        }
         var what = copies.Count == 1 ? name : $"{name} ({copies.Count} episodes)";
         var confirmed = running
             ? await Dialog.ConfirmAsync("Stop saving on the server?", $"The server stops downloading {what} and deletes what it has of it so far.",

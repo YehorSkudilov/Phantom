@@ -43,6 +43,13 @@
                                 ImageSource="{controls:Icon expand_more, Color=White, Size=24}" Command="{Binding ChoosePlaySourceCommand}"
                                 IsVisible="{Binding HasPlayChoices}" SemanticProperties.Description="Play from" ToolTipProperties.Text="Play from…" />
                     </Grid>
+                    <!-- Not saved yet: why Play saves it first, and how far that's got -->
+                    <Border Style="{StaticResource Card}" Padding="12" IsVisible="{Binding PlayNotice, Converter={StaticResource HasValue}}">
+                        <Grid ColumnDefinitions="Auto,*" ColumnSpacing="10">
+                            <Image Source="{controls:Icon cloud_download, Color={StaticResource PrimaryLight}}" WidthRequest="22" HeightRequest="22" VerticalOptions="Start" />
+                            <Label Grid.Column="1" Text="{Binding PlayNotice}" FontSize="13" />
+                        </Grid>
+                    </Border>
                     <!-- Then Trailer and Start over (when there's a place to resume from), sharing the row between them -->
                     <FlexLayout Direction="Row" Wrap="NoWrap">
                         <Button Text="Trailer" Style="{StaticResource SecondaryButton}" HeightRequest="46" Margin="0,0,5,0"
@@ -72,18 +79,18 @@
                                              Command="{Binding AddToPlaylistCommand}" />
                         <!-- Both fill like a progress bar while they run, their border pulsing -->
                         <controls:ActionTile Grid.Row="1" Grid.Column="1" Glyph="download" Text="Download" Command="{Binding DownloadToDeviceCommand}"
-                                             IsActive="{Binding OfflineItem, Converter={StaticResource HasValue}}"
-                                             IsRunning="{Binding OfflineItem.CanPause, FallbackValue=False}" Progress="{Binding OfflineItem.Progress, FallbackValue=0}" />
+                                             IsActive="{Binding SourceDownload, Converter={StaticResource HasValue}}"
+                                             IsRunning="{Binding SourceDownload.CanPause, FallbackValue=False}" Progress="{Binding SourceDownload.Progress, FallbackValue=0}" />
                         <controls:ActionTile Grid.Row="1" Grid.Column="2" Glyph="cloud_download" Text="{Binding ServerLabel}" Command="{Binding DownloadOnServerCommand}"
                                              IsActive="{Binding IsOnServer}" IsRunning="{Binding IsSavingOnServer}" Progress="{Binding ServerProgress}" />
                     </Grid>
 
                     <!-- Device download status -->
-                    <Border Style="{StaticResource Card}" Padding="12" IsVisible="{Binding OfflineItem, Converter={StaticResource HasValue}}">
+                    <Border Style="{StaticResource Card}" Padding="12" IsVisible="{Binding SourceDownload, Converter={StaticResource HasValue}}">
                         <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto" RowSpacing="6">
-                            <Label Text="{Binding OfflineItem.Status, StringFormat='On this device: {0}'}" FontSize="13" />
-                            <Label Grid.Column="1" Text="{Binding OfflineItem.DownloadedBytes, Converter={StaticResource Bytes}}" Style="{StaticResource Muted}" />
-                            <ProgressBar Grid.Row="1" Grid.ColumnSpan="2" Progress="{Binding OfflineItem.Progress}" />
+                            <Label Text="{Binding SourceDownload.Status, StringFormat='On this device: {0}'}" FontSize="13" />
+                            <Label Grid.Column="1" Text="{Binding SourceDownload.DownloadedBytes, Converter={StaticResource Bytes}}" Style="{StaticResource Muted}" />
+                            <ProgressBar Grid.Row="1" Grid.ColumnSpan="2" Progress="{Binding SourceDownload.Progress}" />
                         </Grid>
                     </Border>
 
@@ -167,7 +174,7 @@
                 <!-- More like this -->
                 <VerticalStackLayout Spacing="8" IsVisible="{Binding Related.Count, Converter={StaticResource HasValue}}">
                     <Label Text="More Like This" Style="{StaticResource H2}" Margin="16,0" />
-                    <CollectionView ItemsSource="{Binding Related}" HeightRequest="236" SelectionMode="Single"
+                    <CollectionView ItemsSource="{Binding Related}" HeightRequest="{OnIdiom Default=236, TV=250}" SelectionMode="Single" ItemSizingStrategy="MeasureFirstItem"
                                     ItemTemplate="{StaticResource PosterCard}" SelectionChanged="OnRelatedSelected">
                         <CollectionView.ItemsLayout>
                             <LinearItemsLayout Orientation="Horizontal" ItemSpacing="12" />

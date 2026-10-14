@@ -10,7 +10,8 @@ namespace Phantom.Api.Controllers;
 [ApiController]
 [Authorize]
 [Route("api/library")]
-public class LibraryController(PhantomDbContext db, LibraryService library, ShowLibraryService shows, DiscoverService discover) : ControllerBase
+public class LibraryController(PhantomDbContext db, LibraryService library, ShowLibraryService shows, DiscoverService discover,
+    ILogger<LibraryController> logger) : ControllerBase
 {
     /// <summary>A page of the library: movies, or with kind=Show the shows.</summary>
     [HttpGet("movies")]
@@ -142,11 +143,21 @@ public class LibraryController(PhantomDbContext db, LibraryService library, Show
         var visible = library.Visible(User);
         var states = db.WatchStates.Where(w => w.UserId == userId);
         var hubs = new List<HubDto>();
+        // How long each part took, logged when the whole is slow, to see what to blame on a given server.
+        var clock = System.Diagnostics.Stopwatch.StartNew();
+        var parts = new List<string>();
+        var lastMark = TimeSpan.Zero;
+        void Mark(string what)
+        {
+            parts.Add($"{what} {(clock.Elapsed - lastMark).TotalMilliseconds:F0}ms");
+            lastMark = clock.Elapsed;
+        }
 
         async Task Add(string key, string title, IQueryable<Movie> q, int take = 20)
         {
             var items = await library.SummariesAsync(q.Take(take), userId, ct);
             if (items.Count > 0) hubs.Add(new HubDto(key, title, items));
+            Mark(key);
         }
 
         // Continue Watching: movies part-way through, and shows with an episode to carry on with (in progress, or the
@@ -162,12 +173,16 @@ public class LibraryController(PhantomDbContext db, LibraryService library, Show
         await AddMixed("continue", "Continue Watching",
             continueMovies.ToDictionary(x => x.Id, x => x.Last), continueShows.ToDictionary(x => x.Id, x => x.Last), nextEpisode: true);
 
+        Mark("continue");
         var picks = await discover.RowsAsync(User, userId, ct);
+        Mark("picks");
         foreach (var row in picks) await AddRanked(row);
+        Mark("picked rows");
 
         await AddMixed("watchlist", "Watchlist",
             await db.Watchlist.Where(w => w.UserId == userId).ToDictionaryAsync(w => w.MovieId, w => (DateTime?)w.AddedAt, ct),
             await db.ShowWatchlist.Where(w => w.UserId == userId).ToDictionaryAsync(w => w.ShowId, w => (DateTime?)w.AddedAt, ct));
+        Mark("watchlist");
 
         await Add("recent", "Recently Added", visible.OrderByDescending(m => m.AddedAt));
 
@@ -177,10 +192,12 @@ public class LibraryController(PhantomDbContext db, LibraryService library, Show
         await AddShows("shows-recent", "New On TV", shows.Visible(User)
             .Join(newestRelease, s => s.Id, r => r.ShowId, (s, r) => new { Show = s, r.Newest })
             .OrderByDescending(x => x.Newest).Select(x => x.Show));
+        Mark("shows-recent");
 
         await Add("released", "Recently Released", visible.Where(m => m.Year != null).OrderByDescending(m => m.Year).ThenByDescending(m => m.AddedAt));
         await Add("top", "Top Rated", visible.Where(m => m.Rating != null).OrderByDescending(m => m.Rating));
         await AddShows("shows-top", "Top Rated Shows", shows.Visible(User).Where(s => s.Rating != null).OrderByDescending(s => s.Rating));
+        Mark("shows-top");
         await Add("ondisk", "Available Offline On Server", visible.Where(m => m.Releases.Any(r => r.LocalFilePath != null)).OrderByDescending(m => m.AddedAt));
         await Add("rediscover", "Rediscover",
             visible.Where(m => states.Any(w => w.MovieId == m.Id && w.Watched && w.LastViewedAt < DateTime.UtcNow.AddMonths(-6)))
@@ -188,9 +205,12 @@ public class LibraryController(PhantomDbContext db, LibraryService library, Show
 
         var topGenres = await visible.SelectMany(m => m.Genres).GroupBy(g => g.Name)
             .OrderByDescending(g => g.Count()).Select(g => g.Key).Take(5).ToListAsync(ct);
+        Mark("top genres");
         foreach (var genre in topGenres)
             await Add($"genre:{genre}", genre, visible.Where(m => m.Genres.Any(g => g.Name == genre)).OrderByDescending(m => m.Rating).ThenByDescending(m => m.AddedAt));
 
+        if (clock.Elapsed > TimeSpan.FromSeconds(2))
+            logger.LogWarning("Discover took {Seconds:F1}s: {Parts}", clock.Elapsed.TotalSeconds, string.Join(", ", parts));
         return hubs;
 
         // A row of movies and shows in the order given.

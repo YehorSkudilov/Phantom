@@ -25,10 +25,22 @@
                               Aspect="AspectFit" MetadataTitle="{Binding Title}" MetadataArtworkUrl="{Binding PosterUrl}"
                               Speed="{Binding Speed}" />
 
+        <!-- Moving along the timeline (dragging, or the remote, paused): the frame there, over the whole picture. -->
+        <Image x:Name="FullPreview" IsVisible="False" Aspect="AspectFit" InputTransparent="True" BackgroundColor="Black" />
+
         <!-- Subtitles are rendered by Phantom (MediaElement has no subtitle support). -->
         <Label Text="{Binding SubtitleText}" FontSize="{Binding SubtitleSize}" TextColor="White" BackgroundColor="#99000000"
                Padding="10,4" HorizontalOptions="Center" VerticalOptions="End" Margin="24,0,24,96"
                HorizontalTextAlignment="Center" IsVisible="{Binding SubtitleText, Converter={StaticResource HasValue}}" />
+
+        <!-- Casting: the video plays on the TV, and this screen is its remote (see StartCastingAsync). -->
+        <Grid x:Name="CastPanel" IsVisible="False" BackgroundColor="Black" InputTransparent="True">
+            <Image Source="{Binding PosterUrl}" Aspect="AspectFill" Opacity="0.3" />
+            <VerticalStackLayout HorizontalOptions="Center" VerticalOptions="Center" Spacing="10" Margin="24,0">
+                <Image Source="{controls:Icon cast_connected, Color=White, Size=56}" HorizontalOptions="Center" />
+                <Label x:Name="CastStatus" TextColor="White" FontFamily="OpenSansSemibold" FontSize="16" HorizontalTextAlignment="Center" />
+            </VerticalStackLayout>
+        </Grid>
 
         <!-- Loading: what the server is doing to get the movie playing (see PlayerViewModel.PollStatusAsync). -->
         <Border x:Name="Buffering" HorizontalOptions="Center" VerticalOptions="Center" Padding="24,20" MaximumWidthRequest="420"
@@ -56,7 +68,13 @@
         <!-- "−10s" / "+30s" after a double-tap or arrow key -->
         <Border x:Name="SkipFlash" IsVisible="False" Opacity="0" VerticalOptions="Center" Padding="18,10" Margin="60,0"
                 BackgroundColor="#990B0B12" StrokeShape="RoundRectangle 24" InputTransparent="True">
-            <Label x:Name="SkipFlashText" TextColor="White" FontFamily="OpenSansSemibold" FontSize="18" />
+            <VerticalStackLayout Spacing="8">
+                <!-- TV skips: the frame they'll land on -->
+                <Border x:Name="SkipPreview" IsVisible="False" StrokeShape="RoundRectangle 10" StrokeThickness="0" WidthRequest="240" HeightRequest="135">
+                    <Image x:Name="SkipPreviewImage" Aspect="AspectFill" />
+                </Border>
+                <Label x:Name="SkipFlashText" TextColor="White" FontFamily="OpenSansSemibold" FontSize="18" HorizontalOptions="Center" />
+            </VerticalStackLayout>
         </Border>
 
         <!-- Controls overlay -->
@@ -67,21 +85,23 @@
                 <TapGestureRecognizer Tapped="OnSurfaceTapped" />
                 <TapGestureRecognizer NumberOfTapsRequired="2" Tapped="OnSurfaceDoubleTapped" />
             </Grid.GestureRecognizers>
-            <Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto,Auto,Auto" ColumnSpacing="6">
+            <Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto,Auto,Auto,Auto" ColumnSpacing="6">
                 <ImageButton Style="{StaticResource IconButton}" Source="{controls:Icon close, Color=White}" Clicked="OnClose"
                              SemanticProperties.Description="Close player" ToolTipProperties.Text="Close" />
                 <VerticalStackLayout Grid.Column="1" VerticalOptions="Center">
                     <Label Text="{Binding Title}" FontFamily="OpenSansSemibold" FontSize="16" LineBreakMode="TailTruncation" />
                     <Label x:Name="EndsAtLabel" Style="{StaticResource Muted}" FontSize="12" />
                 </VerticalStackLayout>
-                <ImageButton x:Name="SubtitlesButton" Grid.Column="2" Style="{StaticResource IconButton}" Source="{controls:Icon closed_caption, Color=White, Outlined=True}" Clicked="OnSubtitles"
+                <ImageButton x:Name="CastButton" Grid.Column="2" Style="{StaticResource IconButton}" Source="{controls:Icon cast, Color=White}" Clicked="OnCast"
+                             SemanticProperties.Description="Play on a TV" ToolTipProperties.Text="Cast" />
+                <ImageButton x:Name="SubtitlesButton" Grid.Column="3" Style="{StaticResource IconButton}" Source="{controls:Icon closed_caption, Color=White, Outlined=True}" Clicked="OnSubtitles"
                              SemanticProperties.Description="Subtitles" ToolTipProperties.Text="Subtitles" />
-                <ImageButton x:Name="QualityButton" Grid.Column="3" Style="{StaticResource IconButton}" Source="{controls:Icon high_quality, Color=White, Outlined=True}" Clicked="OnQuality"
+                <ImageButton x:Name="QualityButton" Grid.Column="4" Style="{StaticResource IconButton}" Source="{controls:Icon high_quality, Color=White, Outlined=True}" Clicked="OnQuality"
                              SemanticProperties.Description="Quality" ToolTipProperties.Text="Quality" />
-                <Button Grid.Column="4" x:Name="SpeedButton" Text="1x" Style="{StaticResource GhostButton}" TextColor="White" Clicked="OnSpeed" SemanticProperties.Description="Playback speed" />
-                <ImageButton x:Name="AspectButton" Grid.Column="5" Style="{StaticResource IconButton}" Source="{controls:Icon fit_screen, Color=White, Outlined=True}" Clicked="OnAspect"
+                <Button Grid.Column="5" x:Name="SpeedButton" Text="1x" Style="{StaticResource GhostButton}" TextColor="White" Clicked="OnSpeed" SemanticProperties.Description="Playback speed" />
+                <ImageButton x:Name="AspectButton" Grid.Column="6" Style="{StaticResource IconButton}" Source="{controls:Icon fit_screen, Color=White, Outlined=True}" Clicked="OnAspect"
                              SemanticProperties.Description="Fill or fit the screen" ToolTipProperties.Text="Fill / fit" />
-                <ImageButton x:Name="FullscreenButton" Grid.Column="6" Style="{StaticResource IconButton}" Source="{controls:Icon fullscreen, Color=White}" Clicked="OnFullscreen"
+                <ImageButton x:Name="FullscreenButton" Grid.Column="7" Style="{StaticResource IconButton}" Source="{controls:Icon fullscreen, Color=White}" Clicked="OnFullscreen"
                              SemanticProperties.Description="Full screen" ToolTipProperties.Text="Full screen (F)" />
             </Grid>
 
@@ -127,11 +147,17 @@
                     <Slider x:Name="Seek" Minimum="0" Maximum="1" MaximumTrackColor="Transparent"
                             DragStarted="OnSeekStarted" DragCompleted="OnSeekCompleted" ValueChanged="OnSeekValueChanged" />
                 </Grid>
-                <Grid ColumnDefinitions="Auto,*,Auto,Auto" ColumnSpacing="8">
+                <Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto,Auto" ColumnSpacing="8">
                     <Label x:Name="PositionLabel" Text="0:00" FontSize="12" VerticalOptions="Center" />
                     <ImageButton x:Name="MuteButton" Grid.Column="2" Style="{StaticResource IconButton}" WidthRequest="36" HeightRequest="36" Padding="6"
                                  Clicked="OnMute" SemanticProperties.Description="Mute" ToolTipProperties.Text="Mute (M)" />
-                    <Slider x:Name="VolumeSlider" Grid.Column="3" Minimum="0" Maximum="1" WidthRequest="110" VerticalOptions="Center" ValueChanged="OnVolumeChanged" />
+                    <Slider x:Name="VolumeSlider" Grid.Column="3" Minimum="0" Maximum="1" WidthRequest="{OnIdiom Default=110, Phone=84}" VerticalOptions="Center" ValueChanged="OnVolumeChanged"
+                            SemanticProperties.Description="Volume" />
+                    <!-- The screen's brightness, where the device lets the app set it (see DeviceControls) -->
+                    <Image x:Name="BrightnessIcon" Grid.Column="4" Source="{controls:Icon brightness_6, Color=White}" WidthRequest="22" HeightRequest="22"
+                           VerticalOptions="Center" Margin="6,0,0,0" />
+                    <Slider x:Name="BrightnessSlider" Grid.Column="5" Minimum="0" Maximum="1" WidthRequest="{OnIdiom Default=110, Phone=84}" VerticalOptions="Center"
+                            ValueChanged="OnBrightnessChanged" SemanticProperties.Description="Brightness" />
                     <Label Grid.Column="1" x:Name="DurationLabel" Text="0:00" FontSize="12" HorizontalOptions="End" VerticalOptions="Center" />
                 </Grid>
             </VerticalStackLayout>

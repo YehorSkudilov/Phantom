@@ -22,4 +22,5 @@ public class TabView : PageBase
     /// something open on it, so it doesn't leave the app.
     /// </summary>
     public virtual bool HandleBack() => false;
+
 }

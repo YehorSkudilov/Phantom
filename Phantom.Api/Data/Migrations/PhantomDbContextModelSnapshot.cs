@@ -433,6 +433,9 @@ namespace Phantom.Api.Data.Migrations
                     b.Property<string>("Error")
                         .HasColumnType("TEXT");
 
+                    b.Property<bool>("ForDevice")
+                        .HasColumnType("INTEGER");
+
                     b.Property<int?>("MovieId")
                         .HasColumnType("INTEGER");
 
@@ -666,6 +669,9 @@ namespace Phantom.Api.Data.Migrations
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("INTEGER");
+
+                    b.Property<string>("Avatar")
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("AvatarColor")
                         .HasColumnType("TEXT");

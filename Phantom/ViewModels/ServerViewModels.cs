@@ -12,7 +12,35 @@ public partial class ServerDownloadsViewModel(PhantomApi api, SettingsService se
 {
     public ObservableList<ServerDownloadDto> Items { get; } = [];
 
-    [ObservableProperty] private bool isAdmin;
+    /// <summary>What's shown of <see cref="Items"/>, by Downloads' toolbar.</summary>
+    public ObservableList<ServerDownloadDto> Shown { get; } = [];
+
+    public ListFilter? Filter { get; private set; }
+
+    public void UseFilter(ListFilter filter)
+    {
+        Filter = filter;
+        filter.Changed += (_, _) => ApplyFilter();
+        OnPropertyChanged(nameof(Filter));
+    }
+
+    private void ApplyFilter()
+    {
+        IEnumerable<ServerDownloadDto> shown = Items;
+        if (Filter is { } f)
+        {
+            shown = shown.Where(d => f.Matches(d.MovieTitle) && f.KindMatches(d.EpisodeId is not null));
+            shown = f.Show switch
+            {
+                "In progress" => shown.Where(d => d.Status != DownloadStatus.Completed),
+                "Done" => shown.Where(d => d.Status == DownloadStatus.Completed),
+                _ => shown,
+            };
+            if (f.Sort == "Title") shown = shown.OrderBy(d => d.MovieTitle, StringComparer.CurrentCultureIgnoreCase);
+        }
+        Shown.Sync(shown.ToList(), key: d => d.Id);
+    }
+
     [ObservableProperty] private bool isEmpty;
     [ObservableProperty] private string totals = "";
 
@@ -21,11 +49,11 @@ public partial class ServerDownloadsViewModel(PhantomApi api, SettingsService se
     [RelayCommand]
     public Task Refresh() => RunAsync(async () =>
     {
-        IsAdmin = settings.User?.IsAdmin == true;
         var items = await api.ServerDownloadsAsync();
         // Polled every couple of seconds: only rows whose progress or state changed are redrawn, and matched by id so
         // the list isn't reset (losing its scroll) when most of them have moved on.
         Items.Sync(items, key: d => d.Id);
+        ApplyFilter();
         IsEmpty = Items.Count == 0;
         Totals = $"↓ {BytesConverter.Format(items.Sum(d => d.DownloadRate))}/s   ↑ {BytesConverter.Format(items.Sum(d => d.UploadRate))}/s   ·   {items.Count(d => d.Status == DownloadStatus.Completed)} completed";
     }, showBusy: false);
@@ -41,9 +69,13 @@ public partial class ServerDownloadsViewModel(PhantomApi api, SettingsService se
     [RelayCommand]
     private Task Remove(ServerDownloadDto d) => RunAsync(async () =>
     {
-        var choice = await Dialog.ChooseAsync(d.MovieTitle, "Remove and delete files", "Remove from list (keep files)");
-        if (choice is null or "Cancel") return;
-        await api.DeleteServerDownloadAsync(d.Id, deleteFiles: choice.Contains("delete"));
+        // One way to remove it: the entry and its file go together (the file stays only while another profile has
+        // it saved too; see ServerDownloadService.RemoveAsync).
+        var running = d.Status is not DownloadStatus.Completed;
+        if (!await Dialog.ConfirmAsync(running ? "Stop and delete?" : "Delete from the server?",
+                running ? $"Stop saving {d.MovieTitle} and delete what the server has of it so far?" : $"Delete {d.MovieTitle} from the server?",
+                "Delete", destructive: true)) return;
+        await api.DeleteServerDownloadAsync(d.Id, deleteFiles: true);
         await Refresh();
     }, showBusy: false);
 
@@ -63,6 +95,7 @@ public partial class MoreViewModel(PhantomApi api, SettingsService settings) : B
     [ObservableProperty] private bool isAdmin;
     [ObservableProperty] private string avatarColor = "#8B5CF6";
     [ObservableProperty] private string initial = "?";
+    [ObservableProperty] private string? avatar;
 
     public string AppVersion => $"Phantom {AppInfo.Current.VersionString}";
 
@@ -73,6 +106,7 @@ public partial class MoreViewModel(PhantomApi api, SettingsService settings) : B
         Username = user?.Username ?? "";
         Initial = Username.Length > 0 ? Username[..1].ToUpperInvariant() : "?";
         AvatarColor = user?.AvatarColor ?? "#8B5CF6";
+        Avatar = user?.Avatar;
         IsAdmin = user?.IsAdmin == true;
         // A managed profile's account is its owner, the one profile that isn't managed.
         AccountName = user is { IsManaged: false } ? user.Username : null;
@@ -162,7 +196,7 @@ public partial class AdminViewModel(PhantomApi api) : BaseViewModel
     public ObservableList<StoredTorrentDto> StoredItems { get; } = [];
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(DiskText), nameof(DiskUsed), nameof(BreakdownText), nameof(CacheLimitText), nameof(DiskLow))]
+    [NotifyPropertyChangedFor(nameof(DiskText), nameof(DiskUsed), nameof(BreakdownText), nameof(HasStreamCache), nameof(DiskLow))]
     private StorageDto? storage;
 
     public string DiskText => Storage is not { DiskTotalBytes: > 0 } s ? ""
@@ -176,13 +210,14 @@ public partial class AdminViewModel(PhantomApi api) : BaseViewModel
 
     public string BreakdownText => Storage is not { } s ? "" : string.Join("\n",
         $"Saved on the server: {BytesConverter.Format(s.SavedBytes)}",
-        $"Stream cache: {BytesConverter.Format(s.StreamCacheBytes)}",
         $"Seek previews: {BytesConverter.Format(s.PreviewBytes)}",
-        $"Library database: {BytesConverter.Format(s.DatabaseBytes)}");
+        $"Library database: {BytesConverter.Format(s.DatabaseBytes)}",
+        // Nothing streams from a torrent any more: what's here is left over, and the server clears it by itself.
+        s.StreamCacheBytes > 0 ? $"Left from streaming (being cleared): {BytesConverter.Format(s.StreamCacheBytes)}" : null)
+        .Replace("\n\n", "\n").TrimEnd('\n');
 
-    public string CacheLimitText => Storage is not { } s ? ""
-        : (s.MaxStreamCacheGb > 0 ? $"The stream cache is kept under {s.MaxStreamCacheGb} GB" : "The stream cache has no size limit")
-          + $", and cleared when fewer than {s.MinFreeDiskGb} GB are free. A stream stops downloading 10 minutes after it was last watched. Change the limit in Server settings.";
+    /// <summary>Some stream cache is left from when torrents were streamed.</summary>
+    public bool HasStreamCache => Storage is { StreamCacheBytes: > 0 };
 
     private async Task LoadStorageAsync()
     {
@@ -209,7 +244,7 @@ public partial class AdminViewModel(PhantomApi api) : BaseViewModel
                 await Dialog.AlertAsync("Saved on the server", "This copy isn't from a download Phantom knows about, so it can't be removed here.");
                 return;
             }
-            if (!await Dialog.ConfirmAsync("Remove from the server", $"Delete the saved copy of {item.Title} ({BytesConverter.Format(item.SizeBytes)})? It can still be streamed.", "Delete", destructive: true)) return;
+            if (!await Dialog.ConfirmAsync("Remove from the server", $"Delete the saved copy of {item.Title} ({BytesConverter.Format(item.SizeBytes)})? It can be saved again later.", "Delete", destructive: true)) return;
             await api.DeleteServerDownloadAsync(id, deleteFiles: true);
         }
         else
@@ -222,7 +257,7 @@ public partial class AdminViewModel(PhantomApi api) : BaseViewModel
     [RelayCommand]
     private Task ClearIdleCaches() => RunAsync(async () =>
     {
-        if (!await Dialog.ConfirmAsync("Clear stream cache", "Delete the cached parts of everything nobody is watching right now? They download again when played.", "Clear", destructive: true)) return;
+        if (!await Dialog.ConfirmAsync("Clear stream cache", "Delete what's left from when torrents were streamed? Nothing plays from it any more.", "Clear", destructive: true)) return;
         ShowStorage(await api.ClearIdleCachesAsync());
         await ToastAsync("Stream cache cleared");
     }, showBusy: false);

@@ -563,18 +563,29 @@ public sealed class TorrentEngine : IHostedService, IAsyncDisposable
             _log.LogWarning("Disk space still low ({Free} MB free) after clearing idle stream caches", FreeDiskBytes >> 20);
     }
 
-    /// <summary>Stops and deletes streaming-cache torrents nobody has touched for a while.</summary>
-    public async Task EvictIdleAsync(TimeSpan idle)
+    /// <summary>
+    /// Stops and deletes streaming-cache torrents nobody has touched for a while: those loaded now, and the folders on
+    /// disk of ones that aren't (left from before the server last started, which used to stay for good: only loaded
+    /// torrents were looked at, and the server doesn't load old stream caches again). <paramref name="keep"/>: torrents a
+    /// server download still needs (one saving, or paused), never cleared.
+    /// </summary>
+    public async Task EvictIdleAsync(TimeSpan idle, IReadOnlySet<string> keep)
     {
         if (_engine is null) return;
         var cutoff = DateTime.UtcNow - idle;
         foreach (var m in _engine.Torrents.ToList())
         {
             var hash = m.InfoHashes.V1OrV2.ToHex().ToLowerInvariant();
-            if (_pinned.ContainsKey(hash)) continue;
+            if (_pinned.ContainsKey(hash) || keep.Contains(hash)) continue;
             if (_lastAccess.TryGetValue(hash, out var last) && last > cutoff) continue;
             _log.LogInformation("Evicting idle stream cache for {Name}", m.Name);
             await RemoveAsync(hash, deleteData: true);
+        }
+        // Not loaded: last used when its folder was last written to.
+        foreach (var stale in StoredTorrents().Where(t => !t.Saved && !t.InUse && !keep.Contains(t.InfoHash) && t.LastUsed < cutoff))
+        {
+            _log.LogInformation("Evicting idle stream cache {Name}", stale.Name ?? stale.InfoHash);
+            await ClearStreamCacheAsync(stale.InfoHash);
         }
     }
 
@@ -648,19 +659,5 @@ public sealed class TorrentEngine : IHostedService, IAsyncDisposable
         foreach (var item in StoredTorrents().Where(t => !t.Saved && !t.InUse))
             if (await ClearStreamCacheAsync(item.InfoHash)) cleared++;
         return cleared;
-    }
-
-    /// <summary>Keeps the stream cache under <paramref name="maxBytes"/>, clearing the least recently watched first.</summary>
-    public async Task EnforceCacheLimitAsync(long maxBytes)
-    {
-        if (maxBytes <= 0) return;
-        var caches = StoredTorrents().Where(t => !t.Saved).ToList();
-        var total = caches.Sum(c => c.SizeBytes);
-        foreach (var cache in caches.Where(c => !c.InUse).OrderBy(c => c.LastUsed))
-        {
-            if (total <= maxBytes) break;
-            _log.LogInformation("Stream cache over its {Limit} GB limit: clearing {Name}", maxBytes >> 30, cache.Name ?? cache.InfoHash);
-            if (await ClearStreamCacheAsync(cache.InfoHash)) total -= cache.SizeBytes;
-        }
     }
 }

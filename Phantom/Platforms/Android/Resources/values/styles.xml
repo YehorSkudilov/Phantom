@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Laid over MAUI's theme when the activity starts (MainActivity.OnCreate). A list's selected row is painted with
+         colorActivatedHighlight until the selection is cleared, which on a TV showed as a yellow block for the seconds
+         a page took to open; the app's own focus ring shows where the remote is instead. -->
+    <style name="PhantomThemeOverrides">
+        <item name="android:colorActivatedHighlight">@android:color/transparent</item>
+    </style>
+</resources>

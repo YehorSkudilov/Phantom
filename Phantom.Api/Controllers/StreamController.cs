@@ -94,6 +94,7 @@ public abstract class StreamControllerBase(
 
     /// <summary>Seek previews are cached per this many seconds of the video.</summary>
     private const int ThumbnailStepSeconds = TrickplayService.StepSeconds;
+    private const int SmallThumbnailWidth = 320;
 
     // A few ffmpeg processes at a time: scrubbing asks for many previews in a row.
     private static readonly SemaphoreSlim ThumbnailSlots = new(3, 3);
@@ -127,18 +128,23 @@ public abstract class StreamControllerBase(
                && TorrentEngine.IsFileComplete(video) && System.IO.File.Exists(video.FullPath) ? video.FullPath : null;
     }
 
-    /// <summary>Our own direct endpoint, for ffmpeg to read a video that's still a torrent.</summary>
-    /// <param name="preview">For a seek preview: only what's downloaded, never waiting on the swarm (see <see cref="Direct"/>).</param>
-    private string Loopback(int id, StreamTarget target, bool preview = false) =>
-        $"http://127.0.0.1:{HttpContext.Connection.LocalPort}{RouteBase(id)}/direct?releaseId={target.Release.Id}&access_token={Uri.EscapeDataString(Token())}"
-        + (preview ? "&preview=true" : "");
 
-    /// <summary>Starts the torrent (if needed) and tells the client how to play it.</summary>
+    /// <summary>
+    /// Playing straight from a torrent is gone: it often couldn't start, and was slow when it did. Only what's whole on
+    /// the server's disk plays (saved on the server, or a torrent that has finished); anything else is answered with
+    /// this, which the app shows as "save it first".
+    /// </summary>
+    public const string NotSavedMessage = "This isn't saved on the server yet. Save it on the server, and it plays once it's saved.";
+
+    private ObjectResult NotSaved() => StatusCode(StatusCodes.Status409Conflict, NotSavedMessage);
+
+    /// <summary>Tells the client how to play what's saved (see <see cref="NotSavedMessage"/>).</summary>
     [HttpGet("info")]
     public async Task<ActionResult<StreamInfoDto>> Info(int id, [FromQuery] int? releaseId, CancellationToken ct)
     {
         var target = await ResolveAsync(id, releaseId, ct);
         if (target is null) return NotFound();
+        if (CompleteFile(target) is null) return NotSaved();
         var release = target.Release;
 
         string fileName;
@@ -211,22 +217,27 @@ public abstract class StreamControllerBase(
                               || ReleaseNameParser.EpisodeOfFile(s, target.Choice.Season) == (target.Choice.Season, target.Choice.Episode)).ToList();
     }
 
-    /// <summary>
-    /// Direct play with HTTP range support; pieces are fetched on demand while seeking. <paramref name="preview"/> (our own
-    /// seek previews, through <see cref="Loopback"/>) reads only what's downloaded already: a preview of a part that isn't
-    /// fails rather than stalling the playback beside it.
-    /// </summary>
+    /// <summary>The saved file, with HTTP range support (see <see cref="NotSavedMessage"/>).</summary>
     [HttpGet("direct")]
     [HttpHead("direct")]
-    public async Task<IActionResult> Direct(int id, [FromQuery] int? releaseId, [FromQuery] bool download, [FromQuery] bool preview, CancellationToken ct)
+    public async Task<IActionResult> Direct(int id, [FromQuery] int? releaseId, [FromQuery] bool download, CancellationToken ct)
     {
         var target = await ResolveAsync(id, releaseId, ct);
         if (target is null) return NotFound();
+        if (CompleteFile(target) is null) return NotSaved();
 
         if (Local(target) is { } local)
             return PhysicalFile(Path.GetFullPath(local), VideoFiles.ContentType(local), download ? Path.GetFileName(local) : null, enableRangeProcessing: true);
 
-        var media = await engine.OpenAsync(target.Release, ct, target.Choice, wait: !preview);
+        TorrentMedia? media;
+        try
+        {
+            media = await engine.OpenAsync(target.Release, ct, target.Choice);
+        }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+        {
+            return StatusCode(StatusCodes.Status504GatewayTimeout, "Could not fetch torrent metadata (no peers?).");
+        }
         if (media is null) return NotFound();
         engine.Touch(target.Release.InfoHash);
         var name = Path.GetFileName(media.FileName);
@@ -251,8 +262,15 @@ public abstract class StreamControllerBase(
             return;
         }
 
-        // ffmpeg reads either the finished file or our own range-capable direct endpoint.
-        var input = CompleteFile(target) is { } complete ? Path.GetFullPath(complete) : Loopback(id, target);
+        // ffmpeg reads the finished file: nothing is converted straight from a torrent (see NotSavedMessage).
+        if (CompleteFile(target) is not { } complete)
+        {
+            Response.StatusCode = StatusCodes.Status409Conflict;
+            Response.ContentType = "text/plain; charset=utf-8";
+            await Response.WriteAsync(NotSavedMessage, CancellationToken.None);
+            return;
+        }
+        var input = Path.GetFullPath(complete);
 
         Response.ContentType = "video/mp4";
         try
@@ -268,9 +286,15 @@ public abstract class StreamControllerBase(
             // Said as an error, with ffmpeg's reason: the player (and the app's error message) can show why.
             Response.StatusCode = StatusCodes.Status502BadGateway;
             Response.ContentType = "text/plain; charset=utf-8";
-            await Response.WriteAsync($"The server couldn't convert this video: {ex.Message}", CancellationToken.None);
+            await Response.WriteAsync(ConversionFailure(ex), CancellationToken.None);
         }
     }
+
+    /// <summary>ffmpeg's reason, said so it can be acted on: a file it can't open at all is a fake or damaged release.</summary>
+    private static string ConversionFailure(TranscodeFailedException ex) =>
+        ex.Message.Contains("Invalid data found", StringComparison.OrdinalIgnoreCase) || ex.Message.Contains("moov atom not found", StringComparison.OrdinalIgnoreCase)
+            ? $"{Transcoder.UnreadableMessage} ({ex.Message})"
+            : $"The server couldn't convert this video: {ex.Message}";
 
     /// <summary>
     /// The same conversion as <see cref="Transcode"/> as HLS, for Apple's player (see <see cref="HlsSessions"/>). The
@@ -293,8 +317,9 @@ public abstract class StreamControllerBase(
         {
             var target = await ResolveAsync(id, releaseId, ct);
             if (target is null) return NotFound();
-            // A whole file on the server's disk is read straight from there, not through the torrent.
-            var input = CompleteFile(target) is { } complete ? Path.GetFullPath(complete) : Loopback(id, target);
+            // Only a whole file on the server's disk is converted (see NotSavedMessage).
+            if (CompleteFile(target) is not { } complete) return NotSaved();
+            var input = Path.GetFullPath(complete);
             var codecs = remux ? await transcoder.ProbeAsync(input, ct) : null;
             running = hls.Start(session, owner, input, start, maxKbps, maxHeight, codecs);
         }
@@ -306,7 +331,7 @@ public abstract class StreamControllerBase(
         }
         catch (TranscodeFailedException ex)
         {
-            return StatusCode(StatusCodes.Status502BadGateway, $"The server couldn't convert this video: {ex.Message}");
+            return StatusCode(StatusCodes.Status502BadGateway, ConversionFailure(ex));
         }
         // The player resolves each segment next to the playlist but doesn't carry its query along: the token goes on each.
         var auth = $"?access_token={Uri.EscapeDataString(Token())}";
@@ -387,25 +412,32 @@ public abstract class StreamControllerBase(
     }
 
     /// <summary>
-    /// A small frame from <paramref name="t"/> seconds in, for the seek bar's preview. Taken by ffmpeg from the file (or
-    /// the torrent, which fetches the pieces around that point) and cached in steps of <see cref="ThumbnailStepSeconds"/>.
+    /// A small frame from <paramref name="t"/> seconds in, for the seek bar's preview. Taken by ffmpeg from the saved file
+    /// (only what's saved plays, so only that has previews: reading a torrent for one started it downloading into a
+    /// stream cache) and cached in steps of <see cref="ThumbnailStepSeconds"/>. <paramref name="w"/> asks for a bigger
+    /// one (the full-screen preview), kept apart from the small ones.
     /// </summary>
     [HttpGet("thumbnail")]
-    public async Task<IActionResult> Thumbnail(int id, [FromQuery] int? releaseId, [FromQuery] double t, CancellationToken ct)
+    public async Task<IActionResult> Thumbnail(int id, [FromQuery] int? releaseId, [FromQuery] double t, [FromQuery] int? w, CancellationToken ct)
     {
         if (!transcoder.IsAvailable) return StatusCode(StatusCodes.Status501NotImplemented);
         var target = await ResolveAsync(id, releaseId, ct);
         if (target is null) return NotFound();
 
         var step = (int)Math.Max(0, t) / ThumbnailStepSeconds * ThumbnailStepSeconds;
-        var cache = Path.Combine(trickplay.Folder(target.CacheKey), $"{step}.jpg");
+        var width = Math.Clamp(w ?? SmallThumbnailWidth, SmallThumbnailWidth, 1280) / 2 * 2;
+        var cache = width == SmallThumbnailWidth
+            ? Path.Combine(trickplay.Folder(target.CacheKey), $"{step}.jpg")
+            : Path.Combine(trickplay.Folder(target.CacheKey), $"w{width}", $"{step}.jpg");
         if (System.IO.File.Exists(cache)) return PhysicalFile(Path.GetFullPath(cache), "image/jpeg");
 
-        var input = CompleteFile(target) is { } complete ? Path.GetFullPath(complete) : Loopback(id, target, preview: true);
+        if (CompleteFile(target) is not { } complete) return NotFound();
+        var input = Path.GetFullPath(complete);
 
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
         timeout.CancelAfter(TimeSpan.FromSeconds(30));
-        var viewer = $"{target.CacheKey}:{User.UserId()}";
+        // A newer request takes over from an older one of the same size (a small and a big one can run together).
+        var viewer = $"{target.CacheKey}:{User.UserId()}:{width}";
         ThumbnailsInFlight.AddOrUpdate(viewer, timeout, (_, older) =>
         {
             older.Cancel();
@@ -422,7 +454,7 @@ public abstract class StreamControllerBase(
         }
         try
         {
-            var jpeg = await transcoder.ThumbnailAsync(input, step, 320, timeout.Token);
+            var jpeg = await transcoder.ThumbnailAsync(input, step, width, timeout.Token);
             if (jpeg is null) return NotFound();
             Directory.CreateDirectory(Path.GetDirectoryName(cache)!);
             await System.IO.File.WriteAllBytesAsync(cache, jpeg, CancellationToken.None);

@@ -27,7 +27,16 @@ public partial class OfflineDownload : ObservableObject
     public bool IsEpisode => EpisodeId is not null;
 
     /// <summary>Names its files: the movie's id, or "ep" and the episode's.</summary>
-    public string FileKey => EpisodeId is { } e ? $"ep{e}" : MovieId.ToString();
+    public string FileKey => (ProfileId is { } p ? $"p{p}-" : "") + (EpisodeId is { } e ? $"ep{e}" : MovieId.ToString());
+
+    /// <summary>The profile it was downloaded for: each sees only its own (null: from before downloads were per profile).</summary>
+    public int? ProfileId { get; set; }
+
+    /// <summary>
+    /// The server's copy fetched only for this download (not one saved for the profile): deleted from the server as
+    /// soon as the device has its own (see DownloadManager.ReleaseServerCopyAsync).
+    /// </summary>
+    public int? ServerCopyId { get; set; }
     public int? ReleaseId { get; set; }
     public string Title { get; set; } = "";
     public int? Year { get; set; }
@@ -67,6 +76,18 @@ public partial class OfflineDownload : ObservableObject
         _ => Status.ToString(),
     };
 
+    /// <summary>
+    /// Over the poster in Downloads: "42% · 3.1 MB/s" while downloading, why it's waiting (for the server to save it,
+    /// say) or its status otherwise.
+    /// </summary>
+    public string OverlayText => Status switch
+    {
+        OfflineStatus.Downloading => $"{Progress:0%}" + (BytesPerSecond > 0 ? $" · {Phantom.BytesConverter.Format(BytesPerSecond)}/s" : ""),
+        OfflineStatus.Paused => $"Paused · {Progress:0%}",
+        OfflineStatus.Queued when !string.IsNullOrEmpty(Error) => Error!,
+        _ => StatusText,
+    };
+
     /// <summary>"1.2 GB of 4.5 GB · 3.1 MB/s" while downloading, the size once done.</summary>
     public string SizeText => IsComplete
         ? Phantom.BytesConverter.Format(TotalBytes)
@@ -74,9 +95,10 @@ public partial class OfflineDownload : ObservableObject
         : $"{Phantom.BytesConverter.Format(DownloadedBytes)} of {Phantom.BytesConverter.Format(TotalBytes)}"
           + (BytesPerSecond > 0 ? $"  ·  {Phantom.BytesConverter.Format(BytesPerSecond)}/s" : "");
 
-    partial void OnDownloadedBytesChanged(long value) { OnPropertyChanged(nameof(Progress)); OnPropertyChanged(nameof(SizeText)); }
-    partial void OnTotalBytesChanged(long value) { OnPropertyChanged(nameof(Progress)); OnPropertyChanged(nameof(SizeText)); }
-    partial void OnBytesPerSecondChanged(long value) => OnPropertyChanged(nameof(SizeText));
+    partial void OnDownloadedBytesChanged(long value) { OnPropertyChanged(nameof(Progress)); OnPropertyChanged(nameof(SizeText)); OnPropertyChanged(nameof(OverlayText)); }
+    partial void OnTotalBytesChanged(long value) { OnPropertyChanged(nameof(Progress)); OnPropertyChanged(nameof(SizeText)); OnPropertyChanged(nameof(OverlayText)); }
+    partial void OnBytesPerSecondChanged(long value) { OnPropertyChanged(nameof(SizeText)); OnPropertyChanged(nameof(OverlayText)); }
+    partial void OnErrorChanged(string? value) => OnPropertyChanged(nameof(OverlayText));
     partial void OnStatusChanged(OfflineStatus value)
     {
         OnPropertyChanged(nameof(IsComplete));
@@ -84,6 +106,7 @@ public partial class OfflineDownload : ObservableObject
         OnPropertyChanged(nameof(CanResume));
         OnPropertyChanged(nameof(StatusText));
         OnPropertyChanged(nameof(SizeText));
+        OnPropertyChanged(nameof(OverlayText));
     }
 }
 
@@ -117,7 +140,11 @@ public class DownloadManager
     private readonly Dictionary<OfflineDownload, int> _retries = [];
     private readonly HashSet<OfflineDownload> _waiting = [];
 
+    /// <summary>The profile in use's downloads (each profile is a user of its own; see <see cref="ShowProfile"/>).</summary>
     public ObservableCollection<OfflineDownload> Items { get; } = [];
+
+    // Every profile's: they all go on downloading, whichever is in use.
+    private readonly List<OfflineDownload> _all = [];
 
     public DownloadManager(HttpClient http, PhantomApi api, SettingsService settings)
     {
@@ -127,7 +154,27 @@ public class DownloadManager
         _indexPath = Path.Combine(_root, "index.json");
         Directory.CreateDirectory(_root);
         Load();
+        settings.ProfileChanged += (_, _) => MainThread.BeginInvokeOnMainThread(ShowProfile);
         Connectivity.Current.ConnectivityChanged += (_, _) => Kick();
+    }
+
+    /// <summary>
+    /// Lists the profile in use's downloads. Those from before downloads were kept per profile become the first
+    /// profile's to see them.
+    /// </summary>
+    private void ShowProfile()
+    {
+        var profile = _settings.User?.Id;
+        var claimed = false;
+        if (profile is not null)
+            foreach (var item in _all.Where(i => i.ProfileId is null))
+            {
+                item.ProfileId = profile;
+                claimed = true;
+            }
+        Items.Clear();
+        foreach (var item in _all.Where(i => i.ProfileId == profile)) Items.Add(item);
+        if (claimed) _ = SaveAsync();
     }
 
     public OfflineDownload? Find(int movieId) => Items.FirstOrDefault(i => i.EpisodeId is null && i.MovieId == movieId);
@@ -187,20 +234,48 @@ public class DownloadManager
 
     private async Task AddAsync(OfflineDownload item)
     {
+        item.ProfileId = _settings.User?.Id;
+        _all.Insert(0, item);
         Items.Insert(0, item);
         await CachePosterAsync(item);
         await SaveAsync();
         Kick();
 
-        // Have the server download (and keep) the whole torrent too: it fetches from the swarm at full speed while
-        // this device copies from it, and a paused or interrupted device download picks up from the server's copy.
+        await RequestServerCopyAsync(item);
+    }
+
+    /// <summary>
+    /// The device copies a whole file from the server (nothing comes straight from a torrent), so the server fetches it
+    /// first: only for this download, not into the profile's saved copies, and deleted again once the device has it.
+    /// One the profile has saved already is used as it is, and left alone.
+    /// </summary>
+    private async Task RequestServerCopyAsync(OfflineDownload item)
+    {
         try
         {
-            await _api.QueueServerDownloadAsync(item.MovieId, item.ReleaseId, item.EpisodeId);
+            var copy = await _api.QueueServerDownloadAsync(item.MovieId, item.ReleaseId, item.EpisodeId, forDevice: true);
+            item.ServerCopyId = copy.ForDevice ? copy.Id : null;
+            await SaveAsync();
         }
         catch (Exception ex) when (ex is HttpRequestException or ApiException or TaskCanceledException || NetworkState.IsConnectionError(ex))
         {
-            // The device download still works without it, streaming the torrent through the server as it goes.
+            // Asked again when the device next finds it isn't saved yet.
+        }
+    }
+
+    /// <summary>Deletes the server's copy fetched only for this download (the device has its own now, or doesn't want it).</summary>
+    private async Task ReleaseServerCopyAsync(OfflineDownload item)
+    {
+        if (item.ServerCopyId is not { } id) return;
+        try
+        {
+            await _api.DeleteServerDownloadAsync(id, deleteFiles: true);
+            item.ServerCopyId = null;
+            await SaveAsync();
+        }
+        catch (Exception ex) when (ex is HttpRequestException or ApiException or TaskCanceledException || NetworkState.IsConnectionError(ex))
+        {
+            // Tried again the next time the app starts (and the server deletes it in time anyway).
         }
     }
 
@@ -229,8 +304,10 @@ public class DownloadManager
             _retries.Remove(item);
             _waiting.Remove(item);
         }
+        _all.Remove(item);
         Items.Remove(item);
-        var posterShared = Items.Any(i => i.LocalPosterPath == item.LocalPosterPath);
+        _ = ReleaseServerCopyAsync(item);
+        var posterShared = _all.Any(i => i.LocalPosterPath == item.LocalPosterPath);
         foreach (var path in new[] { item.FilePath, item.FilePath + ".part", posterShared ? null : item.LocalPosterPath })
             if (!string.IsNullOrEmpty(path) && File.Exists(path)) File.Delete(path);
         await SaveAsync();
@@ -281,7 +358,7 @@ public class DownloadManager
         lock (_queueLock)
         {
             // Oldest first: new downloads are inserted at the top of the list.
-            foreach (var next in Items.ToList().AsEnumerable().Reverse().Where(i => i.Status is OfflineStatus.Queued or OfflineStatus.WaitingForWifi).ToList())
+            foreach (var next in _all.ToList().AsEnumerable().Reverse().Where(i => i.Status is OfflineStatus.Queued or OfflineStatus.WaitingForWifi).ToList())
             {
                 if (_running.Count >= MaxParallel) return;
                 if (_running.ContainsKey(next) || _waiting.Contains(next)) continue;
@@ -310,6 +387,32 @@ public class DownloadManager
         catch (OperationCanceledException)
         {
             // Paused or deleted.
+        }
+        catch (Exception ex) when (ex is ApiException { Status: System.Net.HttpStatusCode.Conflict }
+                                       or HttpRequestException { StatusCode: System.Net.HttpStatusCode.Conflict })
+        {
+            // Not saved on the server yet: the device copies a saved one (nothing comes straight from a torrent any
+            // more). Its save on the server is asked for again (it may have been removed) and this waits for it.
+            await RequestServerCopyAsync(item);
+            MainThread.BeginInvokeOnMainThread(() =>
+            {
+                item.Status = OfflineStatus.Queued;
+                item.Error = "Waiting for the server to save it…";
+                item.BytesPerSecond = 0;
+            });
+            lock (_queueLock)
+            {
+                _running.Remove(item);
+                _waiting.Add(item);
+            }
+            cts.Dispose();
+            await SaveAsync();
+            _ = Task.Delay(TimeSpan.FromSeconds(30)).ContinueWith(_ =>
+            {
+                lock (_queueLock) _waiting.Remove(item);
+                Kick();
+            }, TaskScheduler.Default);
+            return;
         }
         catch (Exception ex) when (ex is HttpRequestException or IOException or ApiException or TimeoutException || NetworkState.IsConnectionError(ex))
         {
@@ -369,7 +472,9 @@ public class DownloadManager
         var info = await _api.StreamInfoAsync(item.MovieId, item.ReleaseId, ct, item.EpisodeId);
         item.ReleaseId = info.ReleaseId;
         var ext = Path.GetExtension(info.FileName);
-        item.FilePath = Path.Combine(_root, $"{item.FileKey}{(string.IsNullOrEmpty(ext) ? ".mp4" : ext)}");
+        var path = Path.Combine(_root, $"{item.FileKey}{(string.IsNullOrEmpty(ext) ? ".mp4" : ext)}");
+        // One begun before it had a profile keeps its name, so it carries on from its .part rather than starting over.
+        if (string.IsNullOrEmpty(item.FilePath) || Path.GetExtension(item.FilePath) != Path.GetExtension(path)) item.FilePath = path;
         var part = item.FilePath + ".part";
 
         var existing = File.Exists(part) ? new FileInfo(part).Length : 0;
@@ -425,6 +530,7 @@ public class DownloadManager
             item.BytesPerSecond = 0;
             item.Status = OfflineStatus.Completed;
         });
+        await ReleaseServerCopyAsync(item);
     }
 
     /// <summary>A read that gives up (as an interruption, so it's retried) when no data arrives for a while.</summary>
@@ -462,17 +568,20 @@ public class DownloadManager
         string? LocalPosterPath, string FilePath, DateTime AddedAt, OfflineStatus Status, long TotalBytes, long DownloadedBytes, string? Error,
         long OfflinePositionMs, long OfflineDurationMs, bool PendingSync,
         // Episodes (absent, so null, in indexes written before they could be downloaded).
-        int? EpisodeId = null, int? ShowId = null, int? SeasonNumber = null, int? EpisodeNumber = null, string? Subtitle = null);
+        int? EpisodeId = null, int? ShowId = null, int? SeasonNumber = null, int? EpisodeNumber = null, string? Subtitle = null,
+        // The profile's it is (absent in indexes written before downloads were per profile).
+        int? ProfileId = null,
+        int? ServerCopyId = null);
 
     private async Task SaveAsync()
     {
         await _saveLock.WaitAsync();
         try
         {
-            var snapshot = Items.Select(i => new Snapshot(i.MovieId, i.ReleaseId, i.Title, i.Year, i.Overview, i.RuntimeMinutes, i.PosterUrl,
+            var snapshot = _all.Select(i => new Snapshot(i.MovieId, i.ReleaseId, i.Title, i.Year, i.Overview, i.RuntimeMinutes, i.PosterUrl,
                 i.LocalPosterPath, i.FilePath, i.AddedAt, i.Status == OfflineStatus.Downloading ? OfflineStatus.Queued : i.Status,
                 i.TotalBytes, i.DownloadedBytes, i.Error, i.OfflinePositionMs, i.OfflineDurationMs, i.PendingSync,
-                i.EpisodeId, i.ShowId, i.SeasonNumber, i.EpisodeNumber, i.Subtitle)).ToList();
+                i.EpisodeId, i.ShowId, i.SeasonNumber, i.EpisodeNumber, i.Subtitle, i.ProfileId, i.ServerCopyId)).ToList();
             await File.WriteAllTextAsync(_indexPath, JsonSerializer.Serialize(snapshot));
         }
         finally
@@ -490,7 +599,7 @@ public class DownloadManager
             foreach (var s in items)
             {
                 var complete = s.Status == OfflineStatus.Completed && File.Exists(s.FilePath);
-                Items.Add(new OfflineDownload
+                _all.Add(new OfflineDownload
                 {
                     MovieId = s.MovieId, ReleaseId = s.ReleaseId, Title = s.Title, Year = s.Year, Overview = s.Overview,
                     RuntimeMinutes = s.RuntimeMinutes, PosterUrl = s.PosterUrl, LocalPosterPath = s.LocalPosterPath,
@@ -499,9 +608,12 @@ public class DownloadManager
                     TotalBytes = s.TotalBytes, DownloadedBytes = s.DownloadedBytes, Error = s.Error,
                     OfflinePositionMs = s.OfflinePositionMs, OfflineDurationMs = s.OfflineDurationMs, PendingSync = s.PendingSync,
                     EpisodeId = s.EpisodeId, ShowId = s.ShowId, SeasonNumber = s.SeasonNumber, EpisodeNumber = s.EpisodeNumber, Subtitle = s.Subtitle,
+                    ProfileId = s.ProfileId, ServerCopyId = s.ServerCopyId,
                 });
             }
+            ShowProfile();
             Kick();
+            foreach (var done in _all.Where(i => i.IsComplete && i.ServerCopyId is not null).ToList()) _ = ReleaseServerCopyAsync(done);
         }
         catch (JsonException)
         {

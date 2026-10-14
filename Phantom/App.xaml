@@ -23,6 +23,9 @@
             <local:PosterWidthConverter x:Key="PosterWidth" />
             <local:EqualsConverter x:Key="Equals" />
             <local:InitialConverter x:Key="Initial" />
+            <local:AvatarIconConverter x:Key="AvatarIcon" />
+            <local:RemainingConverter x:Key="Remaining" />
+            <local:ServerStatusConverter x:Key="ServerStatus" />
             <local:SourceTypeConverter x:Key="SourceType" />
             <local:IntervalConverter x:Key="Interval" />
             <local:AllTrueConverter x:Key="AllTrue" />
@@ -31,7 +34,8 @@
 
             <!-- Poster card used by every movie row/grid: artwork, watched tick, resume bar. -->
             <DataTemplate x:Key="PosterCard" x:DataType="dto:MovieSummaryDto">
-                <Grid RowDefinitions="Auto,Auto,Auto" WidthRequest="124" Padding="0,0,0,6" RowSpacing="4">
+                <!-- On a TV the remote's ring goes round the card in its own margin (see DpadFocus), not over it -->
+                <Grid RowDefinitions="Auto,Auto,Auto" WidthRequest="{OnIdiom Default=124, TV=134}" Padding="{OnIdiom Default='0,0,0,6', TV='5,5,5,8'}" RowSpacing="4">
                     <Border StrokeShape="RoundRectangle 8" HeightRequest="184" BackgroundColor="{StaticResource Surface}">
                         <Grid>
                             <Image Source="{Binding PosterUrl, Converter={StaticResource Poster}}" Aspect="AspectFill" />
@@ -65,7 +69,7 @@
             <!-- The same card in a grid: as wide as its column rather than a fixed width (which overflowed three columns
                  on a small phone and cut the text off), and the title on up to two lines -->
             <DataTemplate x:Key="PosterGridCard" x:DataType="dto:MovieSummaryDto">
-                <Grid RowDefinitions="Auto,Auto,Auto" Padding="0,0,0,8" RowSpacing="4">
+                <Grid RowDefinitions="Auto,Auto,Auto" Padding="{OnIdiom Default='0,0,0,8', TV='5,5,5,8'}" RowSpacing="4">
                     <Border StrokeShape="RoundRectangle 8" HeightRequest="165" BackgroundColor="{StaticResource Surface}">
                         <Grid>
                             <Image Source="{Binding PosterUrl, Converter={StaticResource Poster}}" Aspect="AspectFill" />

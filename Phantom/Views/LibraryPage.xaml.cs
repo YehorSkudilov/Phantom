@@ -29,7 +29,12 @@ public partial class LibraryPage : TabView
         Box.SearchButtonPressed += (_, _) => HideKeyboard();
         _vm.PropertyChanged += (_, e) =>
         {
-            if (e.PropertyName == nameof(LibraryViewModel.ShowFilters) && _vm.ShowFilters) HideKeyboard();
+            if (e.PropertyName != nameof(LibraryViewModel.ShowFilters)) return;
+            if (_vm.ShowFilters) HideKeyboard();
+#if ANDROID
+            // A TV remote goes into the popup and stays there while it's open, then back to the Filters button.
+            Phantom.Droid.TvNavigation.Trap(_vm.ShowFilters ? FiltersCard : null, FiltersButton);
+#endif
         };
     }
 

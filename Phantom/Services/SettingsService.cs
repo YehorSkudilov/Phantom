@@ -52,80 +52,130 @@ public class SettingsService
         set => _prefs.Set(nameof(Token), value);
     }
 
+    private UserDto? _user;
+    private bool _userRead;
+
     public UserDto? User
     {
         get
         {
-            var json = _prefs.Get<string?>(UserKey, null);
-            return json is null ? null : JsonSerializer.Deserialize<UserDto>(json);
+            if (!_userRead)
+            {
+                var json = _prefs.Get<string?>(UserKey, null);
+                _user = json is null ? null : JsonSerializer.Deserialize<UserDto>(json);
+                _userRead = true;
+            }
+            return _user;
         }
         set
         {
+            var before = User?.Id;
             if (value is null) _prefs.Remove(UserKey);
             else _prefs.Set(UserKey, JsonSerializer.Serialize(value));
+            _user = value;
+            _userRead = true;
+            if (before != value?.Id) ProfileChanged?.Invoke(this, EventArgs.Empty);
         }
     }
+
+    /// <summary>Another profile is in use (or none): what's kept per profile (downloads, these settings) is its now.</summary>
+    public event EventHandler? ProfileChanged;
+
+    // ---------- Per profile ----------
+    // Each profile is a user of its own: the settings below (and the device's downloads) are kept for each, by its
+    // id. A profile that hasn't set one yet starts from what the device had before settings were kept per profile.
+
+    private string Key(string name) => User is { } user ? $"p{user.Id}.{name}" : name;
+
+    private T Get<T>(string name, T fallback)
+    {
+        var key = Key(name);
+        return _prefs.ContainsKey(key) ? _prefs.Get(key, fallback) : _prefs.Get(name, fallback);
+    }
+
+    private void Set<T>(string name, T value) => _prefs.Set(Key(name), value);
 
     /// <summary>The player's volume (0-1), kept between movies.</summary>
     public double PlayerVolume
     {
-        get => Math.Clamp(_prefs.Get(nameof(PlayerVolume), 1.0), 0, 1);
-        set => _prefs.Set(nameof(PlayerVolume), Math.Clamp(value, 0, 1));
+        get => Math.Clamp(Get(nameof(PlayerVolume), 1.0), 0, 1);
+        set => Set(nameof(PlayerVolume), Math.Clamp(value, 0, 1));
+    }
+
+    /// <summary>The player's screen brightness (0-1), kept between movies; null until it's been set (the system's).</summary>
+    public double? PlayerBrightness
+    {
+        get => Get(nameof(PlayerBrightness), -1.0) is var b and >= 0 ? Math.Clamp(b, 0, 1) : null;
+        set => Set(nameof(PlayerBrightness), value is { } b ? Math.Clamp(b, 0, 1) : -1.0);
     }
 
     /// <summary>Kept by name (not position) so new choices like Auto don't shift what people picked.</summary>
     public QualityOption StreamingQuality
     {
-        get => QualityOption.All.FirstOrDefault(q => q.Name == _prefs.Get<string?>("StreamingQualityName", null)) ?? QualityOption.Auto;
-        set => _prefs.Set("StreamingQualityName", value.Name);
+        get => QualityOption.All.FirstOrDefault(q => q.Name == Get<string?>("StreamingQualityName", null)) ?? QualityOption.Auto;
+        set => Set("StreamingQualityName", value.Name);
     }
 
     public bool AutoPlayNext
     {
-        get => _prefs.Get(nameof(AutoPlayNext), true);
-        set => _prefs.Set(nameof(AutoPlayNext), value);
+        get => Get(nameof(AutoPlayNext), true);
+        set => Set(nameof(AutoPlayNext), value);
     }
 
     public bool SubtitlesByDefault
     {
-        get => _prefs.Get(nameof(SubtitlesByDefault), false);
-        set => _prefs.Set(nameof(SubtitlesByDefault), value);
+        get => Get(nameof(SubtitlesByDefault), false);
+        set => Set(nameof(SubtitlesByDefault), value);
     }
 
     public string PreferredSubtitleLanguage
     {
-        get => _prefs.Get(nameof(PreferredSubtitleLanguage), "en");
-        set => _prefs.Set(nameof(PreferredSubtitleLanguage), value);
+        get => Get(nameof(PreferredSubtitleLanguage), "en");
+        set => Set(nameof(PreferredSubtitleLanguage), value);
     }
 
     public double SubtitleSize
     {
-        get => _prefs.Get(nameof(SubtitleSize), 20.0);
-        set => _prefs.Set(nameof(SubtitleSize), value);
+        get => Get(nameof(SubtitleSize), 20.0);
+        set => Set(nameof(SubtitleSize), value);
     }
 
     public int SkipForwardSeconds
     {
-        get => _prefs.Get(nameof(SkipForwardSeconds), 30);
-        set => _prefs.Set(nameof(SkipForwardSeconds), value);
+        get => Get(nameof(SkipForwardSeconds), 30);
+        set => Set(nameof(SkipForwardSeconds), value);
     }
 
     public int SkipBackSeconds
     {
-        get => _prefs.Get(nameof(SkipBackSeconds), 10);
-        set => _prefs.Set(nameof(SkipBackSeconds), value);
+        get => Get(nameof(SkipBackSeconds), 10);
+        set => Set(nameof(SkipBackSeconds), value);
     }
 
     public bool DownloadOnWifiOnly
     {
-        get => _prefs.Get(nameof(DownloadOnWifiOnly), true);
-        set => _prefs.Set(nameof(DownloadOnWifiOnly), value);
+        get => Get(nameof(DownloadOnWifiOnly), true);
+        set => Set(nameof(DownloadOnWifiOnly), value);
+    }
+
+    /// <summary>My Library's lists as a grid (true) or a list.</summary>
+    public bool MyLibraryGrid
+    {
+        get => Get(nameof(MyLibraryGrid), true);
+        set => Set(nameof(MyLibraryGrid), value);
+    }
+
+    /// <summary>Downloads' lists as a grid (true) or a list.</summary>
+    public bool DownloadsGrid
+    {
+        get => Get(nameof(DownloadsGrid), true);
+        set => Set(nameof(DownloadsGrid), value);
     }
 
     public string LibraryView
     {
-        get => _prefs.Get(nameof(LibraryView), "grid");
-        set => _prefs.Set(nameof(LibraryView), value);
+        get => Get(nameof(LibraryView), "grid");
+        set => Set(nameof(LibraryView), value);
     }
 
     public string ClientName => $"{DeviceInfo.Current.Name} ({DeviceInfo.Current.Platform})";

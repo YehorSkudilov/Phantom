@@ -50,7 +50,7 @@ public class TokenService
 
     public static UserDto ToDto(User u) =>
         new(u.Id, u.Username, u.IsAdmin, u.ParentUserId is not null, u.PinHash is not null, u.AvatarColor, u.MaxContentRating,
-            u.ParentUserId ?? u.Id);
+            u.ParentUserId ?? u.Id, u.Avatar);
 
     private static byte[] LoadOrCreateKey(PhantomOptions options)
     {

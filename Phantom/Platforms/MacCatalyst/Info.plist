@@ -35,5 +35,12 @@
 	</array>
 	<key>XSAppIconAssets</key>
 	<string>Assets.xcassets/appicon.appiconset</string>
+	<!-- Casting: finding Chromecasts and Google TVs on the local network (Bonjour) and connecting to them. -->
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Phantom looks for Chromecasts and TVs on your network so you can play videos on them.</string>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_googlecast._tcp</string>
+	</array>
 </dict>
 </plist>

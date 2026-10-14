@@ -42,17 +42,63 @@ public partial class MainPage : ContentPage
         TabContent.PullCancelled += (_, _) => OnPullEnd(refresh: false);
         NavBar.LoadPageCommand = new Command<CNavItem>(Show);
         NavBar.CNavIconItems = _tabs;
-        // On a wide window the bar would stretch edge to edge; there it sits centred, only as wide as its items.
-        if (DeviceInfo.Platform == DevicePlatform.WinUI)
-        {
-            NavBar.HorizontalOptions = LayoutOptions.Center;
-            NavBar.WidthRequest = _tabs.Count * 80 + 16;
-        }
+        // On a big screen (a tablet, a TV, a wide window) the bar would stretch edge to edge; there it sits centred,
+        // only as wide as its items, whatever the platform. It follows the window as it's resized or turned.
+        SizeChanged += (_, _) => FitNavBar();
         NavBar.SelectItem(_tabs[(int)AppTab.Discover]);
+#if ANDROID
+        // The remote moves between the page and the bar, and Back takes it to the bar (see TvNavigation).
+        Phantom.Droid.TvNavigation.NavBar = new(NavBar);
+        Phantom.Droid.TvNavigation.TabHandlesBack = () => _current?.Page is TabView tab && tab.HandleBack();
+        Phantom.Droid.TvNavigation.FocusSelectedTab = FocusSelectedTab;
+        Phantom.Droid.TvNavigation.TopButton = new(TopButton);
+        Phantom.Droid.TvNavigation.CurrentTab = () => _current?.Page;
+        Phantom.Droid.TvNavigation.ShowFirstTab = () =>
+        {
+            if (_current == _tabs[(int)AppTab.Discover]) return false;
+            NavBar.SelectItem(_tabs[(int)AppTab.Discover]);
+            return true;
+        };
+#endif
 
         _instance = new(this);
         // The offline state's "Go to Downloads", wherever it shows.
         Phantom.Controls.StateView.OpenDownloads = ShowDeviceDownloads;
+    }
+
+#if ANDROID
+    /// <summary>Focuses the selected tab's item in the nav bar: the view its tap is on (see DpadFocus). True when it took focus.</summary>
+    private bool FocusSelectedTab()
+    {
+        var item = NavBar.GetVisualTreeDescendants().OfType<View>()
+            .FirstOrDefault(v => v.BindingContext is CNavItem { IsSelected: true } && v.GestureRecognizers.Count > 0);
+        if (item?.Handler is not IPlatformViewHandler handler) return false;
+        var target = handler.ContainerView ?? handler.PlatformView;
+        return target?.RequestFocus() == true;
+    }
+#endif
+
+    /// <summary>Wider than this (Material's "medium" window and up), the nav bar is compact.</summary>
+    private const double CompactNavBarFrom = 600;
+
+    private void FitNavBar()
+    {
+        if (Width <= 0) return;
+        var compact = Width >= CompactNavBarFrom;
+        NavBar.HorizontalOptions = compact ? LayoutOptions.Center : LayoutOptions.Fill;
+        NavBar.WidthRequest = compact ? _tabs.Count * 80 + 16 : -1;
+    }
+
+    private async void OnTopClicked(object? sender, EventArgs e)
+    {
+#if ANDROID
+        Phantom.Droid.TvNavigation.ScrollTabToTop();
+        FocusSelectedTab();
+        // A little press: in, and back out.
+        TopButton.AbortAnimation("ScaleTo");
+        await TopButton.ScaleToAsync(0.85, 80, Easing.CubicOut);
+        await TopButton.ScaleToAsync(1, 140, Easing.CubicOut);
+#endif
     }
 
     /// <summary>Pops back to the tabs and switches to <paramref name="tab"/>.</summary>
@@ -111,6 +157,9 @@ public partial class MainPage : ContentPage
         if (_visible) _current?.Page.Unload();
         _current = item;
         TabContent.SetContent(item);
+#if ANDROID
+        Phantom.Droid.TvNavigation.UpdateTopButton();
+#endif
         if (!_visible) return;
         // Load once the tab has slid in, not while it slides, so the switch doesn't stutter.
         if (TabContent.IsNavigating) _loadAfterSlide = item;
@@ -174,6 +223,9 @@ public partial class MainPage : ContentPage
         _visible = true;
         _loadAfterSlide = null;
         _current?.Page.Load();
+#if ANDROID
+        Phantom.Droid.TvNavigation.SettleFocusSoon(NavBar);
+#endif
     }
 
     protected override void OnDisappearing()

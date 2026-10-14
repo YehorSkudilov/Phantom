@@ -14,6 +14,9 @@ public class User
     public string? PinHash { get; set; }
     public string? AvatarColor { get; set; }
 
+    /// <summary>The profile's picture (one of ProfileAvatars.All), or null for its name's initial.</summary>
+    public string? Avatar { get; set; }
+
     /// <summary>Parental control: highest content rating this profile may see (e.g. "PG-13").</summary>
     public string? MaxContentRating { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
@@ -249,6 +252,12 @@ public class ServerDownload
     public int ReleaseId { get; set; }
     public Release? Release { get; set; }
     public int? RequestedByUserId { get; set; }
+
+    /// <summary>
+    /// Fetched only so a device can copy it (a download to a phone or TV), not saved for the profile: it isn't in its
+    /// saved list, and the device has it deleted once it has its copy.
+    /// </summary>
+    public bool ForDevice { get; set; }
     public DownloadStatus Status { get; set; } = DownloadStatus.Queued;
     public double Progress { get; set; }
     public string? Error { get; set; }

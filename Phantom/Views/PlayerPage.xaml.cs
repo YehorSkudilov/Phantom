@@ -2,6 +2,7 @@ using Phantom.Controls;
 using CommunityToolkit.Maui.Core;
 using CommunityToolkit.Maui.Views;
 using Phantom.Services;
+using Phantom.Services.Casting;
 using Phantom.ViewModels;
 using Phantom.Shared;
 
@@ -11,6 +12,10 @@ public partial class PlayerPage : ContentPage
 {
     private readonly PlayerViewModel _vm;
     private bool _seeking;
+    // Moving along the timeline with a TV remote (see Scrub): paused, showing the frame there over the whole picture.
+    private bool _scrubbing;
+    private bool _scrubResume;
+    private TimeSpan _scrubFrom, _scrubAt;
     private bool _pendingResume;
     private bool _started; // the current source has actually played, so a Paused state is the user's, not loading
     private IDispatcherTimer? _hideTimer;
@@ -26,12 +31,14 @@ public partial class PlayerPage : ContentPage
         };
         SeekTrack.SizeChanged += (_, _) => UpdateBufferedTrack();
 
-        Media.MediaOpened += (_, _) => Dispatcher.Dispatch(OnOpened);
-        Media.PositionChanged += (_, e) => Dispatcher.Dispatch(() => OnPositionChanged(e.Position));
-        Media.StateChanged += (_, e) => Dispatcher.Dispatch(() => OnStateChanged(e.NewState));
-        Media.MediaEnded += (_, _) => Dispatcher.Dispatch(OnEnded);
+        // While casting, this device's player is stopped: what it says then is about nothing on show.
+        Media.MediaOpened += (_, _) => Dispatcher.Dispatch(() => { if (_cast is null) OnOpened(); });
+        Media.PositionChanged += (_, e) => Dispatcher.Dispatch(() => { if (_cast is null) OnPositionChanged(e.Position); });
+        Media.StateChanged += (_, e) => Dispatcher.Dispatch(() => { if (_cast is null) OnStateChanged(e.NewState); });
+        Media.MediaEnded += (_, _) => Dispatcher.Dispatch(() => { if (_cast is null) OnEnded(); });
         Media.MediaFailed += (_, e) => Dispatcher.Dispatch(() =>
         {
+            if (_cast is not null) return;
             // Most failures are a file this device can't decode (DTS or AC3 sound, 10-bit HEVC, an AVI...): the server
             // converts it, from the same point, before giving up. A server error wouldn't be helped by that.
             if (!IsServerError(e.ErrorMessage)
@@ -48,7 +55,9 @@ public partial class PlayerPage : ContentPage
             Guard(async () =>
             {
                 // A failed conversion: the player only knows it got no video; the server knows why.
-                if (await _vm.ConversionErrorAsync() is { } reason) message += $"\n\nServer: {reason}";
+                // A file the server can't read at all says so itself, and what to do: that's the message then.
+                if (await _vm.ConversionErrorAsync() is { } reason)
+                    message = reason.Contains("probably fake or damaged") ? reason : message + $"\n\nServer: {reason}";
                 await Dialog.ErrorAsync(message, "Can't play this");
                 await Shell.Current.GoToAsync("..");
             });
@@ -65,10 +74,13 @@ public partial class PlayerPage : ContentPage
         // Loading from the moment the page opens: finding the torrent can take a while before there's a source at all.
         SetLoading(true);
 
-        VolumeSlider.Value = _vm.Volume;
-        Media.Volume = _vm.Volume;
+        // The device's own media volume where the app can set it (Android), else the player's (see DeviceControls).
+        Media.Volume = DeviceControls.HasDeviceVolume ? 1 : _vm.Volume;
+        VolumeSlider.Value = DeviceControls.HasDeviceVolume ? DeviceControls.GetVolume() : _vm.Volume;
         UpdateMuteIcon();
+        BrightnessIcon.IsVisible = BrightnessSlider.IsVisible = DeviceControls.HasBrightness;
         FullscreenButton.IsVisible = DeviceInfo.Platform == DevicePlatform.WinUI;
+        CastButton.IsVisible = CanCast;
 #if IOS || MACCATALYST
         // Apple's slider only moves by dragging its thumb; a tap on the bar jumps there, as it does on Android and Windows.
         var seekTap = new TapGestureRecognizer();
@@ -81,8 +93,19 @@ public partial class PlayerPage : ContentPage
 
     private void OnVolumeChanged(object? sender, ValueChangedEventArgs e)
     {
-        Media.Volume = e.NewValue;
-        _vm.Volume = e.NewValue;
+        if (_cast is { } cast)
+        {
+            // The TV's volume, while casting.
+            if (Math.Abs(cast.Volume - e.NewValue) > 0.005) Guard(() => cast.SetVolumeAsync(e.NewValue));
+            UpdateMuteIcon();
+            return;
+        }
+        if (DeviceControls.HasDeviceVolume) DeviceControls.SetVolume(e.NewValue);
+        else
+        {
+            Media.Volume = e.NewValue;
+            _vm.Volume = e.NewValue;
+        }
         if (e.NewValue > 0 && Media.ShouldMute) Media.ShouldMute = false;
         UpdateMuteIcon();
     }
@@ -91,15 +114,38 @@ public partial class PlayerPage : ContentPage
 
     private void ToggleMute()
     {
-        Media.ShouldMute = !Media.ShouldMute;
+        if (_cast is { } cast) Guard(() => cast.SetMutedAsync(!cast.Muted));
+        else Media.ShouldMute = !Media.ShouldMute;
         UpdateMuteIcon();
         ShowControls();
     }
 
     private void ChangeVolume(double by) => VolumeSlider.Value = Math.Clamp(VolumeSlider.Value + by, 0, 1);
 
+    private bool IsMuted => _cast?.Muted ?? Media.ShouldMute;
+
     private void UpdateMuteIcon() => MuteButton.Source = IconExtension.Create(
-        Media.ShouldMute || Media.Volume == 0 ? "volume_off" : Media.Volume < 0.5 ? "volume_down" : "volume_up", Colors.White);
+        IsMuted || VolumeSlider.Value == 0 ? "volume_off" : VolumeSlider.Value < 0.5 ? "volume_down" : "volume_up", Colors.White);
+
+    // The window's brightness (the system's comes back when the player closes), kept for next time.
+    private void OnBrightnessChanged(object? sender, ValueChangedEventArgs e)
+    {
+        if (!DeviceControls.HasBrightness || !_brightnessReady) return;
+        DeviceControls.SetBrightness(e.NewValue);
+        _vm.Brightness = e.NewValue;
+    }
+
+    private bool _brightnessReady;
+
+    /// <summary>The brightness picked last time (or the system's on the slider), each time the player shows.</summary>
+    private void ApplyBrightness()
+    {
+        if (!DeviceControls.HasBrightness) return;
+        _brightnessReady = false;
+        if (_vm.Brightness is { } kept) DeviceControls.SetBrightness(kept);
+        BrightnessSlider.Value = _vm.Brightness ?? DeviceControls.GetBrightness();
+        _brightnessReady = true;
+    }
 
     private void OnAspect(object? sender, EventArgs e)
     {
@@ -129,7 +175,7 @@ public partial class PlayerPage : ContentPage
 
     private void OnSurfaceDoubleTapped(object? sender, TappedEventArgs e)
     {
-        if (sender is not View surface || e.GetPosition(surface) is not { } at || TransportControls.IsVisible == false && Buffering.IsVisible) return;
+        if (sender is not View surface || e.GetPosition(surface) is not { } at || !Ready) return;
         if (at.X < surface.Width / 3) Guard(() => SkipAsync(-_vm.SkipBack));
         else if (at.X > surface.Width * 2 / 3) Guard(() => SkipAsync(_vm.SkipForward));
     }
@@ -158,15 +204,19 @@ public partial class PlayerPage : ContentPage
 
     private async Task SkipAsync(int seconds)
     {
-        var from = _skipFrom ??= _vm.ActualPosition(Media.Position);
-        var total = _vm.TotalDuration(Media.Duration);
+        var from = _skipFrom ??= CurrentPosition;
+        var total = CurrentTotal;
         var target = (_skipTarget ?? from) + TimeSpan.FromSeconds(seconds);
         if (total > TimeSpan.Zero && target > total) target = total - TimeSpan.FromSeconds(1);
         if (target < TimeSpan.Zero) target = TimeSpan.Zero;
         _skipTarget = target;
 
         var moved = (int)Math.Round((target - from).TotalSeconds);
-        Flash(moved < 0 ? $"−{-moved}s" : $"+{moved}s", left: moved < 0);
+        // The frame they'll land on shows above the "+30s" while the movie plays on. On a TV the presses get longer to
+        // add up (a remote's are slower than taps).
+        var tv = DeviceInfo.Idiom == DeviceIdiom.TV;
+        Flash(moved < 0 ? $"−{-moved}s" : $"+{moved}s", left: moved < 0, showFor: tv ? 1300 : 1000, keepPreview: true);
+        PreviewAt(target, large: false, _skipSlot, ShowSkipFrame, () => SkipPreview.IsVisible = false);
         PositionLabel.Text = TimeSpanConverter.Format(target);
         if (total > TimeSpan.Zero) Seek.Value = Math.Clamp(target / total, 0, 1);
 
@@ -174,7 +224,7 @@ public partial class PlayerPage : ContentPage
         var cts = _skipDelay = new CancellationTokenSource();
         try
         {
-            await Task.Delay(350, cts.Token);
+            await Task.Delay(tv ? 900 : 350, cts.Token);
         }
         catch (TaskCanceledException)
         {
@@ -187,9 +237,11 @@ public partial class PlayerPage : ContentPage
     private CancellationTokenSource? _flash;
 
     /// <summary>A short message over the video: "+30s", "Fill screen"...</summary>
-    private async void Flash(string text, bool? left = null)
+    /// <param name="keepPreview">A skip's: the frame above it (see SkipAsync) stays; any other message has none.</param>
+    private async void Flash(string text, bool? left = null, int showFor = 700, bool keepPreview = false)
     {
         SkipFlashText.Text = text;
+        if (!keepPreview) SkipPreview.IsVisible = false;
         SkipFlash.HorizontalOptions = left switch { true => LayoutOptions.Start, false => LayoutOptions.End, null => LayoutOptions.Center };
         SkipFlash.IsVisible = true;
         SkipFlash.Opacity = 1;
@@ -197,7 +249,7 @@ public partial class PlayerPage : ContentPage
         var cts = _flash = new CancellationTokenSource();
         try
         {
-            await Task.Delay(700, cts.Token);
+            await Task.Delay(showFor, cts.Token);
             await SkipFlash.FadeToAsync(0, 250);
             if (!cts.IsCancellationRequested) SkipFlash.IsVisible = false;
         }
@@ -220,7 +272,7 @@ public partial class PlayerPage : ContentPage
         if (show)
         {
             UpNextCountdown.Text = $"Starts in {Math.Ceiling(remaining.TotalSeconds / _vm.Speed):0}s";
-            Controls.IsVisible = true;
+            ShowControls(); // up while it counts down, and hidden again in time after
         }
     }
 
@@ -238,20 +290,22 @@ public partial class PlayerPage : ContentPage
     }
 
     /// <summary>
-    /// While the movie is still loading or buffering there's nothing to control yet: only the title and close button show,
-    /// over the loading panel.
+    /// While the movie is still loading there's nothing to control yet: only the title and close button show, over the
+    /// loading panel. Once it has played, buffering shows the panel but leaves the controls usable (pause, seek, skip…).
     /// </summary>
     private void SetLoading(bool loading)
     {
         Buffering.IsVisible = loading;
-        TransportControls.IsVisible = SeekArea.IsVisible = !loading;
-        SubtitlesButton.IsVisible = QualityButton.IsVisible = SpeedButton.IsVisible = !loading;
+        var ready = Ready;
+        TransportControls.IsVisible = SeekArea.IsVisible = ready;
+        SubtitlesButton.IsVisible = QualityButton.IsVisible = SpeedButton.IsVisible = ready;
+        CastButton.IsVisible = ready && CanCast;
         if (loading)
         {
             // The estimate is for where playback will carry on from.
             if (Media.Position > TimeSpan.Zero) _vm.StatusPosition = _vm.ActualPosition(Media.Position);
             _vm.StartLoadingStatus();
-            Controls.IsVisible = true; // keep the close button reachable
+            ShowControls(); // keep the close button reachable (they stay up while it loads; see ShowControls)
         }
         else _vm.StopLoadingStatus();
     }
@@ -272,12 +326,25 @@ public partial class PlayerPage : ContentPage
     private static bool IsServerError(string? raw) =>
         raw is { } text && new[] { "401", "403", "404", "502", "503", "504", "Gateway" }.Any(code => text.Contains(code, StringComparison.OrdinalIgnoreCase));
 
+    /// <summary>The controls can be used: it isn't loading, or it's only buffering after it has played.</summary>
+    private bool Ready => _started || !Buffering.IsVisible;
+
     private void LoadSource()
     {
         if (_vm.SourceUrl is not { } url) return;
         _upNextCancelled = false;
-        _started = false;
         UpNextCard.IsVisible = false;
+        if (_cast is not null)
+        {
+            // Another quality, the next episode...: on the TV too. A downloaded copy can't go there, so it plays here.
+            if (_vm.CastMediaFrom(_vm.TranscodeOffset + _vm.ResumePosition) is { } media)
+            {
+                Guard(() => CastLoadAsync(media));
+                return;
+            }
+            Guard(() => StopCastingAsync(resume: false));
+        }
+        _started = false;
         _pendingResume = _vm.ResumePosition > TimeSpan.Zero;
         SetLoading(true);
         Media.Source = url.StartsWith("http", StringComparison.OrdinalIgnoreCase) ? MediaSource.FromUri(url) : MediaSource.FromFile(url);
@@ -307,9 +374,18 @@ public partial class PlayerPage : ContentPage
         if (!await TrySeekAsync(_vm.ResumePosition)) _pendingResume = true;
     }
 
-    /// <summary>MediaElement's SeekTo, without the exceptions iOS throws while the player isn't ready (they'd crash the app from an async void handler).</summary>
+    /// <summary>
+    /// MediaElement's SeekTo, without the exceptions it throws while the player isn't ready. On iOS those are thrown
+    /// inside the toolkit's own async void handler, where no catch here can reach them and they end the app, so there the
+    /// AVPlayer is sought directly, and only once it's ReadyToPlay. False when it isn't ready (or the seek didn't land).
+    /// </summary>
     private async Task<bool> TrySeekAsync(TimeSpan target)
     {
+#if IOS || MACCATALYST
+        var player = FindAVPlayer();
+        if (player?.CurrentItem is null || player.Status != AVFoundation.AVPlayerStatus.ReadyToPlay) return false;
+        return await player.SeekAsync(CoreMedia.CMTime.FromSeconds(target.TotalSeconds, 1000));
+#else
         try
         {
             await Media.SeekTo(target);
@@ -319,12 +395,32 @@ public partial class PlayerPage : ContentPage
         {
             return false;
         }
+#endif
     }
+
+#if IOS || MACCATALYST
+    /// <summary>The AVPlayer behind MediaElement: its view hosts an AVPlayerViewController's view, whose next responder is the controller.</summary>
+    private AVFoundation.AVPlayer? FindAVPlayer()
+    {
+        if (Media.Handler?.PlatformView is not UIKit.UIView host) return null;
+        foreach (var view in host.Subviews)
+            if (view.NextResponder is AVKit.AVPlayerViewController controller) return controller.Player;
+        return null;
+    }
+#endif
 
     private void OnPositionChanged(TimeSpan elementPosition)
     {
         var total = _vm.TotalDuration(Media.Duration);
         var position = _vm.ActualPosition(elementPosition);
+        ShowPosition(position, total);
+        // Until the resume seek lands the position is the start of the file, not progress worth saving.
+        if (!_pendingResume) _vm.OnPosition(elementPosition, Media.Duration, Media.CurrentState == MediaElementState.Playing);
+    }
+
+    /// <summary>The timeline, the times beside it and the up-next card, for <paramref name="position"/> of <paramref name="total"/>.</summary>
+    private void ShowPosition(TimeSpan position, TimeSpan total)
+    {
         if (!_seeking && _skipTarget is null)
         {
             if (total > TimeSpan.Zero) Seek.Value = Math.Clamp(position / total, 0, 1);
@@ -334,8 +430,6 @@ public partial class PlayerPage : ContentPage
         // When it'll finish at this speed, as Plex shows.
         EndsAtLabel.Text = total > position ? $"Ends at {DateTime.Now + (total - position) / Math.Max(0.25, _vm.Speed):t}" : "";
         UpdateUpNext(position, total);
-        // Until the resume seek lands the position is the start of the file, not progress worth saving.
-        if (!_pendingResume) _vm.OnPosition(elementPosition, Media.Duration, Media.CurrentState == MediaElementState.Playing);
     }
 
     private void OnStateChanged(MediaElementState state)
@@ -378,7 +472,7 @@ public partial class PlayerPage : ContentPage
         _pictureChecked = source;
         Dispatcher.DispatchDelayed(TimeSpan.FromSeconds(2), () =>
         {
-            if (_vm.SourceUrl != source || Media.CurrentState != MediaElementState.Playing || Media.MediaWidth > 0) return;
+            if (_cast is not null || _vm.SourceUrl != source || Media.CurrentState != MediaElementState.Playing || Media.MediaWidth > 0) return;
             if (_vm.TryConvertAfterFailure(_vm.ActualPosition(Media.Position)))
                 Flash("Converting it on the server…");
             else if (!_vm.IsTranscoding)
@@ -387,14 +481,22 @@ public partial class PlayerPage : ContentPage
     }
 #endif
 
-    private void OnEnded() => Guard(async () =>
+    private void OnEnded() => Guard(FinishAsync);
+
+    /// <summary>At the end: the next in the queue, or the player closes.</summary>
+    private async Task FinishAsync()
     {
         await Report(PlayerState.Stopped, atEnd: true);
         if (_upNextCancelled || !_vm.TryPlayNext()) await Shell.Current.GoToAsync("..");
-    });
+    }
 
     private Task Report(PlayerState state, bool atEnd = false)
     {
+        if (_cast is not null)
+        {
+            var length = CurrentTotal;
+            return _vm.ReportProgressAsync(atEnd ? length : CurrentPosition, length, state);
+        }
         var total = _vm.TotalDuration(Media.Duration);
         var position = atEnd ? total : _vm.ActualPosition(Media.Position);
         return _vm.ReportAsync(position, Media.Duration, state);
@@ -402,19 +504,34 @@ public partial class PlayerPage : ContentPage
 
     // ---------- Controls ----------
 
+    /// <summary>
+    /// Shows the controls, and hides them again once left alone: after 4 seconds while it plays, 10 otherwise (paused,
+    /// or the player saying it's buffering, which it does for moments while it plays: only hiding while Playing left
+    /// them up for good then). Not while the timeline is being dragged or moved along, or the loading panel (with its
+    /// Close) is up before it has played: then it looks again a second later, rather than giving up.
+    /// </summary>
     private void ShowControls()
     {
+        // The device's volume keys change it too: the slider shows where it is now.
+        if (DeviceControls.HasDeviceVolume && !Controls.IsVisible) VolumeSlider.Value = DeviceControls.GetVolume();
         Controls.IsVisible = true;
         _hideTimer?.Stop();
+        _shownAt = DateTime.UtcNow;
         _hideTimer = Dispatcher.CreateTimer();
-        _hideTimer.Interval = TimeSpan.FromSeconds(4);
-        _hideTimer.IsRepeating = false;
-        _hideTimer.Tick += (_, _) =>
+        _hideTimer.Interval = TimeSpan.FromSeconds(1);
+        _hideTimer.IsRepeating = true;
+        _hideTimer.Tick += (sender, _) =>
         {
-            if (Media.CurrentState == MediaElementState.Playing && !_seeking) Controls.IsVisible = false;
+            var playing = _cast is { } cast ? cast.State == CastPlayerState.Playing : Media.CurrentState == MediaElementState.Playing;
+            var after = TimeSpan.FromSeconds(playing ? 4 : 10);
+            if (DateTime.UtcNow - _shownAt < after || _seeking || _scrubbing || !Ready) return;
+            Controls.IsVisible = false;
+            (sender as IDispatcherTimer)?.Stop();
         };
         _hideTimer.Start();
     }
+
+    private DateTime _shownAt;
 
     private DateTime _lastToggle;
 
@@ -423,22 +540,34 @@ public partial class PlayerPage : ContentPage
         // The controls and the surface under them both listen; where a platform hands one tap to both, it counts once.
         if (DateTime.UtcNow - _lastToggle < TimeSpan.FromMilliseconds(250)) return;
         _lastToggle = DateTime.UtcNow;
-        if (Controls.IsVisible && !Buffering.IsVisible) Controls.IsVisible = false; // while loading, Close stays reachable
+        if (Controls.IsVisible && Ready) Controls.IsVisible = false; // while loading, Close stays reachable
         else ShowControls();
     }
 
     private void OnPlayPause(object? sender, EventArgs e)
     {
-        if (Media.CurrentState == MediaElementState.Playing) Media.Pause();
-        else Media.Play();
+        if (_cast is { } cast)
+        {
+            if (cast.State is CastPlayerState.Paused or CastPlayerState.Idle) Guard(cast.PlayAsync);
+            else Guard(cast.PauseAsync);
+            ShowControls();
+            return;
+        }
+        // Paused, stopped or not started: play. Anything else pauses: the player reports Buffering for moments while it
+        // plays, and only pausing on Playing made a press then play on instead (the controls came up, the movie didn't stop).
+        if (Media.CurrentState is MediaElementState.Paused or MediaElementState.Stopped or MediaElementState.None or MediaElementState.Failed)
+            Media.Play();
+        else
+            Media.Pause();
         ShowControls();
     }
 
     private Task SeekToAsync(TimeSpan target)
     {
-        var total = _vm.TotalDuration(Media.Duration);
+        var total = CurrentTotal;
         if (total > TimeSpan.Zero && target > total) target = total - TimeSpan.FromSeconds(1);
         if (target < TimeSpan.Zero) target = TimeSpan.Zero;
+        if (_cast is not null) return CastSeekAsync(target);
         // Transcodes restart server-side at the new offset; direct streams seek with HTTP ranges.
         if (_vm.TrySeekTranscode(target)) return Task.CompletedTask;
         return TrySeekAsync(target);
@@ -456,12 +585,293 @@ public partial class PlayerPage : ContentPage
         Guard(() => SkipAsync(_vm.SkipForward));
     }
 
+    // ---------- Casting ----------
+
+    private CastSession? _cast;
+    private CastMedia? _castMedia; // what the TV is playing
+    private IDispatcherTimer? _castTimer;
+    private bool? _castShowsPause;
+
+    /// <summary>A TV casting to another TV makes no sense: the remote's for this one.</summary>
+    private static bool CanCast => DeviceInfo.Idiom != DeviceIdiom.TV;
+
+    /// <summary>Where the movie is, on the TV while casting, else here.</summary>
+    private TimeSpan CurrentPosition => _cast is { } cast && _castMedia is { } media
+        ? media.Offset + cast.Position
+        : _vm.ActualPosition(Media.Position);
+
+    /// <summary>The movie's full length, as far as whatever is playing it knows.</summary>
+    private TimeSpan CurrentTotal => _cast is { } cast && _castMedia is { } media
+        ? _vm.CastLength(cast.Duration, media)
+        : _vm.TotalDuration(Media.Duration);
+
+    private void Play()
+    {
+        if (_cast is { } cast) Guard(cast.PlayAsync);
+        else Media.Play();
+    }
+
+    private void Pause()
+    {
+        if (_cast is { } cast) Guard(cast.PauseAsync);
+        else Media.Pause();
+    }
+
+    private const string AirPlayOption = "AirPlay…";
+
+    /// <summary>The cast button: the TVs on this network to play it on, or, while casting, stopping.</summary>
+    private void OnCast(object? sender, EventArgs e) => Guard(async () =>
+    {
+        ShowControls();
+        if (_cast is { } casting)
+        {
+            if (await Dialog.ChooseAsync($"Playing on {casting.Device.Name}", "Stop casting") == "Stop casting")
+                await StopCastingAsync(resume: true);
+            return;
+        }
+        if (_vm.CastMediaFrom(CurrentPosition) is null)
+        {
+            await Dialog.AlertAsync("Cast", "This is the copy downloaded to this device, which a TV can't reach. Play it from the server to cast it.");
+            return;
+        }
+
+        Flash("Looking for TVs…", showFor: 2500);
+        var devices = await CastDiscovery.FindAsync(TimeSpan.FromSeconds(3));
+        var options = devices.Select(d => d.Name).ToList();
+#if IOS || MACCATALYST
+        options.Add(AirPlayOption); // Apple TVs and AirPlay TVs: the system's own picker
+#endif
+        if (options.Count == 0)
+        {
+            await Dialog.AlertAsync("Cast", "No Chromecast or Google TV found. Make sure it's on, and on the same Wi-Fi as this device.");
+            return;
+        }
+        var choice = await Dialog.ChooseAsync("Play on", null, [.. options]);
+#if IOS || MACCATALYST
+        if (choice == AirPlayOption)
+        {
+            ShowAirPlayPicker();
+            return;
+        }
+#endif
+        if (devices.FirstOrDefault(d => d.Name == choice) is { } device) await StartCastingAsync(device);
+    });
+
+    /// <summary>
+    /// Plays the movie on <paramref name="device"/> from where it is here. This device's player stops (the TV fetches the
+    /// video from the server itself), and the controls control the TV until casting stops.
+    /// </summary>
+    private async Task StartCastingAsync(CastDevice device)
+    {
+        var position = CurrentPosition;
+        if (_vm.CastMediaFrom(position) is not { } media) return;
+        CastStatus.Text = $"Connecting to {device.Name}…";
+        CastPanel.IsVisible = true;
+        CastSession cast;
+        try
+        {
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+            cast = await CastSession.ConnectAsync(device, timeout.Token);
+        }
+        catch (Exception ex)
+        {
+            CastPanel.IsVisible = false;
+            await Dialog.ErrorAsync($"Couldn't connect to {device.Name}. {ex.Message}", "Can't cast");
+            return;
+        }
+
+        _cast = cast;
+        cast.Ended += (_, reason) => Dispatcher.Dispatch(() => OnCastEnded(cast, reason));
+        cast.Disconnected += (_, _) => Dispatcher.Dispatch(() =>
+        {
+            if (_cast != cast) return;
+            Flash($"Lost {device.Name}");
+            Guard(() => StopCastingAsync(resume: true));
+        });
+
+        // Nothing plays here meanwhile, nor is fetched: the TV does that.
+        _vm.StopBufferWatch();
+        _pendingResume = false;
+        try
+        {
+            Media.Stop();
+            Media.Source = null;
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Player stop for casting: {ex}");
+        }
+        _started = true; // the controls are for the TV now, whatever this player was doing
+        SetLoading(false);
+        // The TV plays at normal speed and fits its own screen.
+        SpeedButton.IsVisible = AspectButton.IsVisible = false;
+        _vm.Speed = 1;
+        SpeedButton.Text = "1x";
+        CastButton.Source = IconExtension.Create("cast_connected", Colors.White);
+        VolumeSlider.Value = cast.Volume;
+        _castShowsPause = null;
+
+        _castTimer?.Stop();
+        _castTimer = Dispatcher.CreateTimer();
+        _castTimer.Interval = TimeSpan.FromMilliseconds(500);
+        _castTimer.Tick += (_, _) => OnCastTick();
+        _castTimer.Start();
+
+        await CastLoadAsync(media);
+    }
+
+    /// <summary>Sends <paramref name="media"/> to the TV; if it can't play the file as it is, the server's conversion.</summary>
+    private async Task CastLoadAsync(CastMedia media)
+    {
+        if (_cast is not { } cast) return;
+        _castMedia = media;
+        _vm.StopLoadingStatus();
+        _vm.StopBufferWatch();
+        CastStatus.Text = $"Loading on {cast.Device.Name}…";
+        try
+        {
+            await cast.LoadAsync(media.Url, media.ContentType, _vm.Title ?? "", _vm.PosterUrl, media.StartAt);
+        }
+        catch (CastException) when (_cast == cast && !media.Converted
+                                    && _vm.CastMediaFrom(media.Offset + media.StartAt, convert: true) is { Converted: true } converted)
+        {
+            Flash("Converting it on the server…");
+            await CastLoadAsync(converted);
+        }
+        catch (Exception ex) when (_cast == cast)
+        {
+            await Dialog.ErrorAsync(ex.Message, $"Can't play on {cast.Device.Name}");
+            await StopCastingAsync(resume: true);
+        }
+    }
+
+    /// <summary>Seeks on the TV; a conversion is started again from there, as it is here.</summary>
+    private Task CastSeekAsync(TimeSpan target)
+    {
+        if (_cast is not { } cast || _castMedia is not { } media) return Task.CompletedTask;
+        if (media.Converted)
+            return _vm.CastMediaFrom(target, convert: true) is { } again ? CastLoadAsync(again) : Task.CompletedTask;
+        return cast.SeekAsync(target);
+    }
+
+    private void OnCastEnded(CastSession cast, string reason)
+    {
+        if (_cast != cast) return;
+        switch (reason)
+        {
+            case "FINISHED":
+                Guard(FinishAsync);
+                break;
+            case "ERROR" when _castMedia is { Converted: false } media
+                              && _vm.CastMediaFrom(media.Offset + cast.Position, convert: true) is { Converted: true } converted:
+                // A file the TV took but couldn't decode after all (HEVC on an older Chromecast, say).
+                Flash("Converting it on the server…");
+                Guard(() => CastLoadAsync(converted));
+                break;
+            case "ERROR":
+                Guard(async () =>
+                {
+                    await Dialog.ErrorAsync("The TV couldn't play this video.", $"Can't play on {cast.Device.Name}");
+                    await StopCastingAsync(resume: true);
+                });
+                break;
+            default:
+                // Stopped on the TV, or another phone took it over: it carries on here.
+                Flash($"Stopped on {cast.Device.Name}");
+                Guard(() => StopCastingAsync(resume: true));
+                break;
+        }
+    }
+
+    /// <summary>The TV's position and state, shown as this device's own are.</summary>
+    private void OnCastTick()
+    {
+        if (_cast is not { } cast || _castMedia is null) return;
+        var total = CurrentTotal;
+        var position = CurrentPosition;
+        if (total > TimeSpan.Zero && position > total) position = total;
+        ShowPosition(position, total);
+        if (cast.State is CastPlayerState.Playing or CastPlayerState.Paused)
+            _vm.OnCastPosition(position, total, cast.State == CastPlayerState.Playing);
+
+        var showsPause = cast.State is not (CastPlayerState.Paused or CastPlayerState.Idle);
+        if (showsPause != _castShowsPause)
+        {
+            _castShowsPause = showsPause;
+            PlayPause.Source = IconExtension.Create(showsPause ? "pause" : "play_arrow", Colors.White, size: 40);
+        }
+        CastStatus.Text = cast.State switch
+        {
+            CastPlayerState.Loading or CastPlayerState.Buffering => $"Loading on {cast.Device.Name}…",
+            CastPlayerState.Paused => $"Paused on {cast.Device.Name}",
+            _ => $"Playing on {cast.Device.Name}",
+        };
+        UpdateMuteIcon();
+    }
+
+    /// <summary>
+    /// Stops casting, and with <paramref name="resume"/> carries on here from where the TV got to.
+    /// </summary>
+    private async Task StopCastingAsync(bool resume)
+    {
+        if (_cast is not { } cast) return;
+        var position = CurrentPosition;
+        _cast = null;
+        _castMedia = null;
+        _castTimer?.Stop();
+        CastPanel.IsVisible = false;
+        CastButton.Source = IconExtension.Create("cast", Colors.White);
+        SpeedButton.IsVisible = AspectButton.IsVisible = true;
+        VolumeSlider.Value = DeviceControls.HasDeviceVolume ? DeviceControls.GetVolume() : _vm.Volume;
+        UpdateMuteIcon();
+        if (resume) _vm.RestartAt(position);
+        try
+        {
+            await cast.StopAsync();
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Cast stop: {ex.Message}");
+        }
+        await cast.DisposeAsync();
+    }
+
+#if IOS || MACCATALYST
+    private AVKit.AVRoutePickerView? _routePicker;
+
+    /// <summary>
+    /// The system's AirPlay picker. Apple's player sends the video to the Apple TV itself, so nothing else changes: the
+    /// controls here go on controlling it. The picker has no way to open it but its button, so that's pressed.
+    /// </summary>
+    private void ShowAirPlayPicker()
+    {
+        if (Media.Handler?.PlatformView is not UIKit.UIView host) return;
+        if (FindAVPlayer() is { } player) player.AllowsExternalPlayback = true;
+        if (_routePicker is null)
+        {
+            // Where the cast button is, top right, so the picker's popover (on iPad and Mac) points there.
+            _routePicker = new AVKit.AVRoutePickerView(new CoreGraphics.CGRect(host.Bounds.Width - 60, 12, 44, 44))
+            {
+                Alpha = 0.02f,
+                AutoresizingMask = UIKit.UIViewAutoresizing.FlexibleLeftMargin,
+            };
+            host.AddSubview(_routePicker);
+        }
+        foreach (var view in _routePicker.Subviews)
+            if (view is UIKit.UIButton button)
+            {
+                button.SendActionForControlEvents(UIKit.UIControlEvent.TouchUpInside);
+                return;
+            }
+    }
+#endif
+
     // ---------- Keyboard (Windows) ----------
 
     /// <summary>YouTube-style keys. Returns true when the key did something.</summary>
     private bool HandleKey(string key)
     {
-        if (Buffering.IsVisible && key is not ("Escape" or "F")) return false;
+        if (!Ready && key is not ("Escape" or "F")) return false;
         switch (key)
         {
             case "Space" or "K": OnPlayPause(null, EventArgs.Empty); break;
@@ -469,7 +879,7 @@ public partial class PlayerPage : ContentPage
             case "Right" or "L": Guard(() => SkipAsync(_vm.SkipForward)); break;
             case "Up": ChangeVolume(0.1); Flash($"Volume {VolumeSlider.Value:P0}"); break;
             case "Down": ChangeVolume(-0.1); Flash($"Volume {VolumeSlider.Value:P0}"); break;
-            case "M": ToggleMute(); Flash(Media.ShouldMute ? "Muted" : "Sound on"); break;
+            case "M": ToggleMute(); Flash(IsMuted ? "Muted" : "Sound on"); break;
             case "F": SetFullscreen(!_fullscreen); break;
             case "C": ToggleSubtitles(); break;
             case "Escape":
@@ -493,7 +903,7 @@ public partial class PlayerPage : ContentPage
     private bool OnRemoteKey(Android.Views.KeyEvent e)
     {
         if (e.Action == Android.Views.KeyEventActions.Up) return _usedKeys.Remove(e.KeyCode);
-        if (e.Action != Android.Views.KeyEventActions.Down || !HandleRemoteKey(e.KeyCode)) return false;
+        if (e.Action != Android.Views.KeyEventActions.Down || !HandleRemoteKey(e.KeyCode, e.RepeatCount)) return false;
         _usedKeys.Add(e.KeyCode);
         return true;
     }
@@ -503,21 +913,38 @@ public partial class PlayerPage : ContentPage
     /// plays or pauses and up or down bring the controls up. With them up, the arrows move between them as usual (on
     /// the seek bar, left and right skip) and Back hides them before it closes the player. The media keys always work.
     /// </summary>
-    private bool HandleRemoteKey(Android.Views.Keycode key)
+    private bool HandleRemoteKey(Android.Views.Keycode key, int repeat)
     {
-        var ready = !Buffering.IsVisible;
+        var ready = Ready;
         var hidden = !Controls.IsVisible;
+        // Another slider being adjusted (the volume): its keys are its own (see TvNavigation.HandleSlider).
+        if (!_scrubbing && Platform.CurrentActivity?.CurrentFocus is Android.Widget.AbsSeekBar adjusting && Phantom.Droid.DpadFocus.IsAdjusting(adjusting))
+            return false;
+        var ok = key is Android.Views.Keycode.DpadCenter or Android.Views.Keycode.Enter or Android.Views.Keycode.NumpadEnter or Android.Views.Keycode.ButtonA;
         switch (key)
         {
-            case Android.Views.Keycode.MediaPlayPause when ready:
+            // The timeline, as every slider on a TV: OK starts moving along it (see Scrub); then OK goes there, Back goes
+            // back to where it was, and up and down stay put.
+            case var _ when ok && _scrubbing:
+                EndScrub(go: true);
+                return true;
+            case Android.Views.Keycode.Back when _scrubbing:
+                EndScrub(go: false);
+                return true;
+            case Android.Views.Keycode.DpadUp or Android.Views.Keycode.DpadDown when _scrubbing:
+                return true;
+            case var _ when ok && ready && !hidden && IsFocused(Seek):
+                StartScrub();
+                return true;
+            case Android.Views.Keycode.MediaPlayPause:
                 OnPlayPause(null, EventArgs.Empty);
                 return true;
             case Android.Views.Keycode.MediaPlay when ready:
-                Media.Play();
+                Play();
                 ShowControls();
                 return true;
             case Android.Views.Keycode.MediaPause when ready:
-                Media.Pause();
+                Pause();
                 ShowControls();
                 return true;
             case Android.Views.Keycode.MediaRewind when ready:
@@ -532,12 +959,14 @@ public partial class PlayerPage : ContentPage
             case Android.Views.Keycode.Back when !hidden && ready:
                 Controls.IsVisible = false;
                 return true;
-            case Android.Views.Keycode.DpadLeft or Android.Views.Keycode.DpadRight when ready && (hidden || IsFocused(Seek)):
-                // A slider moved by its keys never says it's being dragged, so it would move without seeking.
-                if (!hidden) ShowControls();
+            case Android.Views.Keycode.DpadLeft or Android.Views.Keycode.DpadRight when _scrubbing:
+                Scrub(key == Android.Views.Keycode.DpadLeft ? -1 : 1, repeat);
+                return true;
+            case Android.Views.Keycode.DpadLeft or Android.Views.Keycode.DpadRight when ready && hidden:
+                // Skips add up while the movie plays on (see SkipAsync); the controls stay down.
                 Guard(() => SkipAsync(key == Android.Views.Keycode.DpadLeft ? -_vm.SkipBack : _vm.SkipForward));
                 return true;
-            case Android.Views.Keycode.DpadCenter or Android.Views.Keycode.Enter or Android.Views.Keycode.NumpadEnter when hidden && ready:
+            case Android.Views.Keycode.DpadCenter or Android.Views.Keycode.Enter or Android.Views.Keycode.NumpadEnter or Android.Views.Keycode.ButtonA when hidden:
                 OnPlayPause(null, EventArgs.Empty);
                 FocusPlayPause();
                 return true;
@@ -551,9 +980,76 @@ public partial class PlayerPage : ContentPage
         return false;
     }
 
+    // ---------- Moving along the timeline with the remote ----------
+
+    /// <summary>
+    /// Left or right on the timeline, once OK has started moving along it (StartScrub): the movie is paused and the position moves along it, showing the frame there (over
+    /// the whole picture as well as above the bar); held, it moves faster the longer it's held. Nothing is loaded until
+    /// OK (see EndScrub). A slider moved by its keys never says it's being dragged, so it's done here.
+    /// </summary>
+    private void StartScrub()
+    {
+        if (CurrentTotal <= TimeSpan.Zero) return;
+        _scrubbing = _seeking = true;
+        _shownFrame = _fullFrame = null; // the whole-picture preview gets the first frame too, whatever the box above the bar had
+        _scrubAt = _scrubFrom = CurrentPosition;
+        _scrubResume = _cast is { } cast ? cast.State is not (CastPlayerState.Paused or CastPlayerState.Idle)
+            : Media.CurrentState is not (MediaElementState.Paused or MediaElementState.Stopped);
+        Pause();
+        if (Seek.Handler?.PlatformView is Android.Views.View seek) Phantom.Droid.DpadFocus.SetAdjusting(seek);
+        ShowControls();
+    }
+
+    private void Scrub(int direction, int repeat)
+    {
+        var total = CurrentTotal;
+        if (total <= TimeSpan.Zero) return;
+        var step = TimeSpan.FromSeconds(repeat switch { < 4 => 10, < 12 => 30, < 24 => 60, _ => 180 });
+        var at = _scrubAt + direction * step;
+        _scrubAt = at < TimeSpan.Zero ? TimeSpan.Zero : at > total - TimeSpan.FromSeconds(1) ? total - TimeSpan.FromSeconds(1) : at;
+        ShowControls();
+        PositionLabel.Text = TimeSpanConverter.Format(_scrubAt);
+        Seek.Value = Math.Clamp(_scrubAt / total, 0, 1); // shows the frame there (OnSeekValueChanged)
+    }
+
+    /// <summary>Done moving along the timeline: to where it got to (or back where it was), playing again if it was.</summary>
+    private void EndScrub(bool go)
+    {
+        if (!_scrubbing) return;
+        _scrubbing = _seeking = false;
+        Phantom.Droid.DpadFocus.SetAdjusting(null);
+        HidePreviews();
+        var total = CurrentTotal;
+        if (go) Guard(() => SeekToAsync(_scrubAt));
+        else if (total > TimeSpan.Zero)
+        {
+            Seek.Value = Math.Clamp(_scrubFrom / total, 0, 1);
+            PositionLabel.Text = TimeSpanConverter.Format(_scrubFrom);
+        }
+        if (_scrubResume) Play();
+        ShowControls();
+    }
+
     private void FocusPlayPause() => Dispatcher.Dispatch(() => (TransportControls.IsVisible ? PlayPause : (View)SubtitlesButton).Focus());
 
+    /// <summary>
+    /// The controls come up by themselves too (loading, a skip, the end): on a TV the remote then goes to them unless
+    /// it's already on one. Left on the video, which fills the screen, the arrows had nothing beyond it to go to until
+    /// the controls hid again.
+    /// </summary>
+    private void FocusControlsIfAway()
+    {
+        if (DeviceInfo.Idiom != DeviceIdiom.TV || !Controls.IsVisible) return;
+        if (Controls.Handler?.PlatformView is Android.Views.ViewGroup controls && controls.FindFocus() is not null) return;
+        FocusPlayPause();
+    }
+
     private static bool IsFocused(View view) => view.Handler?.PlatformView is Android.Views.View { IsFocused: true };
+
+    private void OnControlsChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(IsVisible)) FocusControlsIfAway();
+    }
 #endif
 
     /// <summary>Subtitles off, or on in the first available language.</summary>
@@ -572,10 +1068,13 @@ public partial class PlayerPage : ContentPage
     {
         base.OnAppearing();
         SetSystemBarsHidden(true);
+        ApplyBrightness();
 #if WINDOWS
         HookKeys();
 #elif ANDROID
         MainActivity.KeyHandler = OnRemoteKey;
+        Controls.PropertyChanged -= OnControlsChanged;
+        Controls.PropertyChanged += OnControlsChanged;
 #endif
     }
 
@@ -638,7 +1137,7 @@ public partial class PlayerPage : ContentPage
 
     private void OnSeekTapped(object? sender, TappedEventArgs e)
     {
-        var total = _vm.TotalDuration(Media.Duration);
+        var total = CurrentTotal;
         // Some platforms also call the end of a drag a tap: the drag has seeked already, and a second seek would start
         // loading all over again (restarting a conversion, even).
         if (DateTime.UtcNow - _dragEnded < TimeSpan.FromMilliseconds(500)) return;
@@ -656,49 +1155,99 @@ public partial class PlayerPage : ContentPage
         ShowControls();
     }
 
-    private CancellationTokenSource? _preview;
-    private string? _previewUrl;
-    private byte[]? _shownFrame;
+    /// <summary>One kind of preview being fetched (the small one, the big one, the skip's): only its latest is.</summary>
+    private sealed class PreviewSlot
+    {
+        public CancellationTokenSource? Fetch;
+        public int? Step;
 
-    // While dragging: show where the drag would land, and (after a short pause, so a fast drag doesn't ask the server
-    // for every frame on the way) a preview frame from there. Only one frame is ever being fetched: moving on cancels
-    // the request, so the server stops pulling that part of the torrent and playback isn't kept waiting behind it.
-    private async void OnSeekValueChanged(object? sender, ValueChangedEventArgs e)
+        public void Cancel()
+        {
+            Fetch?.Cancel();
+            Step = null;
+        }
+    }
+
+    private readonly PreviewSlot _smallSlot = new(), _largeSlot = new(), _skipSlot = new();
+    private byte[]? _shownFrame, _fullFrame;
+    private bool _fullIsLarge;
+    private TimeSpan _previewTarget;
+
+    // While dragging (or moving along with the remote): show where it would land, the frame there in the box above the
+    // bar, and over the whole picture too, sharper (a big frame) once it rests somewhere. Only one frame of each size
+    // is ever being fetched: moving on cancels the request.
+    private void OnSeekValueChanged(object? sender, ValueChangedEventArgs e)
     {
         if (!_seeking || !double.IsFinite(e.NewValue)) return;
-        var total = _vm.TotalDuration(Media.Duration);
+        var total = CurrentTotal;
         if (total <= TimeSpan.Zero) return;
-        var at = total * Math.Clamp(e.NewValue, 0, 1);
+        var at = _scrubbing ? _scrubAt : total * Math.Clamp(e.NewValue, 0, 1);
 
         SeekPreview.IsVisible = true;
         SeekPreviewTime.Text = TimeSpanConverter.Format(at);
         var half = SeekPreview.WidthRequest / 2;
         SeekPreview.TranslationX = Math.Clamp(Seek.Width * e.NewValue - half, 0, Math.Max(0, Seek.Width - SeekPreview.WidthRequest));
 
-        // Straight from the previews already downloaded (all of them, once the server has made them): the exact one,
-        // or the nearest while the exact one is fetched.
-        var frame = _vm.PreviewFrame(at, out var exact);
-        if (frame is not null) ShowPreviewFrame(frame);
-        if (exact) return;
+        _previewTarget = at;
+        SchedulePreview();
+    }
 
-        if (_vm.ThumbnailUrl(at) is not { } url)
+    private bool _previewPending;
+
+    /// <summary>
+    /// The pictures follow the position at most every 120ms, for where it has got to by then: decoding frames for each
+    /// move (a held remote button moves twenty times a second) kept the UI thread too busy to move smoothly.
+    /// </summary>
+    private void SchedulePreview()
+    {
+        if (_previewPending) return;
+        _previewPending = true;
+        Dispatcher.DispatchDelayed(TimeSpan.FromMilliseconds(120), () =>
         {
-            if (frame is null) SeekPreviewImage.IsVisible = false;
+            _previewPending = false;
+            if (!_seeking) return;
+            var at = _previewTarget;
+            PreviewAt(at, large: false, _smallSlot, ShowPreviewFrame, () => SeekPreviewImage.IsVisible = false);
+            if (_vm.LargePreviewFrame(at) is { } big) ShowFullFrame(big, large: true);
+            else PreviewAt(at, large: true, _largeSlot, big => ShowFullFrame(big, large: true), () => { }, wait: 300);
+        });
+    }
+
+    /// <summary>
+    /// The preview at <paramref name="at"/>, given to <paramref name="show"/>. A small one straight from those already
+    /// here (all of them, once the server has made them), the exact one or the nearest while the exact one is fetched; a
+    /// big one only once fetched, after <paramref name="wait"/> ms in the same place. <paramref name="none"/> when there's
+    /// none at all.
+    /// </summary>
+    private async void PreviewAt(TimeSpan at, bool large, PreviewSlot slot, Action<byte[]> show, Action none, int wait = 80)
+    {
+        byte[]? frame = null;
+        if (!large)
+        {
+            frame = _vm.PreviewFrame(at, out var exact);
+            if (frame is not null) show(frame);
+            if (exact) return;
+        }
+
+        if (!_vm.CanFetchPreview)
+        {
+            if (frame is null) none();
             return;
         }
-        if (url == _previewUrl) return; // same frame (they're 10 s apart), already on its way
-        _previewUrl = url;
-        _preview?.Cancel();
-        var cts = _preview = new CancellationTokenSource();
+        var step = PlayerViewModel.PreviewStep(at);
+        if (step == slot.Step) return; // same frame (they're 10 s apart), already on its way
+        slot.Fetch?.Cancel();
+        slot.Step = step;
+        var cts = slot.Fetch = new CancellationTokenSource();
         try
         {
-            await Task.Delay(80, cts.Token);
-            var jpeg = await _vm.ThumbnailAsync(url, cts.Token);
-            if (jpeg is not null) _vm.RememberPreviewFrame(at, jpeg); // a miss may be a timeout, so it's asked again next time
+            await Task.Delay(wait, cts.Token);
+            var jpeg = await _vm.FetchPreviewFrameAsync(at, large, cts.Token);
             if (cts.IsCancellationRequested) return;
+            if (slot.Step == step) slot.Step = null; // a miss is asked again next time
             // The frame on show stays up while the next one loads; only hide it when there's none at all.
-            if (jpeg is not null) ShowPreviewFrame(jpeg);
-            else if (frame is null) SeekPreviewImage.IsVisible = false;
+            if (jpeg is not null) show(jpeg);
+            else if (frame is null) none();
         }
         catch (OperationCanceledException)
         {
@@ -711,12 +1260,50 @@ public partial class PlayerPage : ContentPage
         }
     }
 
+    private byte[]? _skipFrame;
+
+    private void ShowSkipFrame(byte[] jpeg)
+    {
+        SkipPreview.IsVisible = true;
+        if (ReferenceEquals(jpeg, _skipFrame)) return;
+        _skipFrame = jpeg;
+        SkipPreviewImage.Source = ImageSource.FromStream(() => new MemoryStream(jpeg));
+    }
+
     private void ShowPreviewFrame(byte[] jpeg)
     {
+        if (!_seeking) return;
         SeekPreviewImage.IsVisible = true;
-        if (ReferenceEquals(jpeg, _shownFrame)) return; // the same picture: no need to decode it again
-        _shownFrame = jpeg;
-        SeekPreviewImage.Source = ImageSource.FromStream(() => new MemoryStream(jpeg));
+        if (!ReferenceEquals(jpeg, _shownFrame)) // the same picture: no need to decode it again
+        {
+            _shownFrame = jpeg;
+            SeekPreviewImage.Source = ImageSource.FromStream(() => new MemoryStream(jpeg));
+        }
+        // Over the whole picture too, until the big one for here comes.
+        if (!(_fullIsLarge && ReferenceEquals(_fullFrame, _vm.LargePreviewFrame(_previewTarget)))) ShowFullFrame(jpeg, large: false);
+    }
+
+    private void ShowFullFrame(byte[] jpeg, bool large)
+    {
+        if (!_seeking) return;
+        // A big frame that came for where the drag has since left isn't shown.
+        if (large && !ReferenceEquals(jpeg, _vm.LargePreviewFrame(_previewTarget))) return;
+        FullPreview.IsVisible = true;
+        if (ReferenceEquals(jpeg, _fullFrame)) return;
+        _fullFrame = jpeg;
+        _fullIsLarge = large;
+        FullPreview.Source = ImageSource.FromStream(() => new MemoryStream(jpeg));
+    }
+
+    /// <summary>Done moving along the timeline: the previews go.</summary>
+    private void HidePreviews()
+    {
+        _smallSlot.Cancel();
+        _largeSlot.Cancel();
+        _shownFrame = _fullFrame = null;
+        _fullIsLarge = false;
+        SeekPreview.IsVisible = false;
+        FullPreview.IsVisible = false;
     }
 
     private DateTime _dragEnded;
@@ -725,10 +1312,8 @@ public partial class PlayerPage : ContentPage
     {
         _seeking = false;
         _dragEnded = DateTime.UtcNow;
-        _preview?.Cancel();
-        _previewUrl = null;
-        SeekPreview.IsVisible = false;
-        Guard(() => SeekToAsync(_vm.TotalDuration(Media.Duration) * Seek.Value));
+        HidePreviews();
+        Guard(() => SeekToAsync(CurrentTotal * Seek.Value));
     }
 
     // Menus mark what's in use with a tick, and say it in the title, so it's clear before anything is picked.
@@ -767,7 +1352,7 @@ public partial class PlayerPage : ContentPage
                 await Dialog.AlertAsync("Quality", "The server can't transcode (ffmpeg not installed), so only original quality is available.");
                 return;
             }
-            _vm.ChangeQuality(quality, _vm.ActualPosition(Media.Position));
+            _vm.ChangeQuality(quality, CurrentPosition);
         }
     }
 
@@ -787,9 +1372,12 @@ public partial class PlayerPage : ContentPage
     protected override void OnDisappearing()
     {
         base.OnDisappearing();
+        DeviceControls.SetBrightness(null); // the system's again outside the player
         _hideTimer?.Stop();
         _skipDelay?.Cancel();
-        _preview?.Cancel();
+        _scrubbing = false;
+        HidePreviews();
+        _skipSlot.Cancel();
         _vm.StopLoadingStatus();
         _vm.StopPreviewFrames();
         _vm.StopBufferWatch();
@@ -799,11 +1387,13 @@ public partial class PlayerPage : ContentPage
         if (_keyRoot is not null && _keyHandler is not null) _keyRoot.RemoveHandler(Microsoft.UI.Xaml.UIElement.KeyDownEvent, _keyHandler);
 #elif ANDROID
         if (MainActivity.KeyHandler == (Func<Android.Views.KeyEvent, bool>)OnRemoteKey) MainActivity.KeyHandler = null;
+        Controls.PropertyChanged -= OnControlsChanged;
         _usedKeys.Clear();
 #endif
         // The position is read now, then the player is stopped straight away: once this method awaits anything the page
         // is on its way out, and stopping a MediaElement whose native player has gone throws (which ended the app).
         var report = Report(PlayerState.Stopped);
+        if (_cast is not null) _ = StopCastingAsync(resume: false); // closing the player stops it on the TV too
         try
         {
             Media.Stop();

@@ -6,6 +6,20 @@
              xmlns:dto="clr-namespace:Phantom.Shared;assembly=Phantom.Shared"
              x:Class="Phantom.Views.ProfilesPage"
              x:DataType="vm:ProfilesViewModel">
+    <ContentPage.Resources>
+        <!-- The see-through button over a profile's tile: none of the usual button looks (a grey wash while it's
+             disabled, a colour under the mouse), only focus, which the tile itself shows -->
+        <Style x:Key="TileButton" TargetType="Button">
+            <Setter Property="BackgroundColor" Value="Transparent" />
+            <Setter Property="TextColor" Value="Transparent" />
+            <Setter Property="BorderWidth" Value="0" />
+            <Setter Property="CornerRadius" Value="16" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="VisualStateManager.VisualStateGroups">
+                <VisualStateGroupList />
+            </Setter>
+        </Style>
+    </ContentPage.Resources>
     <Grid RowDefinitions="Auto,*,Auto" Padding="24,64,24,24" RowSpacing="24">
         <VerticalStackLayout Spacing="6" HorizontalOptions="Center">
             <Image Source="logo_mark.png" HeightRequest="56" />
@@ -15,38 +29,98 @@
         <!-- A wrapping row rather than a CollectionView: a centred CollectionView grid sizes itself from its items and
              its items from it, which WinUI reports as a layout cycle and crashes on. -->
         <ScrollView Grid.Row="1">
-            <FlexLayout BindableLayout.ItemsSource="{Binding Profiles}" Wrap="Wrap" JustifyContent="Center" AlignContent="Start">
+            <FlexLayout x:Name="Tiles" BindableLayout.ItemsSource="{Binding Profiles}" Wrap="Wrap" JustifyContent="Center" AlignContent="Start">
                 <BindableLayout.ItemTemplate>
                 <DataTemplate x:DataType="dto:UserDto">
-                    <VerticalStackLayout Spacing="8" WidthRequest="96" Margin="9">
-                        <VerticalStackLayout.GestureRecognizers>
+                    <!-- The tile, with a see-through button over all of it: a button is what a TV remote can move to and
+                         press with OK (a tap on a layout isn't, reliably). Moving to it grows the tile and rings the
+                         avatar (see ProfilesPage.OnTileFocused). -->
+                    <Grid WidthRequest="104" Margin="6" Padding="4" controls:RemoteFocus.Skip="True">
+                        <!-- A finger's tap anywhere on the tile the button doesn't take (the remote has the button) -->
+                        <Grid.GestureRecognizers>
                             <TapGestureRecognizer Command="{Binding Source={RelativeSource AncestorType={x:Type vm:ProfilesViewModel}}, Path=SelectCommand, x:DataType=vm:ProfilesViewModel}"
                                                   CommandParameter="{Binding .}" />
-                        </VerticalStackLayout.GestureRecognizers>
-                        <FlyoutBase.ContextFlyout>
-                            <MenuFlyout>
-                                <MenuFlyoutItem Text="Delete profile"
-                                                Command="{Binding Source={RelativeSource AncestorType={x:Type vm:ProfilesViewModel}}, Path=DeleteProfileCommand, x:DataType=vm:ProfilesViewModel}"
-                                                CommandParameter="{Binding .}" />
-                            </MenuFlyout>
-                        </FlyoutBase.ContextFlyout>
-                        <Border WidthRequest="88" HeightRequest="88" StrokeShape="RoundRectangle 22" BackgroundColor="{Binding AvatarColor}">
-                            <Label Text="{Binding Username, Converter={StaticResource Initial}}" FontSize="34" FontFamily="OpenSansSemibold"
-                                   HorizontalOptions="Center" VerticalOptions="Center" />
-                        </Border>
-                        <Label Text="{Binding Username}" HorizontalOptions="Center" LineBreakMode="TailTruncation" />
-                        <Label Text="Default" Style="{StaticResource Muted}" FontSize="11" HorizontalOptions="Center"
-                               IsVisible="{Binding IsManaged, Converter={StaticResource Not}}" />
-                        <Image Source="{controls:Icon lock, Color={StaticResource TextSecondary}}" IsVisible="{Binding HasPin}" HorizontalOptions="Center" WidthRequest="14" HeightRequest="14" />
-                    </VerticalStackLayout>
+                        </Grid.GestureRecognizers>
+                        <VerticalStackLayout Spacing="8" InputTransparent="True">
+                            <Border WidthRequest="88" HeightRequest="88" StrokeShape="RoundRectangle 22" BackgroundColor="{Binding AvatarColor}"
+                                    Stroke="Transparent" StrokeThickness="0">
+                                <Grid>
+                                    <Label Text="{Binding Username, Converter={StaticResource Initial}}" FontSize="34" FontFamily="OpenSansSemibold"
+                                           HorizontalOptions="Center" VerticalOptions="Center"
+                                           IsVisible="{Binding Avatar, Converter={StaticResource HasValue}, ConverterParameter=invert}" />
+                                    <Image Source="{Binding Avatar, Converter={StaticResource AvatarIcon}}" WidthRequest="52" HeightRequest="52"
+                                           HorizontalOptions="Center" VerticalOptions="Center"
+                                           IsVisible="{Binding Avatar, Converter={StaticResource HasValue}}" />
+                                </Grid>
+                            </Border>
+                            <Label Text="{Binding Username}" HorizontalOptions="Center" LineBreakMode="TailTruncation" />
+                            <Label Text="Default" Style="{StaticResource Muted}" FontSize="11" HorizontalOptions="Center"
+                                   IsVisible="{Binding IsManaged, Converter={StaticResource Not}}" />
+                            <Image Source="{controls:Icon lock, Color={StaticResource TextSecondary}}" IsVisible="{Binding HasPin}" HorizontalOptions="Center" WidthRequest="14" HeightRequest="14" />
+                        </VerticalStackLayout>
+                        <Button Style="{StaticResource TileButton}" Text=""
+                                Focused="OnTileFocused" Unfocused="OnTileUnfocused"
+                                SemanticProperties.Description="{Binding Username, StringFormat='Watch as {0}'}"
+                                Command="{Binding Source={RelativeSource AncestorType={x:Type vm:ProfilesViewModel}}, Path=SelectCommand, x:DataType=vm:ProfilesViewModel}"
+                                CommandParameter="{Binding .}" />
+                    </Grid>
                 </DataTemplate>
                 </BindableLayout.ItemTemplate>
             </FlexLayout>
         </ScrollView>
 
-        <VerticalStackLayout Grid.Row="2" Spacing="10">
+        <!-- What went wrong with the last switch (a wrong PIN, the server out of reach): said, not swallowed -->
+        <Label Grid.Row="2" Text="{Binding ErrorMessage}" TextColor="{StaticResource Danger}" HorizontalTextAlignment="Center"
+               VerticalOptions="Start" Margin="0,-16,0,0" IsVisible="{Binding ErrorMessage, Converter={StaticResource HasValue}}" />
+        <HorizontalStackLayout Grid.Row="2" Spacing="10" HorizontalOptions="Center" VerticalOptions="End">
             <Button Text="+ Add profile" Style="{StaticResource SecondaryButton}" Command="{Binding AddProfileCommand}"
-                    IsVisible="{Binding CanManage}" HorizontalOptions="Center" />
-        </VerticalStackLayout>
+                    IsVisible="{Binding CanManage}" />
+            <Button x:Name="EditButton" Text="Edit profiles" Style="{StaticResource SecondaryButton}" Command="{Binding EditProfilesCommand}"
+                    ImageSource="{controls:Icon edit, Size=18}" ContentLayout="Left,8" />
+        </HorizontalStackLayout>
+
+        <!-- Editing a profile: its name (not the account's own: that's its sign-in) and a picture in place of its initial -->
+        <Grid Grid.RowSpan="3" Margin="-24,-64,-24,-24" IsVisible="{Binding ShowEditor}">
+            <BoxView Color="{StaticResource Scrim}" controls:RemoteFocus.Skip="True">
+                <BoxView.GestureRecognizers>
+                    <TapGestureRecognizer Command="{Binding CancelEditCommand}" />
+                </BoxView.GestureRecognizers>
+            </BoxView>
+            <Border x:Name="EditorCard" Style="{StaticResource Card}" Padding="20" Margin="16" MaximumWidthRequest="520"
+                    VerticalOptions="Center" BackgroundColor="{StaticResource Surface}">
+                <VerticalStackLayout Spacing="14">
+                    <Label Text="Edit profile" Style="{StaticResource H2}" />
+                    <Grid ColumnDefinitions="Auto,*" ColumnSpacing="14">
+                        <Border WidthRequest="64" HeightRequest="64" StrokeShape="RoundRectangle 16" StrokeThickness="0"
+                                BackgroundColor="{Binding Editing.AvatarColor, FallbackValue=#8B5CF6}">
+                            <Grid>
+                                <Label Text="{Binding EditName, Converter={StaticResource Initial}}" FontSize="26" FontFamily="OpenSansSemibold"
+                                       HorizontalOptions="Center" VerticalOptions="Center"
+                                       IsVisible="{Binding EditAvatar, Converter={StaticResource HasValue}, ConverterParameter=invert}" />
+                                <Image Source="{Binding EditAvatar, Converter={StaticResource AvatarIcon}}" WidthRequest="38" HeightRequest="38"
+                                       IsVisible="{Binding EditAvatar, Converter={StaticResource HasValue}}" />
+                            </Grid>
+                        </Border>
+                        <VerticalStackLayout Grid.Column="1" VerticalOptions="Center" Spacing="4">
+                            <Entry Text="{Binding EditName}" Placeholder="Name" IsVisible="{Binding CanRename}" MaxLength="32" />
+                            <Label Text="{Binding EditName}" Style="{StaticResource H2}"
+                                   IsVisible="{Binding CanRename, Converter={StaticResource Not}}" />
+                            <Label Text="The account's own profile is renamed under Username and password." Style="{StaticResource Muted}" FontSize="12"
+                                   IsVisible="{Binding CanRename, Converter={StaticResource Not}}" />
+                        </VerticalStackLayout>
+                    </Grid>
+                    <Label Text="Picture" Style="{StaticResource Muted}" FontSize="12" Margin="0,4,0,-6" />
+                    <!-- Filled in by ProfilesPage: the initial, then every picture -->
+                    <FlexLayout x:Name="AvatarGrid" Wrap="Wrap" JustifyContent="Start" />
+                    <HorizontalStackLayout Spacing="10" HorizontalOptions="End">
+                        <!-- Deleting a profile was a long-press on its tile, which on Android kept the tile from taking taps -->
+                        <Button Text="Delete" Style="{StaticResource SecondaryButton}" TextColor="{StaticResource Danger}"
+                                Command="{Binding DeleteEditedCommand}" IsVisible="{Binding CanDelete}" />
+                        <Button Text="Cancel" Style="{StaticResource SecondaryButton}" Command="{Binding CancelEditCommand}" />
+                        <Button Text="Save" Command="{Binding SaveEditCommand}" />
+                    </HorizontalStackLayout>
+                </VerticalStackLayout>
+            </Border>
+        </Grid>
     </Grid>
 </ContentPage>

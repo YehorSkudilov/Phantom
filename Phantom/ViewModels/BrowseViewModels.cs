@@ -15,10 +15,22 @@ public partial class HomeViewModel(PhantomApi api, SettingsService settings, Dow
 
     protected override bool ShowsOfflineState => true;
 
+    /// <summary>Rows from the server since the app started (until then, the ones kept from last time may be showing).</summary>
+    public bool Fetched { get; private set; }
+
     [RelayCommand]
     public Task Refresh() => RunAsync(async () =>
     {
         var hubs = await api.HubsAsync();
+        Show(hubs);
+        Fetched = true;
+        Greeting = settings.User is { } u ? $"Welcome back, {u.Username}" : "Welcome";
+        _ = SaveCacheAsync(hubs);
+        await downloads.SyncOfflineProgressAsync();
+    });
+
+    private void Show(List<HubDto> hubs)
+    {
         // Only rows that changed are replaced: clearing and refilling redrew (and reloaded the posters of) them all.
         for (var i = 0; i < hubs.Count; i++)
         {
@@ -29,9 +41,48 @@ public partial class HomeViewModel(PhantomApi api, SettingsService settings, Dow
         var featured = hubs.FirstOrDefault(h => h.Key == "continue")?.Items.FirstOrDefault()
                        ?? hubs.FirstOrDefault(h => h.Key == "recent")?.Items.FirstOrDefault();
         if (featured != Featured) Featured = featured;
-        Greeting = settings.User is { } u ? $"Welcome back, {u.Username}" : "Welcome";
-        await downloads.SyncOfflineProgressAsync();
-    });
+    }
+
+    // ---------- Kept on the device ----------
+    // Building the rows reads much of the library, which a busy or modest server can take a long while over. The last
+    // ones are kept per server and profile and shown at once when Discover opens, while fresh ones load behind them.
+
+    private string? CacheFile => settings.User is { } user
+        ? Path.Combine(FileSystem.CacheDirectory, $"discover-{new string(settings.ServerUrl.Select(c => char.IsAsciiLetterOrDigit(c) ? char.ToLowerInvariant(c) : '_').ToArray())}-{user.Id}.json")
+        : null;
+
+    /// <summary>Shows the rows kept from last time, if there are any and nothing is showing yet.</summary>
+    public void ShowCached()
+    {
+        if (Hubs.Count > 0 || CacheFile is not { } file || !File.Exists(file)) return;
+        try
+        {
+            using var stream = File.OpenRead(file);
+            if (System.Text.Json.JsonSerializer.Deserialize<List<HubDto>>(stream, PhantomApi.Json) is not { Count: > 0 } hubs) return;
+            Show(hubs);
+            Greeting = settings.User is { } u ? $"Welcome back, {u.Username}" : "Welcome";
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Discover: kept rows unreadable: {ex.Message}");
+        }
+    }
+
+    private async Task SaveCacheAsync(List<HubDto> hubs)
+    {
+        if (CacheFile is not { } file) return;
+        try
+        {
+            var temp = file + ".tmp";
+            await using (var stream = File.Create(temp))
+                await System.Text.Json.JsonSerializer.SerializeAsync(stream, hubs, PhantomApi.Json);
+            File.Move(temp, file, overwrite: true);
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Discover: couldn't keep rows: {ex.Message}");
+        }
+    }
 
     /// <summary>Forgets the rows (another profile is in use): they're loaded afresh, as the skeleton shows.</summary>
     public void Reset()
@@ -39,6 +90,7 @@ public partial class HomeViewModel(PhantomApi api, SettingsService settings, Dow
         Hubs.Clear();
         Featured = null;
         HasLoaded = false;
+        Fetched = false;
     }
 
     private static bool SameRow(HubDto a, HubDto b) => a.Key == b.Key && a.Title == b.Title && a.Items.SequenceEqual(b.Items);
@@ -78,14 +130,24 @@ public record SortOption(string Name, MovieSort Sort, bool Descending)
 /// <summary>
 /// The profile's own lists, in the My Library tab: the watchlist, what was watched lately, and playlists.
 /// </summary>
-public partial class MyStuffViewModel(MovieListViewModel watchlist, MovieListViewModel history, PlaylistsViewModel playlists) : BaseViewModel
+public partial class MyStuffViewModel(MovieListViewModel watchlist, MovieListViewModel history, PlaylistsViewModel playlists, SettingsService settings) : BaseViewModel
 {
-    public IReadOnlyList<string> Tabs { get; } = ["Watchlist", "Recently watched", "Playlists"];
-    public MovieListViewModel Watchlist { get; } = watchlist.Use("watchlist");
-    public MovieListViewModel History { get; } = history.Use("history");
+    // What was watched lately first, and open to begin with: it's what people come back here for.
+    public IReadOnlyList<string> Tabs { get; } = ["Recently watched", "Watchlist", "Playlists"];
+
+    /// <summary>The toolbar over Recently watched and Watchlist (shared: switching between them keeps it).</summary>
+    public ListFilter Filter { get; } = new("Search my library", ["Newest first", "Title", "Year", "Rating"],
+        ["Everything", "Not watched", "In progress", "Watched"], settings.MyLibraryGrid, grid => settings.MyLibraryGrid = grid);
+
+    public MovieListViewModel Watchlist => _watchlist ??= watchlist.Use("watchlist").UseFilter(Filter);
+    public MovieListViewModel History => _history ??= history.Use("history").UseFilter(Filter);
+    private MovieListViewModel? _watchlist, _history;
     public PlaylistsViewModel Playlists => playlists;
 
-    [ObservableProperty] private int selectedTab;
+    [ObservableProperty] [NotifyPropertyChangedFor(nameof(ShowsToolbar))] private int selectedTab;
+
+    /// <summary>The toolbar is over the two lists of movies and shows, not Playlists.</summary>
+    public bool ShowsToolbar => SelectedTab != 2;
 
     partial void OnSelectedTabChanged(int value) => LoadSelectedTab(onlyIfEmpty: true);
 
@@ -97,7 +159,9 @@ public partial class MyStuffViewModel(MovieListViewModel watchlist, MovieListVie
     public void Reset()
     {
         Watchlist.Movies.Clear();
+        Watchlist.Shown.Clear();
         History.Movies.Clear();
+        History.Shown.Clear();
         Playlists.Playlists.Clear();
     }
 
@@ -105,8 +169,8 @@ public partial class MyStuffViewModel(MovieListViewModel watchlist, MovieListVie
     {
         switch (SelectedTab)
         {
-            case 0 when !onlyIfEmpty || Watchlist.Movies.Count == 0: Watchlist.LoadCommand.Execute(null); break;
-            case 1 when !onlyIfEmpty || History.Movies.Count == 0: History.LoadCommand.Execute(null); break;
+            case 0 when !onlyIfEmpty || History.Movies.Count == 0: History.LoadCommand.Execute(null); break;
+            case 1 when !onlyIfEmpty || Watchlist.Movies.Count == 0: Watchlist.LoadCommand.Execute(null); break;
             case 2 when !onlyIfEmpty || Playlists.Playlists.Count == 0: Playlists.LoadCommand.Execute(null); break;
         }
     }

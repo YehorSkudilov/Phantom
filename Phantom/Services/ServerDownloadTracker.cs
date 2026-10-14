@@ -19,10 +19,14 @@ public class ServerDownloadTracker(PhantomApi api)
     /// <summary>The list changed (fetched again, or a download added or removed here).</summary>
     public event EventHandler? Changed;
 
-    public ServerDownloadDto? ForMovie(int movieId) =>
-        _items.FirstOrDefault(d => d.EpisodeId is null && d.MovieId == movieId && Counts(d));
+    /// <summary>The server's copy of a movie: of <paramref name="releaseId"/> when given (it keeps one per source), else any.</summary>
+    public ServerDownloadDto? ForMovie(int movieId, int? releaseId = null) =>
+        _items.FirstOrDefault(d => d.EpisodeId is null && d.MovieId == movieId && (releaseId is null || d.ReleaseId == releaseId) && Counts(d));
 
     public ServerDownloadDto? ForEpisode(int episodeId) => _items.FirstOrDefault(d => d.EpisodeId == episodeId && Counts(d));
+
+    /// <summary>A show's episodes on the server (or on their way there), from any season.</summary>
+    public List<ServerDownloadDto> ForShow(int showId) => _items.Where(d => d.ShowId == showId && Counts(d)).ToList();
 
     private static bool Counts(ServerDownloadDto d) => d.Status is not (DownloadStatus.Cancelled or DownloadStatus.Failed);
 

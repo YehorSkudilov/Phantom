@@ -16,10 +16,43 @@ public record UserDto(
     bool HasPin,
     string? AvatarColor,
     string? MaxContentRating,
-    int? AccountId = null);
+    int? AccountId = null,
+    // One of ProfileAvatars.All, shown in place of the name's initial; null for the initial.
+    string? Avatar = null);
 
 /// <summary>Plex Home style managed profile (child/guest accounts under the owner).</summary>
-public record CreateProfileRequest(string Username, string? Pin, string? MaxContentRating, string? AvatarColor);
+public record CreateProfileRequest(string Username, string? Pin, string? MaxContentRating, string? AvatarColor, string? Avatar = null);
+
+/// <summary>
+/// A profile's name and picture. Null leaves the name as it is; an empty <see cref="Avatar"/> goes back to the
+/// initial. The account's own (default) profile is renamed with the account (UpdateAccountRequest), its name being
+/// what it signs in with.
+/// </summary>
+public record UpdateProfileRequest(string? Username, string? Avatar);
+
+/// <summary>The pictures a profile can have, drawn on its colour.</summary>
+public static class ProfileAvatars
+{
+    /// <summary>The ones to pick from: emoji, in colour.</summary>
+    public static readonly IReadOnlyList<string> All =
+    [
+        "👽", "🤖", "👻", "👾", "🎃", "🦄", "🐲", "🦖",
+        "🐱", "🐶", "🦊", "🐼", "🐨", "🦁", "🐯", "🐸",
+        "🐵", "🐙", "🦋", "🐧", "🦉", "🐢", "🐝", "🦈",
+        "🚀", "📺", "🎮", "🎸", "🍿", "🍕", "🍩", "🌈",
+    ];
+
+    /// <summary>The first set, Material icon names (drawn in white): still shown and kept for profiles that have one.</summary>
+    public static readonly IReadOnlyList<string> Legacy =
+    [
+        "face", "sentiment_very_satisfied", "pets", "cruelty_free", "emoji_nature",
+        "local_florist", "rocket_launch", "sports_esports", "sports_soccer", "music_note",
+        "headphones", "star", "favorite", "bolt", "local_pizza",
+        "icecream", "directions_car", "flight", "wb_sunny", "theater_comedy",
+    ];
+
+    public static bool IsKnown(string avatar) => All.Contains(avatar) || Legacy.Contains(avatar);
+}
 
 public record SwitchProfileRequest(int ProfileId, string? Pin);
 
@@ -333,10 +366,18 @@ public record ServerDownloadDto(
     DateTime? ExpiresAt = null,
     // For an episode MovieId is 0 and MovieTitle reads "Show · S02E05".
     int? EpisodeId = null,
-    int? ShowId = null);
+    int? ShowId = null,
+    // Only for a device to copy (see CreateServerDownloadRequest.ForDevice): the device deletes it once it has it.
+    bool ForDevice = false,
+    // The movie's poster, or for an episode its show's: the Downloads grid shows it.
+    string? PosterUrl = null);
 
-/// <summary>Saves a movie, or with <see cref="EpisodeId"/> an episode (MovieId 0), on the server.</summary>
-public record CreateServerDownloadRequest(int MovieId, int? ReleaseId, int? EpisodeId = null);
+/// <summary>
+/// Saves a movie, or with <see cref="EpisodeId"/> an episode (MovieId 0), on the server. <see cref="ForDevice"/>: only
+/// so a device can download it (the server has to have it whole to send it), not saved for the profile; the device
+/// deletes it once it has its copy. One the profile has saved already is used as it is, and not deleted.
+/// </summary>
+public record CreateServerDownloadRequest(int MovieId, int? ReleaseId, int? EpisodeId = null, bool ForDevice = false);
 
 // ---------- Sources ----------
 

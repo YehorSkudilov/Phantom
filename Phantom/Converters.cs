@@ -1,4 +1,5 @@
 using System.Globalization;
+using Phantom.Shared;
 
 namespace Phantom;
 
@@ -92,12 +93,13 @@ public class PosterConverter : IValueConverter
 {
     /// <summary>
     /// Posters are shown card-sized (about 120 wide), yet stored as TMDB's 500-wide image. On a phone the 342-wide one
-    /// is still sharp there and a fraction of the download, which adds up across a screen full of them.
+    /// is still sharp there and a fraction of the download, which adds up across a screen full of them. A TV's cards
+    /// are no bigger, and a TV box has the least memory and CPU to decode them with.
     /// </summary>
     public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
     {
         if (value is not string { Length: > 0 } url) return ImageSource.FromFile("logo_mark.png");
-        if (DeviceInfo.Idiom == DeviceIdiom.Phone)
+        if (DeviceInfo.Idiom == DeviceIdiom.Phone || DeviceInfo.Idiom == DeviceIdiom.TV)
             url = url.Replace("image.tmdb.org/t/p/w500/", "image.tmdb.org/t/p/w342/", StringComparison.Ordinal);
         return ImageSource.FromUri(new Uri(url));
     }
@@ -118,6 +120,58 @@ public class InitialConverter : IValueConverter
 {
     public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture) =>
         value is string { Length: > 0 } s ? s[..1].ToUpperInvariant() : "?";
+
+    public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture) => throw new NotSupportedException();
+}
+
+/// <summary>
+/// A profile's picture (see ProfileAvatars): an emoji, in its own colours, or one of the first set's Material icons in
+/// white; null for none.
+/// </summary>
+public class AvatarIconConverter : IValueConverter
+{
+    public object? Convert(object? value, Type targetType, object? parameter, CultureInfo culture) => Create(value as string);
+
+    public static ImageSource? Create(string? avatar, double size = 64) => avatar switch
+    {
+        null or "" => null,
+        _ when ProfileAvatars.Legacy.Contains(avatar) => Controls.IconExtension.Create(avatar, Colors.White, size: size),
+        // The system's font: its emoji are drawn in colour.
+        _ => new FontImageSource { Glyph = avatar, Size = size, Color = Colors.White },
+    };
+
+    public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture) => throw new NotSupportedException();
+}
+
+/// <summary>
+/// What's left of a download (1 - progress, 0 to 1), for the grey over a poster's part not downloaded yet (its ScaleX,
+/// anchored right). With the parameter "percent" the progress is 0 to 100.
+/// </summary>
+public class RemainingConverter : IValueConverter
+{
+    public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
+    {
+        var progress = value switch { double d => d, float f => f, _ => 0 };
+        if (parameter as string == "percent") progress /= 100;
+        return Math.Clamp(1 - progress, 0, 1);
+    }
+
+    public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture) => throw new NotSupportedException();
+}
+
+/// <summary>A server copy's status over its poster: "42% · 3.1 MB/s" while saving, else what it's doing.</summary>
+public class ServerStatusConverter : IValueConverter
+{
+    public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture) => value is not ServerDownloadDto d ? "" : d.Status switch
+    {
+        DownloadStatus.Downloading => $"{d.Progress / 100:0%}" + (d.DownloadRate > 0 ? $" · {BytesConverter.Format(d.DownloadRate)}/s" : ""),
+        DownloadStatus.Queued => "Waiting to start",
+        DownloadStatus.FetchingMetadata => "Finding it…",
+        DownloadStatus.Paused => $"Paused · {d.Progress / 100:0%}",
+        DownloadStatus.Failed => "Failed",
+        DownloadStatus.Completed => d.ExpiresAt is { } until ? $"Saved · until {until:d MMM}" : "Saved",
+        _ => d.Status.ToString(),
+    };
 
     public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture) => throw new NotSupportedException();
 }
@@ -170,7 +224,9 @@ public class BackdropConverter : IValueConverter
     public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
     {
         if (value is not string { Length: > 0 } url) return ImageSource.FromFile("logo_mark.png");
-        if (DeviceInfo.Idiom == DeviceIdiom.Desktop || DeviceInfo.Idiom == DeviceIdiom.TV || DeviceInfo.Idiom == DeviceIdiom.Tablet)
+        // Not on a TV: the full-size original (up to 4K) is a big decode for a TV box's memory and CPU, and the banner
+        // that shows it is only half the screen there.
+        if (DeviceInfo.Idiom == DeviceIdiom.Desktop || DeviceInfo.Idiom == DeviceIdiom.Tablet)
             url = url.Replace("image.tmdb.org/t/p/w1280/", "image.tmdb.org/t/p/original/", StringComparison.Ordinal);
         return ImageSource.FromUri(new Uri(url));
     }
