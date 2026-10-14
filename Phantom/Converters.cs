@@ -185,6 +185,8 @@ public class SourceTypeConverter : IValueConverter
         Phantom.Shared.SourceType.Yts => "YTS",
         Phantom.Shared.SourceType.PirateBay => "The Pirate Bay",
         Phantom.Shared.SourceType.Knaben => "Knaben (many sites)",
+        Phantom.Shared.SourceType.Eztv => "EZTV (TV)",
+        Phantom.Shared.SourceType.WorldCinema => "World cinema",
         _ => value?.ToString() ?? "",
     };
 

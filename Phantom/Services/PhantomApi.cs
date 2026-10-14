@@ -196,6 +196,8 @@ public class PhantomApi(HttpClient http, SettingsService settings)
         }
         Add("search", q.Search);
         Add("genre", q.Genre);
+        Add("language", q.Language);
+        Add("country", q.Country);
         Add("year", q.Year);
         Add("decade", q.Decade);
         Add("quality", q.Quality);

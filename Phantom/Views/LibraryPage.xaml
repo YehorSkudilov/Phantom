@@ -186,7 +186,7 @@
                                      Command="{Binding CloseFiltersCommand}" SemanticProperties.Description="Close" ToolTipProperties.Text="Close" />
                     </Grid>
 
-                    <Grid ColumnDefinitions="*,*" RowDefinitions="Auto,Auto,Auto,Auto" ColumnSpacing="10" RowSpacing="8">
+                    <Grid ColumnDefinitions="*,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto" ColumnSpacing="10" RowSpacing="8">
                         <VerticalStackLayout Grid.ColumnSpan="2" Spacing="0">
                             <Label Text="Sort by" Style="{StaticResource Muted}" FontSize="12" />
                             <Picker ItemsSource="{Binding SortOptions}" SelectedItem="{Binding SelectedSort}" SemanticProperties.Description="Sort by" />
@@ -215,6 +215,14 @@
                         <VerticalStackLayout Grid.Row="3" Grid.Column="1" Spacing="0">
                             <Label Text="Starts with" Style="{StaticResource Muted}" FontSize="12" />
                             <Picker ItemsSource="{Binding Letters}" SelectedItem="{Binding SelectedLetter}" SemanticProperties.Description="Title starts with" />
+                        </VerticalStackLayout>
+                        <VerticalStackLayout Grid.Row="4" Spacing="0">
+                            <Label Text="Language" Style="{StaticResource Muted}" FontSize="12" />
+                            <Picker ItemsSource="{Binding Languages}" SelectedItem="{Binding SelectedLanguage}" SemanticProperties.Description="Language" />
+                        </VerticalStackLayout>
+                        <VerticalStackLayout Grid.Row="4" Grid.Column="1" Spacing="0">
+                            <Label Text="Country" Style="{StaticResource Muted}" FontSize="12" />
+                            <Picker ItemsSource="{Binding Countries}" SelectedItem="{Binding SelectedCountry}" SemanticProperties.Description="Country" />
                         </VerticalStackLayout>
                     </Grid>
 

@@ -224,6 +224,12 @@ public partial class LibraryViewModel(PhantomApi api, SettingsService settings, 
     public ObservableList<string> Decades { get; } = ["Any decade"];
     public ObservableList<string> Qualities { get; } = ["Any quality"];
     public ObservableList<string> Ratings { get; } = ["Any rating"];
+    public ObservableList<string> Languages { get; } = [AnyLanguage];
+    public ObservableList<string> Countries { get; } = [AnyCountry];
+    private const string AnyLanguage = "Any language", AnyCountry = "Any country";
+
+    // The languages and countries are picked by name and asked for by code.
+    private Dictionary<string, string> _languageCodes = [], _countryCodes = [];
     public IReadOnlyList<string> Letters { get; } = ["All", "#", .. Enumerable.Range('A', 26).Select(c => ((char)c).ToString())];
     public IReadOnlyList<string> WatchStates { get; } = ["All", "Unwatched", "Watched", "In progress"];
 
@@ -243,6 +249,8 @@ public partial class LibraryViewModel(PhantomApi api, SettingsService settings, 
     [ObservableProperty, NotifyPropertyChangedFor(nameof(ActiveFilterCount), nameof(HasActiveFilters), nameof(ClearFiltersText))] private string selectedDecade = "Any decade";
     [ObservableProperty, NotifyPropertyChangedFor(nameof(ActiveFilterCount), nameof(HasActiveFilters), nameof(ClearFiltersText))] private string selectedQuality = "Any quality";
     [ObservableProperty, NotifyPropertyChangedFor(nameof(ActiveFilterCount), nameof(HasActiveFilters), nameof(ClearFiltersText))] private string selectedRating = "Any rating";
+    [ObservableProperty, NotifyPropertyChangedFor(nameof(ActiveFilterCount), nameof(HasActiveFilters), nameof(ClearFiltersText))] private string selectedLanguage = AnyLanguage;
+    [ObservableProperty, NotifyPropertyChangedFor(nameof(ActiveFilterCount), nameof(HasActiveFilters), nameof(ClearFiltersText))] private string selectedCountry = AnyCountry;
     [ObservableProperty, NotifyPropertyChangedFor(nameof(ActiveFilterCount), nameof(HasActiveFilters), nameof(ClearFiltersText))] private string selectedWatchState = "All";
     [ObservableProperty, NotifyPropertyChangedFor(nameof(ActiveFilterCount), nameof(HasActiveFilters), nameof(ClearFiltersText))] private string selectedLetter = "All";
     [ObservableProperty, NotifyPropertyChangedFor(nameof(ActiveFilterCount), nameof(HasActiveFilters), nameof(ClearFiltersText))] private string? actor;
@@ -256,6 +264,7 @@ public partial class LibraryViewModel(PhantomApi api, SettingsService settings, 
     {
         !SelectedGenre.StartsWith("All"), !SelectedDecade.StartsWith("Any"), !SelectedQuality.StartsWith("Any"),
         !SelectedRating.StartsWith("Any"), SelectedWatchState != "All", SelectedLetter != "All", Actor is not null, Director is not null,
+        SelectedLanguage != AnyLanguage, SelectedCountry != AnyCountry,
     }.Count(on => on);
 
     public bool HasActiveFilters => ActiveFilterCount > 0;
@@ -305,6 +314,8 @@ public partial class LibraryViewModel(PhantomApi api, SettingsService settings, 
     partial void OnSelectedDecadeChanged(string value) => AutoReload();
     partial void OnSelectedQualityChanged(string value) => AutoReload();
     partial void OnSelectedRatingChanged(string value) => AutoReload();
+    partial void OnSelectedLanguageChanged(string value) => AutoReload();
+    partial void OnSelectedCountryChanged(string value) => AutoReload();
     partial void OnSelectedWatchStateChanged(string value) => AutoReload();
     partial void OnSelectedLetterChanged(string value) => AutoReload();
     partial void OnIsGridChanged(bool value) => settings.LibraryView = value ? "grid" : "list";
@@ -336,6 +347,8 @@ public partial class LibraryViewModel(PhantomApi api, SettingsService settings, 
         SelectedDecade = "Any decade";
         SelectedQuality = "Any quality";
         SelectedRating = "Any rating";
+        SelectedLanguage = AnyLanguage;
+        SelectedCountry = AnyCountry;
         _filtersLoaded = false;
     }
 
@@ -352,6 +365,8 @@ public partial class LibraryViewModel(PhantomApi api, SettingsService settings, 
         Decade = int.TryParse(SelectedDecade.TrimEnd('s'), out var dec) ? dec : null,
         Quality = SelectedQuality.StartsWith("Any") ? null : SelectedQuality,
         ContentRating = SelectedRating.StartsWith("Any") ? null : SelectedRating,
+        Language = _languageCodes.GetValueOrDefault(SelectedLanguage),
+        Country = _countryCodes.GetValueOrDefault(SelectedCountry),
         Unwatched = SelectedWatchState switch { "Unwatched" => true, "Watched" => false, _ => null },
         InProgress = SelectedWatchState == "In progress" ? true : null,
         StartsWith = SelectedLetter == "All" ? null : SelectedLetter,
@@ -423,6 +438,7 @@ public partial class LibraryViewModel(PhantomApi api, SettingsService settings, 
         var filters = await api.FiltersAsync(Kind == LibraryKind.Shows ? MediaKind.Show : MediaKind.Movie, all: Kind == LibraryKind.All);
         // The choices made stay chosen (a picker can drop its choice while its list changes), without reloading the list.
         var (genre, decade, quality, rating) = (SelectedGenre, SelectedDecade, SelectedQuality, SelectedRating);
+        var (language, country) = (SelectedLanguage, SelectedCountry);
         var suspended = _suspendReload;
         _suspendReload = true;
         try
@@ -435,6 +451,13 @@ public partial class LibraryViewModel(PhantomApi api, SettingsService settings, 
             SelectedDecade = Decades.Contains(decade) ? decade : Decades[0];
             SelectedQuality = Qualities.Contains(quality) ? quality : Qualities[0];
             SelectedRating = Ratings.Contains(rating) ? rating : Ratings[0];
+            // Older servers don't offer these.
+            _languageCodes = (filters.Languages ?? []).DistinctBy(l => l.Name).ToDictionary(l => l.Name, l => l.Code);
+            _countryCodes = (filters.Countries ?? []).DistinctBy(c => c.Name).ToDictionary(c => c.Name, c => c.Code);
+            Languages.Sync([AnyLanguage, .. _languageCodes.Keys]);
+            Countries.Sync([AnyCountry, .. _countryCodes.Keys]);
+            SelectedLanguage = Languages.Contains(language) ? language : Languages[0];
+            SelectedCountry = Countries.Contains(country) ? country : Countries[0];
         }
         finally
         {
@@ -468,6 +491,8 @@ public partial class LibraryViewModel(PhantomApi api, SettingsService settings, 
         SelectedDecade = "Any decade";
         SelectedQuality = "Any quality";
         SelectedRating = "Any rating";
+        SelectedLanguage = AnyLanguage;
+        SelectedCountry = AnyCountry;
         SelectedWatchState = "All";
         SelectedLetter = "All";
         Actor = Director = null;

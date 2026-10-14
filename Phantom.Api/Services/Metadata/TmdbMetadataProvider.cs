@@ -50,6 +50,8 @@ public class TmdbMetadataProvider(HttpClient http, IOptions<PhantomOptions> opti
             if (Str(r, "poster_path") is { } poster) movie.PosterUrl = Images + "w500" + poster;
             if (Str(r, "backdrop_path") is { } backdrop) movie.BackdropUrl = Images + "w1280" + backdrop;
             if (r.TryGetProperty("production_companies", out var pc) && pc.GetArrayLength() > 0) movie.Studio = Str(pc[0], "name");
+            movie.OriginalLanguage = Str(r, "original_language") ?? movie.OriginalLanguage;
+            movie.Countries = Countries(r) ?? movie.Countries;
 
             movie.ContentRating = Certification(r) ?? movie.ContentRating;
             movie.TrailerUrl = Trailer(r) ?? movie.TrailerUrl;
@@ -90,6 +92,21 @@ public class TmdbMetadataProvider(HttpClient http, IOptions<PhantomOptions> opti
 
     private static string? Str(JsonElement e, string name) =>
         e.TryGetProperty(name, out var p) && p.ValueKind == JsonValueKind.String && p.GetString() is { Length: > 0 } s ? s : null;
+
+    /// <summary>
+    /// Where a movie or show was made, as comma-separated country codes: its origin country (TMDB has one for shows and,
+    /// lately, movies) first, then the production countries.
+    /// </summary>
+    public static string? Countries(JsonElement r)
+    {
+        var codes = new List<string>();
+        if (r.TryGetProperty("origin_country", out var origin) && origin.ValueKind == JsonValueKind.Array)
+            codes.AddRange(origin.EnumerateArray().Where(c => c.ValueKind == JsonValueKind.String).Select(c => c.GetString()!));
+        if (r.TryGetProperty("production_countries", out var production) && production.ValueKind == JsonValueKind.Array)
+            codes.AddRange(production.EnumerateArray().Select(c => Str(c, "iso_3166_1")).OfType<string>());
+        var distinct = codes.Select(c => c.Trim().ToUpperInvariant()).Where(c => c.Length == 2).Distinct().ToList();
+        return distinct.Count > 0 ? string.Join(',', distinct) : null;
+    }
 
     private static string? Certification(JsonElement r)
     {
@@ -216,6 +233,8 @@ public class TmdbMetadataProvider(HttpClient http, IOptions<PhantomOptions> opti
             if (Str(r, "poster_path") is { } poster) show.PosterUrl = Images + "w500" + poster;
             if (Str(r, "backdrop_path") is { } backdrop) show.BackdropUrl = Images + "w1280" + backdrop;
             if (r.TryGetProperty("networks", out var networks) && networks.GetArrayLength() > 0) show.Network = Str(networks[0], "name");
+            show.OriginalLanguage = Str(r, "original_language") ?? show.OriginalLanguage;
+            show.Countries = Countries(r) ?? show.Countries;
             if (r.TryGetProperty("episode_run_time", out var runtimes) && runtimes.GetArrayLength() > 0 && runtimes[0].TryGetInt(out var runtime))
                 show.EpisodeRuntimeMinutes = runtime;
             show.ContentRating = ShowCertification(r) ?? show.ContentRating;

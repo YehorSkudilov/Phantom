@@ -32,6 +32,9 @@ public class LibraryService(PhantomDbContext db)
                              || m.Credits.Any(c => EF.Functions.Like(c.Name, s, Like.Escape)));
         }
         if (!string.IsNullOrWhiteSpace(query.Genre)) q = q.Where(m => m.Genres.Any(g => g.Name == query.Genre));
+        if (!string.IsNullOrWhiteSpace(query.Language)) q = q.Where(m => m.OriginalLanguage == query.Language);
+        // Two-letter codes between commas: one can't be found inside another.
+        if (!string.IsNullOrWhiteSpace(query.Country)) q = q.Where(m => m.Countries != null && m.Countries.Contains(query.Country.ToUpper()));
         if (query.Year is { } year) q = q.Where(m => m.Year == year);
         if (query.Decade is { } decade) q = q.Where(m => m.Year >= decade && m.Year < decade + 10);
         if (!string.IsNullOrWhiteSpace(query.Quality)) q = q.Where(m => m.Releases.Any(r => r.Quality == query.Quality));

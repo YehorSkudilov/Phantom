@@ -57,6 +57,7 @@ builder.Services.AddHttpClient<IMovieSource, YtsSource>(SourceClient);
 builder.Services.AddHttpClient<IMovieSource, PirateBaySource>(SourceClient);
 builder.Services.AddHttpClient<IMovieSource, KnabenSource>(SourceClient);
 builder.Services.AddHttpClient<IMovieSource, EztvSource>(SourceClient);
+builder.Services.AddHttpClient<IMovieSource, WorldCinemaSource>(SourceClient);
 builder.Services.AddHttpClient<TvMazeClient>(c =>
 {
     c.Timeout = TimeSpan.FromSeconds(15);
@@ -207,6 +208,11 @@ static async Task SeedSourcesAsync(PhantomDbContext db, PhantomOptions options)
         new() { Name = "Knaben (many sites)", Type = SourceType.Knaben, SyncIntervalMinutes = 180 },
         new() { Name = "The Pirate Bay", Type = SourceType.PirateBay, Categories = PirateBaySource.DefaultCategories, SyncIntervalMinutes = 180 },
         new() { Name = "EZTV (TV)", Type = SourceType.Eztv, SyncIntervalMinutes = 120 },
+        new()
+        {
+            Name = "World cinema (Chinese, Russian)", Type = SourceType.WorldCinema,
+            Query = WorldCinemaSource.DefaultLanguages, SyncIntervalMinutes = 720,
+        },
         new()
         {
             Name = "Internet Archive - Feature Films", Type = SourceType.InternetArchive,

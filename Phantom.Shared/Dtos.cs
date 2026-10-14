@@ -214,6 +214,12 @@ public record MovieQuery
 {
     public string? Search { get; init; }
     public string? Genre { get; init; }
+
+    /// <summary>The language it was made in: an ISO 639-1 code (see <see cref="FilterChoice"/>).</summary>
+    public string? Language { get; init; }
+
+    /// <summary>A country it was made in: an ISO 3166-1 code.</summary>
+    public string? Country { get; init; }
     public int? Year { get; init; }
     public int? Decade { get; init; }
     public string? Quality { get; init; }
@@ -242,7 +248,12 @@ public record LibraryFiltersDto(
     IReadOnlyList<string> Genres,
     IReadOnlyList<int> Years,
     IReadOnlyList<string> Qualities,
-    IReadOnlyList<string> ContentRatings);
+    IReadOnlyList<string> ContentRatings,
+    IReadOnlyList<FilterChoice>? Languages = null,
+    IReadOnlyList<FilterChoice>? Countries = null);
+
+/// <summary>A choice in a filter that's sent as a code but shown by name: a language ("zh", "Chinese") or a country.</summary>
+public record FilterChoice(string Code, string Name);
 
 /// <summary>A titled row on the home screen (Continue Watching, Recently Added, ...).</summary>
 public record HubDto(string Key, string Title, IReadOnlyList<MovieSummaryDto> Items);
@@ -383,7 +394,7 @@ public record CreateServerDownloadRequest(int MovieId, int? ReleaseId, int? Epis
 
 // Stored as integers: append new types, never reorder. Torznab is no longer used (sources are built in) but keeps its
 // number so the others don't shift.
-public enum SourceType { InternetArchive, Torznab, Yts, PirateBay, Knaben, Eztv }
+public enum SourceType { InternetArchive, Torznab, Yts, PirateBay, Knaben, Eztv, WorldCinema }
 
 public record SourceDto(
     int Id,

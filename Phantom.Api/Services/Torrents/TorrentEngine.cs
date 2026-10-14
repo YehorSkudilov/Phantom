@@ -203,7 +203,7 @@ public sealed class TorrentEngine : IHostedService, IAsyncDisposable
         _log.LogInformation("No .torrent file for {Release}; fetching its metadata from peers", release.Name);
         var magnetText = release.MagnetUri ?? (release.TorrentUrl?.StartsWith("magnet:") == true ? release.TorrentUrl : null)
                          ?? Magnets.Build(release.InfoHash, release.Name);
-        return await Engine.AddStreamingAsync(MagnetLink.Parse(magnetText), savePath, settings);
+        return await Engine.AddStreamingAsync(MagnetLink.Parse(Magnets.WithTrackers(magnetText)), savePath, settings);
     }
 
     /// <summary>Public caches serving .torrent files by info hash ({0}, upper case).</summary>

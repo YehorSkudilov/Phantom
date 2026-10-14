@@ -244,3 +244,73 @@ public class EroticGenreTests
         Assert.Equal(erotic, Phantom.Api.Services.Metadata.TmdbMetadataProvider.IsErotic(doc.RootElement));
     }
 }
+
+public class WorldCinemaTests
+{
+    private static readonly Phantom.Api.Services.Sources.WorldCinemaSource.Film Brother = new(20992, "Brother", "Брат", 1997);
+
+    private static string Hits(params string[] names) =>
+        "{\"hits\":[" + string.Join(',', names.Select((n, i) =>
+            $"{{\"hash\":\"{new string((char)('a' + i), 40)}\",\"title\":{System.Text.Json.JsonSerializer.Serialize(n)},\"seeders\":5,\"peers\":7,\"bytes\":1000}}")) + "]}";
+
+    [Fact]
+    public void Torrents_with_either_title_and_the_year_match_the_film()
+    {
+        var json = Hits(
+            "Брат / Brother (Алексей Балабанов) [1997, Россия, драма, BDRip 1080p]",
+            "Brother.1997.1080p.BluRay.x264",
+            "Brother.2000.1080p.BluRay.x264", // Kitano's, another year
+            "Big.Brother.1997.720p"); // has the title words, but inside another title too: still counts (rare enough)
+        var matches = Phantom.Api.Services.Sources.WorldCinemaSource.Matches(json, Brother).ToList();
+        Assert.Equal(3, matches.Count);
+        Assert.All(matches, m => Assert.Equal(20992, m.TmdbId));
+        Assert.All(matches, m => Assert.Equal("Brother", m.Title));
+        Assert.Equal("1080p", matches[0].Quality);
+        Assert.Equal(2, matches[0].Leechers);
+    }
+
+    [Fact]
+    public void Chinese_titles_match_by_their_characters()
+    {
+        var film = new Phantom.Api.Services.Sources.WorldCinemaSource.Film(1, "Let the Bullets Fly", "让子弹飞", 2010);
+        var matches = Phantom.Api.Services.Sources.WorldCinemaSource.Matches(Hits("让子弹飞.2010.1080p.WEB-DL", "Let.the.Bullets.Fly.2010.720p"), film);
+        Assert.Equal(2, matches.Count());
+    }
+
+    [Fact]
+    public void Discover_results_need_a_release_date()
+    {
+        var (films, pages) = Phantom.Api.Services.Sources.WorldCinemaSource.ParseDiscover(
+            """{"page":1,"total_pages":12,"results":[{"id":5,"title":"Hero","original_title":"英雄","release_date":"2002-12-19"},{"id":6,"title":"Unreleased","release_date":""}]}""");
+        Assert.Equal(12, pages);
+        var hero = Assert.Single(films);
+        Assert.Equal(("Hero", "英雄", 2002), (hero.Title, hero.OriginalTitle, hero.Year));
+    }
+
+    [Fact]
+    public void Magnets_get_the_trackers_they_lack()
+    {
+        var first = Phantom.Api.Services.Sources.Magnets.Trackers[0];
+        var magnet = $"magnet:?xt=urn:btih:abc&tr={Uri.EscapeDataString(first)}";
+        var full = Phantom.Api.Services.Sources.Magnets.WithTrackers(magnet);
+        Assert.Equal(Phantom.Api.Services.Sources.Magnets.Trackers.Length, full.Split("&tr=").Length - 1);
+    }
+
+    [Fact]
+    public void Countries_come_from_origin_and_production()
+    {
+        using var doc = System.Text.Json.JsonDocument.Parse(
+            """{"origin_country":["CN"],"production_countries":[{"iso_3166_1":"HK"},{"iso_3166_1":"cn"}]}""");
+        Assert.Equal("CN,HK", Phantom.Api.Services.Metadata.TmdbMetadataProvider.Countries(doc.RootElement));
+    }
+
+    [Fact]
+    public void Region_names()
+    {
+        Assert.Equal("Russian", Phantom.Shared.Regions.Language("ru"));
+        Assert.Equal("Chinese (Cantonese)", Phantom.Shared.Regions.Language("cn"));
+        Assert.Equal("China", Phantom.Shared.Regions.Country("CN"));
+        var countries = Phantom.Shared.Regions.Countries(["CN,HK", "RU", null, "CN"]);
+        Assert.Equal(["China", "Hong Kong", "Russia"], countries.Select(c => c.Name));
+    }
+}

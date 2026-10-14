@@ -15,7 +15,7 @@ namespace Phantom.Api.Services.Sources;
 public partial class KnabenSource(HttpClient http, IOptions<PhantomOptions> options, ILogger<KnabenSource> log) : IMovieSource, IBackfillingSource
 {
     public const string DefaultBaseUrl = "https://api.knaben.org/v1";
-    private const int MoviesCategory = 3000000;
+    public const int MoviesCategory = 3000000;
     private const int TvCategory = 2000000;
     private const int PageSize = 300;
     private const int MaxPagesPerTerm = 10;

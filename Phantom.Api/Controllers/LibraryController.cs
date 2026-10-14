@@ -110,7 +110,9 @@ public class LibraryController(PhantomDbContext db, LibraryService library, Show
                 m.Genres.Union(s.Genres).Order().ToList(),
                 m.Years.Union(s.Years).OrderDescending().ToList(),
                 m.Qualities,
-                m.ContentRatings.Union(s.ContentRatings).OrderBy(ContentRatings.Rank).ToList());
+                m.ContentRatings.Union(s.ContentRatings).OrderBy(ContentRatings.Rank).ToList(),
+                [.. (m.Languages ?? []).UnionBy(s.Languages ?? [], c => c.Code).OrderBy(c => c.Name)],
+                [.. (m.Countries ?? []).UnionBy(s.Countries ?? [], c => c.Code).OrderBy(c => c.Name)]);
         }
         if (kind == MediaKind.Show)
         {
@@ -118,18 +120,25 @@ public class LibraryController(PhantomDbContext db, LibraryService library, Show
             var showGenres = await visibleShows.SelectMany(s => s.Genres).Select(g => g.Name).Distinct().OrderBy(n => n).ToListAsync(ct);
             var showYears = await visibleShows.Where(s => s.Year != null).Select(s => s.Year!.Value).Distinct().OrderByDescending(y => y).ToListAsync(ct);
             var showRatings = await visibleShows.Where(s => s.ContentRating != null && s.ContentRating != "").Select(s => s.ContentRating!).Distinct().ToListAsync(ct);
-            return new LibraryFiltersDto(showGenres, showYears, [], showRatings.OrderBy(ContentRatings.Rank).ToList());
+            var showLanguages = await visibleShows.Where(s => s.OriginalLanguage != null).Select(s => s.OriginalLanguage!).Distinct().ToListAsync(ct);
+            var showCountries = await visibleShows.Where(s => s.Countries != null).Select(s => s.Countries).Distinct().ToListAsync(ct);
+            return new LibraryFiltersDto(showGenres, showYears, [], showRatings.OrderBy(ContentRatings.Rank).ToList(),
+                Regions.Languages(showLanguages), Regions.Countries(showCountries));
         }
         var visible = library.Visible(User);
         var genres = await visible.SelectMany(m => m.Genres).Select(g => g.Name).Distinct().OrderBy(n => n).ToListAsync(ct);
         var years = await visible.Where(m => m.Year != null).Select(m => m.Year!.Value).Distinct().OrderByDescending(y => y).ToListAsync(ct);
         var qualities = await visible.SelectMany(m => m.Releases).Where(r => r.Quality != null).Select(r => r.Quality!).Distinct().ToListAsync(ct);
         var ratings = await visible.Where(m => m.ContentRating != null && m.ContentRating != "").Select(m => m.ContentRating!).Distinct().ToListAsync(ct);
+        var languages = await visible.Where(m => m.OriginalLanguage != null).Select(m => m.OriginalLanguage!).Distinct().ToListAsync(ct);
+        var countries = await visible.Where(m => m.Countries != null).Select(m => m.Countries).Distinct().ToListAsync(ct);
         return new LibraryFiltersDto(
             genres,
             years,
             qualities.OrderByDescending(ReleaseNameParser.QualityRank).ToList(),
-            ratings.OrderBy(ContentRatings.Rank).ToList());
+            ratings.OrderBy(ContentRatings.Rank).ToList(),
+            Regions.Languages(languages),
+            Regions.Countries(countries));
     }
 
     /// <summary>

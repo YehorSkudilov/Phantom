@@ -15,7 +15,7 @@ namespace Phantom.Api.Data.Migrations
         protected override void BuildModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
-            modelBuilder.HasAnnotation("ProductVersion", "10.0.12");
+            modelBuilder.HasAnnotation("ProductVersion", "10.0.13");
 
             modelBuilder.Entity("CollectionMovie", b =>
                 {
@@ -229,6 +229,9 @@ namespace Phantom.Api.Data.Migrations
                     b.Property<string>("ContentRating")
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("Countries")
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("ExternalKey")
                         .HasColumnType("TEXT");
 
@@ -236,6 +239,9 @@ namespace Phantom.Api.Data.Migrations
                         .HasColumnType("TEXT");
 
                     b.Property<DateTime?>("MetadataRefreshedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("OriginalLanguage")
                         .HasColumnType("TEXT");
 
                     b.Property<string>("OriginalTitle")
@@ -522,6 +528,9 @@ namespace Phantom.Api.Data.Migrations
                     b.Property<string>("ContentRating")
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("Countries")
+                        .HasColumnType("TEXT");
+
                     b.Property<int?>("EpisodeRuntimeMinutes")
                         .HasColumnType("INTEGER");
 
@@ -535,6 +544,9 @@ namespace Phantom.Api.Data.Migrations
                         .HasColumnType("TEXT");
 
                     b.Property<string>("Network")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("OriginalLanguage")
                         .HasColumnType("TEXT");
 
                     b.Property<string>("OriginalTitle")

@@ -44,6 +44,12 @@ public class Movie
     public DateTime AddedAt { get; set; } = DateTime.UtcNow;
     public DateTime? MetadataRefreshedAt { get; set; }
 
+    /// <summary>The language it was made in, as TMDB has it: an ISO 639-1 code ("en", "zh", "ru"; "cn" is Cantonese).</summary>
+    public string? OriginalLanguage { get; set; }
+
+    /// <summary>Where it was made: ISO 3166-1 country codes, comma-separated ("CN,HK").</summary>
+    public string? Countries { get; set; }
+
     public List<Genre> Genres { get; set; } = [];
     public List<Credit> Credits { get; set; } = [];
     public List<Release> Releases { get; set; } = [];
@@ -75,6 +81,12 @@ public class Show
     public string? ExternalKey { get; set; }
     public DateTime AddedAt { get; set; } = DateTime.UtcNow;
     public DateTime? MetadataRefreshedAt { get; set; }
+
+    /// <summary>The language it was made in, as TMDB has it: an ISO 639-1 code ("en", "zh", "ru"; "cn" is Cantonese).</summary>
+    public string? OriginalLanguage { get; set; }
+
+    /// <summary>Where it was made: ISO 3166-1 country codes, comma-separated ("CN,HK").</summary>
+    public string? Countries { get; set; }
 
     public List<Genre> Genres { get; set; } = [];
     public List<Credit> Credits { get; set; } = [];
