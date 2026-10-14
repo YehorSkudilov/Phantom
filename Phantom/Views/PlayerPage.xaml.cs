@@ -173,12 +173,11 @@ public partial class PlayerPage : ContentPage
 
     // ---------- Double-tap to skip ----------
 
-    private void OnSurfaceDoubleTapped(object? sender, TappedEventArgs e)
-    {
-        if (sender is not View surface || e.GetPosition(surface) is not { } at || !Ready) return;
-        if (at.X < surface.Width / 3) Guard(() => SkipAsync(-_vm.SkipBack));
-        else if (at.X > surface.Width * 2 / 3) Guard(() => SkipAsync(_vm.SkipForward));
-    }
+    /// <summary>Which third of the screen a tap is in: -1 the left, 1 the right, 0 the middle.</summary>
+    private static int TapSide(object? sender, TappedEventArgs e) =>
+        sender is View surface && surface.Width > 0 && e.GetPosition(surface) is { } at
+            ? at.X < surface.Width / 3 ? -1 : at.X > surface.Width * 2 / 3 ? 1 : 0
+            : 0;
 
     /// <summary>
     /// Runs an event handler's work. An exception from an async void handler ends the app on iOS, so anything unexpected
@@ -212,11 +211,12 @@ public partial class PlayerPage : ContentPage
         _skipTarget = target;
 
         var moved = (int)Math.Round((target - from).TotalSeconds);
-        // The frame they'll land on shows above the "+30s" while the movie plays on. On a TV the presses get longer to
-        // add up (a remote's are slower than taps).
+        // Just the "+30s" on its side, as on YouTube, while the movie plays on. On a TV the frame they'll land on shows
+        // above it too (there's no picture under a finger to go by there), and the presses get longer to add up (a
+        // remote's are slower than taps).
         var tv = DeviceInfo.Idiom == DeviceIdiom.TV;
-        Flash(moved < 0 ? $"−{-moved}s" : $"+{moved}s", left: moved < 0, showFor: tv ? 1300 : 1000, keepPreview: true);
-        PreviewAt(target, large: false, _skipSlot, ShowSkipFrame, () => SkipPreview.IsVisible = false);
+        Flash(moved < 0 ? $"−{-moved}s" : $"+{moved}s", left: moved < 0, showFor: tv ? 1300 : 1000, keepPreview: tv);
+        if (tv) PreviewAt(target, large: false, _skipSlot, ShowSkipFrame, () => SkipPreview.IsVisible = false);
         PositionLabel.Text = TimeSpanConverter.Format(target);
         if (total > TimeSpan.Zero) Seek.Value = Math.Clamp(target / total, 0, 1);
 
@@ -533,13 +533,39 @@ public partial class PlayerPage : ContentPage
 
     private DateTime _shownAt;
 
-    private DateTime _lastToggle;
+    private static readonly TimeSpan DoubleTapWindow = TimeSpan.FromMilliseconds(350);
+    private DateTime _lastTap;
+    private int _tapSide, _tapStreak;
+    private bool _controlsBeforeTap;
 
+    /// <summary>
+    /// A tap shows or hides the controls. Two in quick succession on the left or right third skip back or forward, as on
+    /// YouTube and Netflix, and each further quick tap there skips on (the skips add up, see SkipAsync). Double-taps are
+    /// told apart here rather than by a double-tap recognizer: the first tap shows or hides the controls, which cover the
+    /// screen, so the second landed on the other view and neither ever saw two.
+    /// </summary>
     private void OnSurfaceTapped(object? sender, TappedEventArgs e)
     {
+        var now = DateTime.UtcNow;
+        var since = now - _lastTap;
         // The controls and the surface under them both listen; where a platform hands one tap to both, it counts once.
-        if (DateTime.UtcNow - _lastToggle < TimeSpan.FromMilliseconds(250)) return;
-        _lastToggle = DateTime.UtcNow;
+        if (since < TimeSpan.FromMilliseconds(60)) return;
+        _lastTap = now;
+        var side = TapSide(sender, e);
+        if (since < DoubleTapWindow && side != 0 && side == _tapSide && Ready)
+        {
+            // The first tap's show or hide is undone: a double-tap only skips.
+            if (_tapStreak++ == 0)
+            {
+                if (_controlsBeforeTap) ShowControls();
+                else Controls.IsVisible = false;
+            }
+            Guard(() => SkipAsync(side < 0 ? -_vm.SkipBack : _vm.SkipForward));
+            return;
+        }
+        _tapSide = side;
+        _tapStreak = 0;
+        _controlsBeforeTap = Controls.IsVisible;
         if (Controls.IsVisible && Ready) Controls.IsVisible = false; // while loading, Close stays reachable
         else ShowControls();
     }

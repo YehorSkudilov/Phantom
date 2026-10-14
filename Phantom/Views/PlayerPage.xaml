@@ -16,9 +16,8 @@
          its own keys for that, see OnRemoteKey). -->
     <Grid controls:RemoteFocus.Skip="True">
         <Grid.GestureRecognizers>
+            <!-- Also double-taps on the left or right side, to skip back or forward (see OnSurfaceTapped) -->
             <TapGestureRecognizer Tapped="OnSurfaceTapped" />
-            <!-- Double-tap the left or right side to skip back or forward, as on YouTube and Netflix -->
-            <TapGestureRecognizer NumberOfTapsRequired="2" Tapped="OnSurfaceDoubleTapped" />
         </Grid.GestureRecognizers>
 
         <toolkit:MediaElement x:Name="Media" ShouldShowPlaybackControls="False" ShouldAutoPlay="True" ShouldKeepScreenOn="True"
@@ -83,7 +82,6 @@
                  controls never reached the surface's (and couldn't hide them). -->
             <Grid.GestureRecognizers>
                 <TapGestureRecognizer Tapped="OnSurfaceTapped" />
-                <TapGestureRecognizer NumberOfTapsRequired="2" Tapped="OnSurfaceDoubleTapped" />
             </Grid.GestureRecognizers>
             <Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto,Auto,Auto,Auto" ColumnSpacing="6">
                 <ImageButton Style="{StaticResource IconButton}" Source="{controls:Icon close, Color=White}" Clicked="OnClose"
