@@ -345,6 +345,7 @@ public partial class PlayerPage : ContentPage
             Guard(() => StopCastingAsync(resume: false));
         }
         _started = false;
+        _playedTo = TimeSpan.Zero;
         _pendingResume = _vm.ResumePosition > TimeSpan.Zero;
         SetLoading(true);
         Media.Source = url.StartsWith("http", StringComparison.OrdinalIgnoreCase) ? MediaSource.FromUri(url) : MediaSource.FromFile(url);
@@ -352,7 +353,85 @@ public partial class PlayerPage : ContentPage
         _vm.StartBufferWatch();
     }
 
-    /// <summary>The timeline's second shade: how far the video is there to play (see PlayerViewModel.BufferedTo).</summary>
+    // ---------- The player's own buffer, on the timeline ----------
+
+    private IDispatcherTimer? _playerBufferTimer;
+
+    /// <summary>
+    /// The timeline's third shade: how far ahead this device's player has the video loaded, read from the platform's
+    /// player (MediaElement doesn't say). It grows while paused too, so it's looked at on a timer rather than on position
+    /// changes.
+    /// </summary>
+    private void UpdatePlayerBufferTrack()
+    {
+        double fraction = 0;
+        try
+        {
+            if (_cast is null && PlayerBufferedTo() is { } buffered && buffered > TimeSpan.Zero)
+            {
+                var total = _vm.TotalDuration(Media.Duration);
+                if (total > TimeSpan.Zero) fraction = Math.Clamp(_vm.ActualPosition(buffered) / total, 0, 1);
+            }
+        }
+        catch (Exception ex)
+        {
+            // The native player between sources, or already gone: nothing loaded to show.
+            System.Diagnostics.Debug.WriteLine($"Player buffer: {ex.Message}");
+        }
+        PlayerBufferTrack.WidthRequest = Math.Max(0, SeekTrack.Width) * fraction;
+    }
+
+    /// <summary>How far the platform's player has the video loaded, in its own source's time (null where it can't say).</summary>
+    private TimeSpan? PlayerBufferedTo()
+    {
+#if ANDROID
+        return Media.Handler?.PlatformView is Android.Views.View view && FindPlayerView(view)?.Player is { } player
+            ? TimeSpan.FromMilliseconds(player.BufferedPosition)
+            : null;
+#elif IOS || MACCATALYST
+        if (FindAVPlayer()?.CurrentItem is not { } item) return null;
+        var now = item.CurrentTime.Seconds;
+        // The loaded stretch that's playing now (others are left from before a seek).
+        foreach (var value in item.LoadedTimeRanges)
+        {
+            var range = value.CMTimeRangeValue;
+            double start = range.Start.Seconds, end = start + range.Duration.Seconds;
+            if (double.IsFinite(end) && now >= start - 1 && now <= end) return TimeSpan.FromSeconds(end);
+        }
+        return null;
+#elif WINDOWS
+        if (Media.Handler?.PlatformView is not Microsoft.UI.Xaml.DependencyObject root
+            || FindChild<Microsoft.UI.Xaml.Controls.MediaPlayerElement>(root)?.MediaPlayer?.PlaybackSession is not { } session)
+            return null;
+        var now = session.Position;
+        foreach (var range in session.GetBufferedRanges())
+            if (now >= range.Start - TimeSpan.FromSeconds(1) && now <= range.End) return range.End;
+        return null;
+#else
+        return null;
+#endif
+    }
+
+#if ANDROID
+    private static AndroidX.Media3.UI.PlayerView? FindPlayerView(Android.Views.View view)
+    {
+        if (view is AndroidX.Media3.UI.PlayerView player) return player;
+        if (view is Android.Views.ViewGroup group)
+            for (var i = 0; i < group.ChildCount; i++)
+                if (group.GetChildAt(i) is { } child && FindPlayerView(child) is { } found) return found;
+        return null;
+    }
+#elif WINDOWS
+    private static T? FindChild<T>(Microsoft.UI.Xaml.DependencyObject parent) where T : class
+    {
+        if (parent is T match) return match;
+        for (var i = 0; i < Microsoft.UI.Xaml.Media.VisualTreeHelper.GetChildrenCount(parent); i++)
+            if (FindChild<T>(Microsoft.UI.Xaml.Media.VisualTreeHelper.GetChild(parent, i)) is { } found) return found;
+        return null;
+    }
+#endif
+
+    /// <summary>The timeline's second shade: how far the server has the video (see PlayerViewModel.BufferedTo).</summary>
     private void UpdateBufferedTrack() => BufferedTrack.WidthRequest = Math.Max(0, SeekTrack.Width) * Math.Clamp(_vm.BufferedTo, 0, 1);
 
     // The loading panel stays until it's Playing (see OnStateChanged): on iOS this fires as soon as the file's header is
@@ -417,10 +496,22 @@ public partial class PlayerPage : ContentPage
     }
 #endif
 
+    private TimeSpan _playedTo; // where the current source has got to, for the converted stream's restart (above)
+
     private void OnPositionChanged(TimeSpan elementPosition)
     {
         var total = _vm.TotalDuration(Media.Duration);
         var position = _vm.ActualPosition(elementPosition);
+        // A converted stream can't be fetched again from the middle: when one breaks off, Android's player fetches it
+        // again from its start, which is where the conversion started, not where it had got to, and it went back there
+        // each time. The conversion is started again from where it had got to instead.
+        if (_vm.IsTranscoding && _started && !_pendingResume && _playedTo - position > TimeSpan.FromSeconds(5))
+        {
+            System.Diagnostics.Debug.WriteLine($"Player: conversion restarted at {position}, carrying on from {_playedTo}");
+            _vm.TrySeekTranscode(_playedTo);
+            return;
+        }
+        _playedTo = position;
         ShowPosition(position, total);
         // Until the resume seek lands the position is the start of the file, not progress worth saving.
         if (!_pendingResume) _vm.OnPosition(elementPosition, Media.Duration, Media.CurrentState == MediaElementState.Playing);
@@ -1103,6 +1194,11 @@ public partial class PlayerPage : ContentPage
         base.OnAppearing();
         SetSystemBarsHidden(true);
         ApplyBrightness();
+        _playerBufferTimer?.Stop();
+        _playerBufferTimer = Dispatcher.CreateTimer();
+        _playerBufferTimer.Interval = TimeSpan.FromMilliseconds(500);
+        _playerBufferTimer.Tick += (_, _) => UpdatePlayerBufferTrack();
+        _playerBufferTimer.Start();
 #if WINDOWS
         HookKeys();
 #elif ANDROID
@@ -1408,6 +1504,7 @@ public partial class PlayerPage : ContentPage
         base.OnDisappearing();
         DeviceControls.SetBrightness(null); // the system's again outside the player
         _hideTimer?.Stop();
+        _playerBufferTimer?.Stop();
         _skipDelay?.Cancel();
         _scrubbing = false;
         HidePreviews();

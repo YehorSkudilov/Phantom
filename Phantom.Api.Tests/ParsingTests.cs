@@ -225,6 +225,7 @@ public class SubtitleConverterTests
         var args = Transcoder.BuildArguments("in.mkv", 90.5, 2000, 720);
         Assert.Equal("90.5", args[args.ToList().IndexOf("-ss") + 1]);
         Assert.Contains("2000k", args);
+        Assert.Equal("1000000", args[args.ToList().IndexOf("-frag_duration") + 1]);
         Assert.Equal("pipe:1", args[^1]);
     }
 }

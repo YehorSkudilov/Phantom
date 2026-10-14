@@ -38,7 +38,10 @@ public class Transcoder(IOptions<PhantomOptions> options, ILogger<Transcoder> lo
     public static IReadOnlyList<string> BuildArguments(string input, double startSeconds, int? maxVideoKbps, int? maxHeight)
     {
         var args = EncodeArguments(input, startSeconds, maxVideoKbps, maxHeight);
-        args.AddRange(["-movflags", "frag_keyframe+empty_moov+default_base_moof", "-f", "mp4", "pipe:1"]);
+        // A fragment each second as well as at each keyframe: keyframes can be ten seconds apart, and a conversion running
+        // slower than playback then sent nothing for longer than Android's player waits (8 s). It gave up and fetched the
+        // stream again from its start, which put playback back where the conversion had started, each time.
+        args.AddRange(["-movflags", "frag_keyframe+empty_moov+default_base_moof", "-frag_duration", "1000000", "-f", "mp4", "pipe:1"]);
         return args;
     }
 

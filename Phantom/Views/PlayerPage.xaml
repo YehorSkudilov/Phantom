@@ -134,13 +134,15 @@
                         <Label x:Name="SeekPreviewTime" TextColor="White" FontFamily="OpenSansSemibold" FontSize="13" HorizontalOptions="Center" Margin="0,4" />
                     </VerticalStackLayout>
                 </Border>
-                <!-- The slider's own track is see-through past the thumb: under it, the whole length, and lighter, how far the
-                     video is there to play (buffered). Inset to line up with where each platform draws its track. -->
+                <!-- The slider's own track is see-through past the thumb: under it, the whole length; a shade lighter, how far
+                     the server has the video (the torrent downloaded so far); lighter still, how far ahead the player has it
+                     loaded. Inset to line up with where each platform draws its track. -->
                 <Grid>
                     <Grid x:Name="SeekTrack" HeightRequest="4" VerticalOptions="Center" InputTransparent="True"
                           Margin="{OnPlatform Android='16,0', Default='2,0'}">
                         <BoxView Color="#33FFFFFF" CornerRadius="2" />
-                        <BoxView x:Name="BufferedTrack" Color="#80FFFFFF" CornerRadius="2" HorizontalOptions="Start" WidthRequest="0" />
+                        <BoxView x:Name="BufferedTrack" Color="#59FFFFFF" CornerRadius="2" HorizontalOptions="Start" WidthRequest="0" />
+                        <BoxView x:Name="PlayerBufferTrack" Color="#A6FFFFFF" CornerRadius="2" HorizontalOptions="Start" WidthRequest="0" />
                     </Grid>
                     <Slider x:Name="Seek" Minimum="0" Maximum="1" MaximumTrackColor="Transparent"
                             DragStarted="OnSeekStarted" DragCompleted="OnSeekCompleted" ValueChanged="OnSeekValueChanged" />
