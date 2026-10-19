@@ -837,7 +837,8 @@ public partial class PlayerPage : ContentPage
         CastSession cast;
         try
         {
-            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+            // A TV asleep has to wake, and switch to its player, before it answers.
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
             cast = await CastSession.ConnectAsync(device, timeout.Token);
         }
         catch (Exception ex)

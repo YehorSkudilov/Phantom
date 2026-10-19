@@ -70,14 +70,19 @@ public sealed class CastSession : IAsyncDisposable
         _ssl = ssl;
     }
 
-    /// <summary>Connects to <paramref name="device"/> and opens the media player on it.</summary>
+    /// <summary>
+    /// Connects to <paramref name="device"/> and opens the media player on it. Fails with a <see cref="CastException"/>
+    /// saying which step the TV didn't get through, including when <paramref name="ct"/> runs out.
+    /// </summary>
     public static async Task<CastSession> ConnectAsync(CastDevice device, CancellationToken ct)
     {
         var tcp = new TcpClient();
         SslStream? ssl = null;
+        var step = "The TV didn't answer on the network. Make sure it's on, and on the same Wi-Fi as this device.";
         try
         {
             await tcp.ConnectAsync(device.Host, device.Port, ct);
+            step = "The TV didn't accept a secure connection.";
             // Cast devices identify themselves with a certificate of their own, not one a browser would trust.
             ssl = new SslStream(tcp.GetStream(), leaveInnerStreamOpen: false);
             await ssl.AuthenticateAsClientAsync(new SslClientAuthenticationOptions
@@ -86,10 +91,13 @@ public sealed class CastSession : IAsyncDisposable
                 RemoteCertificateValidationCallback = (_, _, _, _) => true,
             }, ct);
         }
-        catch
+        catch (Exception ex)
         {
             ssl?.Dispose();
             tcp.Dispose();
+            // Release builds carry no exception texts of their own, only resource keys: say what didn't happen instead.
+            if (ex is OperationCanceledException or SocketException or IOException or System.Security.Authentication.AuthenticationException)
+                throw new CastException(step);
             throw;
         }
 
@@ -99,9 +107,11 @@ public sealed class CastSession : IAsyncDisposable
             await session.StartAsync(ct);
             return session;
         }
-        catch
+        catch (Exception ex)
         {
             await session.DisposeAsync();
+            if (ex is OperationCanceledException or IOException or ObjectDisposedException)
+                throw new CastException("The TV didn't open its video player. If it's asleep, wake it and try again.");
             throw;
         }
     }
@@ -110,22 +120,47 @@ public sealed class CastSession : IAsyncDisposable
     {
         _ = ReadLoopAsync();
         _ = HeartbeatLoopAsync();
-        await SendAsync(ConnectionNs, ReceiverId, new JsonObject { ["type"] = "CONNECT" });
+        await SendAsync(ConnectionNs, ReceiverId, ConnectMessage());
 
-        // Opening the player takes a moment, and it may say so before it's ready: ask until it's there.
-        var status = await RequestAsync(ReceiverNs, ReceiverId, new JsonObject { ["type"] = "LAUNCH", ["appId"] = DefaultReceiver }, ct);
-        for (var attempt = 0; FindApp(status) is null; attempt++)
+        // The player may be open already (cast from here a moment ago, or from another phone): no need to open it again.
+        var status = await RequestAsync(ReceiverNs, ReceiverId, new JsonObject { ["type"] = "GET_STATUS" }, ct);
+        if (FindApp(status) is null)
         {
-            if (attempt >= 10) throw new CastException("The TV didn't open its video player.");
-            await Task.Delay(500, ct);
-            status = await RequestAsync(ReceiverNs, ReceiverId, new JsonObject { ["type"] = "GET_STATUS" }, ct);
+            // Opening the player takes a moment, and it may say so before it's ready: ask until it's there.
+            status = await RequestAsync(ReceiverNs, ReceiverId, new JsonObject { ["type"] = "LAUNCH", ["appId"] = DefaultReceiver }, ct);
+            for (var attempt = 0; FindApp(status) is null; attempt++)
+            {
+                if (attempt >= 20) throw new CastException("The TV didn't open its video player.");
+                await Task.Delay(500, ct);
+                status = await RequestAsync(ReceiverNs, ReceiverId, new JsonObject { ["type"] = "GET_STATUS" }, ct);
+            }
         }
         var app = FindApp(status)!;
         _transportId = app["transportId"]?.GetValue<string>();
         _appSessionId = app["sessionId"]?.GetValue<string>();
         if (_transportId is null) throw new CastException("The TV didn't open its video player.");
-        await SendAsync(ConnectionNs, _transportId, new JsonObject { ["type"] = "CONNECT" });
+        await SendAsync(ConnectionNs, _transportId, ConnectMessage());
     }
+
+    /// <summary>
+    /// Opens a virtual connection, introducing this app the way Google's own senders do: some TVs (Google TV among them)
+    /// leave a bare CONNECT unanswered, and with it everything after.
+    /// </summary>
+    private static JsonObject ConnectMessage() => new()
+    {
+        ["type"] = "CONNECT",
+        ["origin"] = new JsonObject(),
+        ["userAgent"] = "Phantom",
+        ["connType"] = 0,
+        ["senderInfo"] = new JsonObject
+        {
+            ["sdkType"] = 2,
+            ["version"] = "X",
+            ["browserVersion"] = "X",
+            ["platform"] = 4,
+            ["connectionType"] = 1,
+        },
+    };
 
     private static JsonObject? FindApp(JsonObject message) =>
         (message["status"]?["applications"] as JsonArray)?.OfType<JsonObject>()
