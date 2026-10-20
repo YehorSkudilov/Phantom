@@ -244,9 +244,12 @@ public sealed class TorrentEngine : IHostedService, IAsyncDisposable
         }
     }
 
+    /// <summary>
+    /// The torrent's largest video, or null when it hasn't got one: a fake release (a film's name on an .exe, or an
+    /// archive) is said to be one as soon as its file list is in, rather than downloaded whole and found out then.
+    /// </summary>
     public static ITorrentManagerFile? MainVideo(TorrentManager manager) =>
-        manager.Files.Where(f => VideoFiles.IsVideo(f.Path)).OrderByDescending(f => f.Length).FirstOrDefault()
-        ?? manager.Files.OrderByDescending(f => f.Length).FirstOrDefault();
+        manager.Files.Where(f => VideoFiles.IsVideo(f.Path)).OrderByDescending(f => f.Length).FirstOrDefault();
 
     /// <summary>The video for <paramref name="choice"/>: the main one, or the episode's file (null if the torrent hasn't got it).</summary>
     public static ITorrentManagerFile? Video(TorrentManager manager, VideoChoice choice, int? packSeason)

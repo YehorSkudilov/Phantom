@@ -40,6 +40,7 @@ builder.Services.AddHostedService(sp => sp.GetRequiredService<TrickplayService>(
 builder.Services.AddScoped<LibraryService>();
 builder.Services.AddScoped<ShowLibraryService>();
 builder.Services.AddScoped<DiscoverService>();
+builder.Services.AddHostedService<DiscoverWarmup>();
 builder.Services.AddScoped<LibraryImporter>();
 
 // Torrent engine + background workers

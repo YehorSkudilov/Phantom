@@ -192,6 +192,22 @@ public class DiscoverService(PhantomDbContext db, LibraryService library, ShowLi
         return items;
     }
 
+    /// <summary>
+    /// Reads the candidates for every content limit a profile has, so no one's first visit to Discover waits for the
+    /// whole library to be read (that took 20 s on a busy server).
+    /// </summary>
+    public async Task WarmAsync(CancellationToken ct)
+    {
+        var limits = await db.Users.AsNoTracking().Select(u => u.MaxContentRating).Distinct().ToListAsync(ct);
+        foreach (var limit in limits.Select(l => string.IsNullOrEmpty(l) ? "" : l).Distinct())
+        {
+            if (Cache.ContainsKey(limit)) continue;
+            var user = new ClaimsPrincipal(new ClaimsIdentity(
+                limit == "" ? [] : [new Claim(PhantomClaims.MaxRating, limit)], "warmup"));
+            Cache[limit] = (DateTime.UtcNow, await LoadCandidatesAsync(user, DateTime.UtcNow, ct));
+        }
+    }
+
     /// <summary>Reads the candidates again in a scope of its own (the request that noticed they were old has moved on).</summary>
     private async Task RefreshAsync(ClaimsPrincipal user, string key)
     {
