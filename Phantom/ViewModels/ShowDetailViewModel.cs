@@ -287,7 +287,8 @@ public partial class ShowDetailViewModel(PhantomApi api, SettingsService setting
         switch (server.ForEpisode(episode.Id))
         {
             case { } saving when ServerDownloadTracker.IsRunning(saving):
-                await Dialog.AlertAsync("Saving on the server", $"{name} is {saving.Progress / 100:0%} saved. It plays once it's saved.");
+                await Dialog.AlertAsync("Saving on the server", $"{name} is {saving.Progress / 100:0%} saved"
+                    + (ServerDownloadTracker.TimeLeft(saving) is { Length: > 0 } left ? $", {left}" : "") + ". It plays once it's saved.");
                 break;
             case { Status: DownloadStatus.Paused } paused:
                 await RunAsync(async () =>

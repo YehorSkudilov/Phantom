@@ -76,28 +76,33 @@ public partial class OfflineDownload : ObservableObject
         _ => Status.ToString(),
     };
 
+    /// <summary>"about 12 min left" while downloading, at the current speed; empty otherwise.</summary>
+    public string TimeLeft => Status == OfflineStatus.Downloading ? Phantom.BytesConverter.TimeLeft(TotalBytes - DownloadedBytes, BytesPerSecond) : "";
+
     /// <summary>
-    /// Over the poster in Downloads: "42% · 3.1 MB/s" while downloading, why it's waiting (for the server to save it,
+    /// Over the poster in Downloads: "42% · 3.1 MB/s · about 12 min left" while downloading, why it's waiting (for the server to save it,
     /// say) or its status otherwise.
     /// </summary>
     public string OverlayText => Status switch
     {
-        OfflineStatus.Downloading => $"{Progress:0%}" + (BytesPerSecond > 0 ? $" · {Phantom.BytesConverter.Format(BytesPerSecond)}/s" : ""),
+        OfflineStatus.Downloading => $"{Progress:0%}" + (BytesPerSecond > 0 ? $" · {Phantom.BytesConverter.Format(BytesPerSecond)}/s" : "")
+                                     + (TimeLeft is { Length: > 0 } left ? $" · {left}" : ""),
         OfflineStatus.Paused => $"Paused · {Progress:0%}",
         OfflineStatus.Queued when !string.IsNullOrEmpty(Error) => Error!,
         _ => StatusText,
     };
 
-    /// <summary>"1.2 GB of 4.5 GB · 3.1 MB/s" while downloading, the size once done.</summary>
+    /// <summary>"1.2 GB of 4.5 GB · 3.1 MB/s · about 12 min left" while downloading, the size once done.</summary>
     public string SizeText => IsComplete
         ? Phantom.BytesConverter.Format(TotalBytes)
         : TotalBytes <= 0 ? ""
         : $"{Phantom.BytesConverter.Format(DownloadedBytes)} of {Phantom.BytesConverter.Format(TotalBytes)}"
-          + (BytesPerSecond > 0 ? $"  ·  {Phantom.BytesConverter.Format(BytesPerSecond)}/s" : "");
+          + (BytesPerSecond > 0 ? $"  ·  {Phantom.BytesConverter.Format(BytesPerSecond)}/s" : "")
+          + (TimeLeft is { Length: > 0 } left ? $"  ·  {left}" : "");
 
-    partial void OnDownloadedBytesChanged(long value) { OnPropertyChanged(nameof(Progress)); OnPropertyChanged(nameof(SizeText)); OnPropertyChanged(nameof(OverlayText)); }
-    partial void OnTotalBytesChanged(long value) { OnPropertyChanged(nameof(Progress)); OnPropertyChanged(nameof(SizeText)); OnPropertyChanged(nameof(OverlayText)); }
-    partial void OnBytesPerSecondChanged(long value) { OnPropertyChanged(nameof(SizeText)); OnPropertyChanged(nameof(OverlayText)); }
+    partial void OnDownloadedBytesChanged(long value) { OnPropertyChanged(nameof(TimeLeft)); OnPropertyChanged(nameof(Progress)); OnPropertyChanged(nameof(SizeText)); OnPropertyChanged(nameof(OverlayText)); }
+    partial void OnTotalBytesChanged(long value) { OnPropertyChanged(nameof(TimeLeft)); OnPropertyChanged(nameof(Progress)); OnPropertyChanged(nameof(SizeText)); OnPropertyChanged(nameof(OverlayText)); }
+    partial void OnBytesPerSecondChanged(long value) { OnPropertyChanged(nameof(TimeLeft)); OnPropertyChanged(nameof(SizeText)); OnPropertyChanged(nameof(OverlayText)); }
     partial void OnErrorChanged(string? value) => OnPropertyChanged(nameof(OverlayText));
     partial void OnStatusChanged(OfflineStatus value)
     {
@@ -105,6 +110,7 @@ public partial class OfflineDownload : ObservableObject
         OnPropertyChanged(nameof(CanPause));
         OnPropertyChanged(nameof(CanResume));
         OnPropertyChanged(nameof(StatusText));
+        OnPropertyChanged(nameof(TimeLeft));
         OnPropertyChanged(nameof(SizeText));
         OnPropertyChanged(nameof(OverlayText));
     }

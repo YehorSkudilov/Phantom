@@ -42,6 +42,7 @@
                                         <Span Text="{Binding DownloadRate, Converter={StaticResource Bytes}, ConverterParameter=rate}" />
                                         <Span Text="  ·  " />
                                         <Span Text="{Binding Peers, StringFormat='{0} peers'}" />
+                                        <Span Text="{Binding ., Converter={StaticResource ServerTimeLeft}}" />
                                     </FormattedString>
                                 </Label.FormattedText>
                             </Label>
