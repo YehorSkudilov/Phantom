@@ -43,6 +43,11 @@ public class ServerDownloadTracker(PhantomApi api)
         _ => $"Saving {d.Progress / 100:0%}",
     };
 
+    /// <summary>"about 12 min left" while the server is saving it, at its current speed; empty otherwise.</summary>
+    public static string TimeLeft(ServerDownloadDto? d) => d is { Status: DownloadStatus.Downloading }
+        ? BytesConverter.TimeLeft((long)(d.SizeBytes * (1 - Math.Clamp(d.Progress, 0, 100) / 100)), d.DownloadRate)
+        : "";
+
     /// <summary>Keeps the list fresh until the returned handle is disposed (a page going away).</summary>
     public IDisposable Watch()
     {

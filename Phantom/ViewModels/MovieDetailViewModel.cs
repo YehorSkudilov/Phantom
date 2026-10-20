@@ -329,9 +329,10 @@ public partial class MovieDetailViewModel(PhantomApi api, SettingsService settin
     public bool IsSavingOnServer => ServerDownloadTracker.IsRunning(ServerItem);
     public double ServerProgress => (ServerItem?.Progress ?? 0) / 100;
 
-    /// <summary>"Downloading · 42% · 3.1 MB/s", under the buttons while the server saves it.</summary>
+    /// <summary>"Saving 42% · 3.1 MB/s · about 12 min left", under the buttons while the server saves it.</summary>
     public string ServerStatusText => ServerItem is not { } d ? ""
-        : $"On the server: {ServerDownloadTracker.Label(d)}" + (d.DownloadRate > 0 ? $"  ·  {BytesConverter.Format(d.DownloadRate)}/s" : "");
+        : $"On the server: {ServerDownloadTracker.Label(d)}" + (d.DownloadRate > 0 ? $"  ·  {BytesConverter.Format(d.DownloadRate)}/s" : "")
+          + (ServerDownloadTracker.TimeLeft(d) is { Length: > 0 } left ? $"  ·  {left}" : "");
 
     /// <summary>Follows the server's copy while the page is on screen (the page starts and stops it).</summary>
     public void WatchServer(bool on)

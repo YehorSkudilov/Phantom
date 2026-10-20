@@ -1,5 +1,6 @@
 using System.Globalization;
 using Phantom.Shared;
+using Phantom.Services;
 
 namespace Phantom;
 
@@ -46,6 +47,17 @@ public class BytesConverter : IValueConverter
             u++;
         }
         return u == 0 ? $"{bytes} B" : $"{v:0.#} {units[u]}";
+    }
+
+    /// <summary>"about 12 min left" at the current speed; empty while nothing is coming in.</summary>
+    public static string TimeLeft(long remainingBytes, long bytesPerSecond)
+    {
+        if (remainingBytes <= 0 || bytesPerSecond <= 0) return "";
+        var left = TimeSpan.FromSeconds((double)remainingBytes / bytesPerSecond);
+        return left.TotalMinutes < 1 ? "under a minute left"
+            : left.TotalHours < 1 ? $"about {Math.Ceiling(left.TotalMinutes):0} min left"
+            : left.TotalDays < 1 ? $"about {(int)left.TotalHours} h {left.Minutes} min left"
+            : $"about {Math.Ceiling(left.TotalDays):0} days left";
     }
 
     public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
@@ -164,7 +176,8 @@ public class ServerStatusConverter : IValueConverter
 {
     public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture) => value is not ServerDownloadDto d ? "" : d.Status switch
     {
-        DownloadStatus.Downloading => $"{d.Progress / 100:0%}" + (d.DownloadRate > 0 ? $" · {BytesConverter.Format(d.DownloadRate)}/s" : ""),
+        DownloadStatus.Downloading => $"{d.Progress / 100:0%}" + (d.DownloadRate > 0 ? $" · {BytesConverter.Format(d.DownloadRate)}/s" : "")
+                                      + (ServerDownloadTracker.TimeLeft(d) is { Length: > 0 } left ? $" · {left}" : ""),
         DownloadStatus.Queued => "Waiting to start",
         DownloadStatus.FetchingMetadata => "Finding it…",
         DownloadStatus.Paused => $"Paused · {d.Progress / 100:0%}",
@@ -172,6 +185,15 @@ public class ServerStatusConverter : IValueConverter
         DownloadStatus.Completed => d.ExpiresAt is { } until ? $"Saved · until {until:d MMM}" : "Saved",
         _ => d.Status.ToString(),
     };
+
+    public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture) => throw new NotSupportedException();
+}
+
+/// <summary>"  ·  about 12 min left" after a server copy's details while it's saving, else nothing.</summary>
+public class ServerTimeLeftConverter : IValueConverter
+{
+    public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture) =>
+        value is ServerDownloadDto d && ServerDownloadTracker.TimeLeft(d) is { Length: > 0 } left ? $"  ·  {left}" : "";
 
     public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture) => throw new NotSupportedException();
 }
