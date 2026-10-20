@@ -166,7 +166,7 @@ public abstract class StreamControllerBase(
             {
                 var manager = await engine.EnsureStartedAsync(release, keep: false, ct, target.Choice);
                 if (TorrentEngine.Video(manager, target.Choice, release.SeasonNumber) is not { } video)
-                    return NotFound("This release hasn't got that episode. Try another version.");
+                    return NotFound(target.Choice.IsEpisode ? "This release hasn't got that episode. Try another version." : ServerDownloadService.NoVideoMessage);
                 fileName = Path.GetFileName(video.Path);
                 size = video.Length;
                 var subs = TorrentEngine.Subtitles(manager, video);

@@ -148,7 +148,7 @@ public partial class InternetArchiveSource(HttpClient http, ILogger<InternetArch
 public static class VideoFiles
 {
     private static readonly HashSet<string> VideoExt = new(StringComparer.OrdinalIgnoreCase)
-        { ".mp4", ".mkv", ".avi", ".m4v", ".mov", ".webm", ".wmv", ".mpg", ".mpeg", ".ts", ".ogv" };
+        { ".mp4", ".mkv", ".avi", ".m4v", ".mov", ".webm", ".wmv", ".mpg", ".mpeg", ".ts", ".m2ts", ".mts", ".ogv", ".flv", ".divx" };
 
     private static readonly HashSet<string> SubtitleExt = new(StringComparer.OrdinalIgnoreCase) { ".srt", ".vtt" };
 

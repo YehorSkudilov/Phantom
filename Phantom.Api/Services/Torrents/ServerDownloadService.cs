@@ -199,6 +199,10 @@ public class ServerDownloadService(IServiceScopeFactory scopes, TorrentEngine en
         await db.SaveChangesAsync(ct);
     }
 
+    /// <summary>Said when a torrent's files have no video among them: a fake release, usually a program named as a film.</summary>
+    public const string NoVideoMessage =
+        "This release hasn't got a video in it: it's fake (often a program named as a film). Delete it in Downloads and save another version.";
+
     /// <summary>The episode a download is of (in a pack, the file to fetch); the main video for a movie.</summary>
     public static VideoChoice Choice(ServerDownload d) =>
         d.Episode is { } e ? new VideoChoice(e.SeasonNumber, e.EpisodeNumber) : VideoChoice.Main;
@@ -210,7 +214,10 @@ public class ServerDownloadService(IServiceScopeFactory scopes, TorrentEngine en
         {
             var manager = await engine.EnsureStartedAsync(release, keep: true, ct, choice, play: false);
             if (TorrentEngine.Video(manager, choice, release.SeasonNumber) is null)
-                error = "This release hasn't got that episode.";
+            {
+                error = choice.IsEpisode ? "This release hasn't got that episode." : NoVideoMessage;
+                if (!choice.IsEpisode) log.LogWarning("Server download {Name} hasn't got a video in it", release.Name);
+            }
         }
         catch (Exception ex) when (!ct.IsCancellationRequested)
         {
