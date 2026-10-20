@@ -42,5 +42,24 @@
 	<array>
 		<string>_googlecast._tcp</string>
 	</array>
+	<!-- Scene lifecycle (SceneDelegate.cs): required from iOS 27, where an app without it is killed at launch. One window
+	     only; MAUI looks the configuration up by this name. -->
+	<key>UIApplicationSceneManifest</key>
+	<dict>
+		<key>UIApplicationSupportsMultipleScenes</key>
+		<false/>
+		<key>UISceneConfigurations</key>
+		<dict>
+			<key>UIWindowSceneSessionRoleApplication</key>
+			<array>
+				<dict>
+					<key>UISceneConfigurationName</key>
+					<string>__MAUI_DEFAULT_SCENE_CONFIGURATION__</string>
+					<key>UISceneDelegateClassName</key>
+					<string>SceneDelegate</string>
+				</dict>
+			</array>
+		</dict>
+	</dict>
 </dict>
 </plist>
