@@ -136,10 +136,43 @@ public class ServerDownloadService(IServiceScopeFactory scopes, TorrentEngine en
         }
         await engine.EnsureFreeSpaceAsync();
 
+        await RemoveFakesAsync(db, ct);
+
         if (settings.KeepServerDownloadsDays > 0 && DateTime.UtcNow - _lastExpiry > TimeSpan.FromMinutes(15))
         {
             _lastExpiry = DateTime.UtcNow;
             await DeleteExpiredAsync(db, settings.KeepServerDownloadsDays, ct);
+        }
+    }
+
+    /// <summary>
+    /// Takes releases whose download found them fake (no video in them, or one that can't be read) out of the library,
+    /// with their downloads and files, and blocks them so the sources don't bring them back. A movie or show with no
+    /// other release goes from the library with it (only titles with a release are shown).
+    /// </summary>
+    private async Task RemoveFakesAsync(PhantomDbContext db, CancellationToken ct)
+    {
+        var fakes = await db.ServerDownloads.Include(d => d.Release)
+            .Where(d => d.Status == DownloadStatus.Failed && (d.Error == NoVideoMessage || d.Error == Transcoder.UnreadableMessage))
+            .Select(d => d.Release!).Distinct().ToListAsync(ct);
+        foreach (var release in fakes)
+        {
+            log.LogWarning("Removing {Name} from the library: it's fake", release.Name);
+            var hash = release.InfoHash.ToLowerInvariant();
+            if (await db.BlockedReleases.FindAsync([hash], ct) is null)
+                db.BlockedReleases.Add(new BlockedRelease { InfoHash = hash, Name = release.Name });
+            db.ServerDownloads.RemoveRange(await db.ServerDownloads.Where(d => d.ReleaseId == release.Id).ToListAsync(ct));
+            db.Releases.Remove(release);
+            await db.SaveChangesAsync(ct);
+            await engine.RemoveAsync(release.InfoHash, deleteData: true);
+            try
+            {
+                if (Directory.Exists(engine.MediaFolder(release.InfoHash))) Directory.Delete(engine.MediaFolder(release.InfoHash), recursive: true);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                log.LogWarning(ex, "Couldn't delete the files of {Name}", release.Name);
+            }
         }
     }
 

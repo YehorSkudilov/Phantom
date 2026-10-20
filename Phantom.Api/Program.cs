@@ -41,6 +41,7 @@ builder.Services.AddScoped<LibraryService>();
 builder.Services.AddScoped<ShowLibraryService>();
 builder.Services.AddScoped<DiscoverService>();
 builder.Services.AddHostedService<DiscoverWarmup>();
+builder.Services.AddSingleton<SearchIndex>();
 builder.Services.AddScoped<LibraryImporter>();
 
 // Torrent engine + background workers

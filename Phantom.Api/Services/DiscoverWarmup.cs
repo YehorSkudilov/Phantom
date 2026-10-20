@@ -1,6 +1,9 @@
 namespace Phantom.Api.Services;
 
-/// <summary>Fills Discover's cache of the library once the server is up (see <see cref="DiscoverService.WarmAsync"/>).</summary>
+/// <summary>
+/// Fills Discover's cache of the library and the search index once the server is up (see
+/// <see cref="DiscoverService.WarmAsync"/>), so neither the first visit nor the first search waits for them.
+/// </summary>
 public sealed class DiscoverWarmup(IServiceScopeFactory scopes, ILogger<DiscoverWarmup> log) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -12,12 +15,13 @@ public sealed class DiscoverWarmup(IServiceScopeFactory scopes, ILogger<Discover
             using var scope = scopes.CreateScope();
             var started = DateTime.UtcNow;
             await scope.ServiceProvider.GetRequiredService<DiscoverService>().WarmAsync(stoppingToken);
-            log.LogInformation("Discover is ready ({Seconds:0.0} s)", (DateTime.UtcNow - started).TotalSeconds);
+            await scope.ServiceProvider.GetRequiredService<SearchIndex>().WarmAsync(stoppingToken);
+            log.LogInformation("Discover and search are ready ({Seconds:0.0} s)", (DateTime.UtcNow - started).TotalSeconds);
         }
         catch (Exception ex) when (!stoppingToken.IsCancellationRequested)
         {
-            // The first visit to Discover reads it instead.
-            log.LogWarning(ex, "Couldn't get Discover ready ahead of time");
+            // The first visit to Discover, or the first search, reads it instead.
+            log.LogWarning(ex, "Couldn't get Discover and search ready ahead of time");
         }
     }
 }

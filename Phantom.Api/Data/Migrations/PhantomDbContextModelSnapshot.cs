@@ -62,6 +62,23 @@ namespace Phantom.Api.Data.Migrations
                     b.ToTable("GenreShow");
                 });
 
+            modelBuilder.Entity("Phantom.Api.Data.BlockedRelease", b =>
+                {
+                    b.Property<string>("InfoHash")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("BlockedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("InfoHash");
+
+                    b.ToTable("BlockedReleases");
+                });
+
             modelBuilder.Entity("Phantom.Api.Data.Collection", b =>
                 {
                     b.Property<int>("Id")

@@ -37,6 +37,11 @@ public class LibraryImporter(PhantomDbContext db, ILogger<LibraryImporter> log)
         int newMovies = 0, newReleases = 0, newShows = 0, unsaved = 0;
         var settings = await db.Settings.FirstAsync(ct);
         var wanted = releases.Where(r => r.Seeders >= settings.MinSeeders || r.TorrentUrl is not null).DistinctBy(r => r.InfoHash).ToList();
+        // Ones found to be fake stay out.
+        var blocked = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var chunk in wanted.Select(r => r.InfoHash.ToLowerInvariant()).Chunk(500))
+            blocked.UnionWith(await db.BlockedReleases.Where(b => chunk.Contains(b.InfoHash)).Select(b => b.InfoHash).ToListAsync(ct));
+        wanted.RemoveAll(r => blocked.Contains(r.InfoHash));
 
         // The releases already known, looked up together rather than one query each.
         var known = new Dictionary<string, Release>();

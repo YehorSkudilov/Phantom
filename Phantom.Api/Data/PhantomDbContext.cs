@@ -14,6 +14,7 @@ public class PhantomDbContext(DbContextOptions<PhantomDbContext> options) : DbCo
     public DbSet<Genre> Genres => Set<Genre>();
     public DbSet<Credit> Credits => Set<Credit>();
     public DbSet<Release> Releases => Set<Release>();
+    public DbSet<BlockedRelease> BlockedReleases => Set<BlockedRelease>();
     public DbSet<WatchState> WatchStates => Set<WatchState>();
     public DbSet<WatchlistItem> Watchlist => Set<WatchlistItem>();
     public DbSet<Collection> Collections => Set<Collection>();
@@ -51,6 +52,7 @@ public class PhantomDbContext(DbContextOptions<PhantomDbContext> options) : DbCo
         b.Entity<Release>().HasOne(r => r.Movie).WithMany(m => m.Releases).HasForeignKey(r => r.MovieId);
         b.Entity<Release>().HasOne(r => r.Show).WithMany(s => s.Releases).HasForeignKey(r => r.ShowId);
         b.Entity<Release>().HasIndex(r => new { r.ShowId, r.SeasonNumber, r.EpisodeNumber });
+        b.Entity<BlockedRelease>().HasKey(r => r.InfoHash);
 
         b.Entity<WatchState>().HasKey(w => new { w.UserId, w.MovieId });
         b.Entity<WatchlistItem>().HasKey(w => new { w.UserId, w.MovieId });

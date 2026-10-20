@@ -165,6 +165,17 @@ public class Release
     public string? LocalFilePath { get; set; }
 }
 
+/// <summary>
+/// A torrent found to be fake (no video in it, or one nothing can read): it's taken out of the library, and sources
+/// that list it again don't bring it back.
+/// </summary>
+public class BlockedRelease
+{
+    public required string InfoHash { get; set; }
+    public required string Name { get; set; }
+    public DateTime BlockedAt { get; set; } = DateTime.UtcNow;
+}
+
 public class WatchState
 {
     public int UserId { get; set; }
