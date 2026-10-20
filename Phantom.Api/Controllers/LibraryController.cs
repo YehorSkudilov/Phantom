@@ -10,7 +10,7 @@ namespace Phantom.Api.Controllers;
 [ApiController]
 [Authorize]
 [Route("api/library")]
-public class LibraryController(PhantomDbContext db, LibraryService library, ShowLibraryService shows, DiscoverService discover,
+public class LibraryController(PhantomDbContext db, LibraryService library, ShowLibraryService shows, DiscoverService discover, SearchIndex searchIndex,
     ILogger<LibraryController> logger) : ControllerBase
 {
     /// <summary>A page of the library: movies, or with kind=Show the shows.</summary>
@@ -266,19 +266,31 @@ public class LibraryController(PhantomDbContext db, LibraryService library, Show
         var visible = library.Visible(User);
         var visibleShows = shows.Visible(User);
 
-        var query = new MovieQuery { Search = q, Sort = MovieSort.Rating };
-        var movies = await library.SummariesAsync(library.Apply(visible, query, userId).Take(40), userId, ct);
-        var showItems = await shows.SummariesAsync(shows.Apply(visibleShows, query, userId).Take(20), userId, ct);
+        var text = q.Trim();
+        // Twice what's shown, as some may be hidden from this profile.
+        var found = await searchIndex.FindAsync(text, 80, ct);
+        var movieIds = found.Movies;
+        var showIds = found.Shows;
+        var movies = movieIds.Count == 0 ? []
+            : await library.SummariesAsync(visible.Where(m => movieIds.Contains(m.Id)).OrderByDescending(m => m.Rating).Take(40), userId, ct);
+        var showItems = showIds.Count == 0 ? []
+            : await shows.SummariesAsync(visibleShows.Where(s => showIds.Contains(s.Id)).OrderByDescending(s => s.Rating).Take(20), userId, ct);
         // Title matches first, then by rating, movies and shows together.
         var titles = movies.Concat(showItems)
-            .OrderByDescending(i => i.Title.Contains(q.Trim(), StringComparison.OrdinalIgnoreCase))
+            .OrderByDescending(i => i.Title.Contains(text, StringComparison.OrdinalIgnoreCase))
             .ThenByDescending(i => i.Rating ?? 0).Take(40).ToList();
-        // People in one pass over the credits (rather than one over movies' and another over shows'), most credited first.
+        // People, most credited first. Only names from what this profile may see: a restricted profile isn't shown
+        // who's in what it can't watch.
+        var candidates = found.People.OrderByDescending(p => p.Titles.Length).Take(200).ToList();
+        var candidateMovies = candidates.SelectMany(p => p.Titles).Where(t => !t.IsShow).Select(t => t.Id).Distinct().ToList();
+        var candidateShows = candidates.SelectMany(p => p.Titles).Where(t => t.IsShow).Select(t => t.Id).Distinct().ToList();
+        var seeable = (await visible.Where(m => candidateMovies.Contains(m.Id)).Select(m => m.Id).ToListAsync(ct))
+            .Select(id => new TitleRef(false, id))
+            .Concat((await visibleShows.Where(s => candidateShows.Contains(s.Id)).Select(s => s.Id).ToListAsync(ct)).Select(id => new TitleRef(true, id)))
+            .ToHashSet();
+        var people = candidates.Select(p => (p.Name, Count: p.Titles.Count(seeable.Contains)))
+            .Where(p => p.Count > 0).OrderByDescending(p => p.Count).Select(p => p.Name).Take(20).ToList();
         var like = Like.Contains(q);
-        // Only names from what this profile may see: a restricted profile isn't shown who's in what it can't watch.
-        var people = await db.Credits.Where(c => EF.Functions.Like(c.Name, like, Like.Escape))
-            .Where(c => visible.Any(m => m.Id == c.MovieId) || visibleShows.Any(s => s.Id == c.ShowId))
-            .GroupBy(c => c.Name).OrderByDescending(g => g.Count()).Select(g => g.Key).Take(20).ToListAsync(ct);
         var genres = await db.Genres.Where(g => EF.Functions.Like(g.Name, like, Like.Escape)).Select(g => g.Name).Take(10).ToListAsync(ct);
         return new SearchResultDto(titles, people, genres);
     }
