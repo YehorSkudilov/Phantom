@@ -20,6 +20,7 @@ public class ServerDownloadService(IServiceScopeFactory scopes, TorrentEngine en
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        _ = ResumeSharingAsync(stoppingToken);
         while (!stoppingToken.IsCancellationRequested)
         {
             try
@@ -235,6 +236,47 @@ public class ServerDownloadService(IServiceScopeFactory scopes, TorrentEngine en
     /// <summary>Said when a torrent's files have no video among them: a fake release, usually a program named as a film.</summary>
     public const string NoVideoMessage =
         "This release hasn't got a video in it: it's fake (often a program named as a film). Delete it in Downloads and save another version.";
+
+    /// <summary>
+    /// Shares what's saved on the server again after a restart (with "seed after download" on): which torrents to keep
+    /// going was only known while the server ran, so a restart stopped them all. Each saved release's torrent is added
+    /// back on its files in the media folder, one at a time; nothing more is downloaded (only what was saved is wanted).
+    /// </summary>
+    private async Task ResumeSharingAsync(CancellationToken ct)
+    {
+        try
+        {
+            using var scope = scopes.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<PhantomDbContext>();
+            var settings = await db.Settings.AsNoTracking().FirstAsync(ct);
+            if (!settings.SeedAfterDownload) return;
+            var saved = await db.ServerDownloads.AsNoTracking().Include(d => d.Release).Include(d => d.Episode)
+                .Where(d => d.Status == DownloadStatus.Completed).ToListAsync(ct);
+            var resumed = 0;
+            foreach (var group in saved.GroupBy(d => d.ReleaseId))
+            {
+                var release = group.First().Release!;
+                // Its files are gone, or it's already going (other episodes of the pack still downloading).
+                if (!Directory.Exists(engine.MediaFolder(release.InfoHash)) || engine.Find(release.InfoHash) is not null) continue;
+                try
+                {
+                    var episodes = group.Where(d => d.EpisodeId is not null).Select(Choice).ToList();
+                    if (episodes.Count > 0) await engine.KeepEpisodesAsync(release, episodes);
+                    await engine.EnsureStartedAsync(release, keep: true, ct, play: false);
+                    resumed++;
+                }
+                catch (Exception ex) when (!ct.IsCancellationRequested)
+                {
+                    log.LogWarning(ex, "Couldn't share {Name} again", release.Name);
+                }
+            }
+            if (resumed > 0) log.LogInformation("Sharing {Count} saved torrents again", resumed);
+        }
+        catch (Exception ex) when (!ct.IsCancellationRequested)
+        {
+            log.LogWarning(ex, "Couldn't share the saved torrents again");
+        }
+    }
 
     /// <summary>The episode a download is of (in a pack, the file to fetch); the main video for a movie.</summary>
     public static VideoChoice Choice(ServerDownload d) =>
