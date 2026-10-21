@@ -2,6 +2,7 @@ using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
@@ -41,6 +42,16 @@ builder.Services.AddScoped<LibraryService>();
 builder.Services.AddScoped<ShowLibraryService>();
 builder.Services.AddScoped<DiscoverService>();
 builder.Services.AddHostedService<DiscoverWarmup>();
+
+// Manage server's Deployments tab: this repository's GitHub Actions, and keeping it private except while they run.
+// Off while Deployments__GitHubToken or __Repository is unset.
+builder.Services.TryAddSingleton(TimeProvider.System);
+builder.Services.AddOptions<Phantom.Api.Deployments.DeploymentsOptions>().Bind(builder.Configuration.GetSection(Phantom.Api.Deployments.DeploymentsOptions.Section));
+builder.Services.AddHttpClient(Phantom.Api.Deployments.GitHubActions.ClientName, Phantom.Api.Deployments.GitHubActions.Configure);
+builder.Services.AddSingleton<Phantom.Api.Deployments.GitHubActions>();
+builder.Services.AddSingleton<Phantom.Api.Deployments.DeploymentsService>();
+builder.Services.AddSingleton<Phantom.Api.Deployments.RepoVisibilityKeeper>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<Phantom.Api.Deployments.RepoVisibilityKeeper>());
 builder.Services.AddSingleton<SearchIndex>();
 builder.Services.AddScoped<LibraryImporter>();
 

@@ -14,7 +14,8 @@ public partial class AdminPage : ContentPage
         vm.LoadCommand.Execute(null);
     }
 
-    // Sync status and catalogue progress update live while the Sources sub-tab is on screen.
+    // Sync status and catalogue progress update live while the Sources sub-tab is on screen, and workflow runs while
+    // the Deployments one is.
     protected override void OnAppearing()
     {
         base.OnAppearing();
@@ -23,6 +24,7 @@ public partial class AdminPage : ContentPage
         _poll.Tick += async (_, _) =>
         {
             if (BindingContext is AdminViewModel { SelectedTab: 1 } vm) await vm.RefreshSourcesAsync();
+            if (BindingContext is AdminViewModel { SelectedTab: AdminViewModel.DeploymentsTab } deployments) await deployments.PollDeploymentsAsync();
         };
         _poll.Start();
     }

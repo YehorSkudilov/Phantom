@@ -63,6 +63,13 @@ jobs:
             Phantom__FfmpegPath=ffmpeg
             Phantom__SeedDefaultSources=true
 
+            # Manage server's Deployments tab: runs this repository's workflows, and keeps it private except while they
+            # run. A fine-grained token for this repository with Actions and Administration (read and write) and
+            # Contents (read); leave the secret unset to turn the tab off.
+            Deployments__GitHubToken=${{ secrets.ADMIN_GITHUB_TOKEN }}
+            Deployments__Repository=${{ github.repository }}
+            Deployments__AutoPrivate=${{ vars.DEPLOYMENTS_AUTO_PRIVATE || 'true' }}
+
             # Swagger UI basic auth
             SwaggerAuth__Username=${{ vars.SWAGGER_AUTH_USERNAME }}
             SwaggerAuth__Password=${{ secrets.SWAGGER_AUTH_PASSWORD }}

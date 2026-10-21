@@ -348,4 +348,15 @@ public class PhantomApi(HttpClient http, SettingsService settings)
     public Task ClearStreamCacheAsync(string infoHash) => SendNoContentAsync(HttpMethod.Delete, $"/api/server/storage/cache/{infoHash}");
     public Task<StorageDto> ClearIdleCachesAsync() => SendAsync<StorageDto>(HttpMethod.Post, "/api/server/storage/cache/clear", null);
     public Task<StorageDto> ClearPreviewsAsync() => SendAsync<StorageDto>(HttpMethod.Post, "/api/server/storage/previews/clear", null);
+
+    // ---------- Deployments (admin): the repository's GitHub Actions ----------
+
+    public Task<DeploymentsOverviewDto> DeploymentsAsync() => GetAsync<DeploymentsOverviewDto>("/api/admin/deployments");
+    public Task<RunsDto> DeploymentRunsAsync() => GetAsync<RunsDto>("/api/admin/deployments/runs");
+    /// <summary>Makes the repository public first; the server makes it private again when the last run has finished.</summary>
+    public Task RunWorkflowAsync(long id, Dictionary<string, string> inputs) =>
+        SendNoContentAsync(HttpMethod.Post, $"/api/admin/deployments/workflows/{id}/run", new RunWorkflowRequest(inputs));
+    public Task CancelRunAsync(long id) => SendNoContentAsync(HttpMethod.Post, $"/api/admin/deployments/runs/{id}/cancel");
+    /// <summary>The failed jobs of a failed run, all of it otherwise.</summary>
+    public Task RerunAsync(long id) => SendNoContentAsync(HttpMethod.Post, $"/api/admin/deployments/runs/{id}/rerun");
 }

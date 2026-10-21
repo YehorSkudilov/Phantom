@@ -97,6 +97,15 @@ with copyright law where you live.
   resumable HTTP range transfers, Wi-Fi-only mode, pause/resume, and offline resume points
   that sync back to the server when you reconnect
 
+**Deployments**
+- *Manage server → Deployments* shows what's waiting to be published (the commits since the last `chore: bump version`
+  commit) and runs Publish, or any other workflow with `workflow_dispatch`, with its options; each run's jobs and steps
+  update live, and runs can be cancelled or run again
+- The server holds the GitHub token (`ADMIN_GITHUB_TOKEN` secret: a fine-grained token for this repository with
+  Actions and Administration read and write, and Contents read). Running anything makes the repository public first
+  (Actions minutes are free on public repositories); the server makes it private again once the last run has
+  finished. The `DEPLOYMENTS_AUTO_PRIVATE=false` variable leaves the visibility alone
+
 **Accounts, profiles and TVs**
 - Every account signs in with its own username and password; admins add accounts under *Manage server → Accounts*
 - Each account has its own profiles (own watch history, optional PIN, content limit); profile names only need to be

@@ -180,16 +180,202 @@ public partial class AdminViewModel(PhantomApi api) : BaseViewModel
     public ObservableList<SourceDto> Sources { get; } = [];
     public ObservableList<AccountRow> Accounts { get; } = [];
 
-    public IReadOnlyList<string> Tabs { get; } = ["Overview", "Sources", "Accounts", "Server settings", "Storage"];
+    public IReadOnlyList<string> Tabs { get; } = ["Overview", "Sources", "Accounts", "Server settings", "Storage", "Deployments"];
     [ObservableProperty] private int selectedTab;
 
     /// <summary>The Storage tab's index in <see cref="Tabs"/>.</summary>
     public const int StorageTab = 4;
 
+    /// <summary>The Deployments tab's index in <see cref="Tabs"/>.</summary>
+    public const int DeploymentsTab = 5;
+
     partial void OnSelectedTabChanged(int value)
     {
         if (value == StorageTab) _ = RunAsync(LoadStorageAsync, showBusy: false);
+        if (value == DeploymentsTab) _ = RunAsync(LoadDeploymentsAsync, showBusy: false);
     }
+
+    // ---------- Deployments: the repository's GitHub Actions (see Phantom.Api/Deployments) ----------
+
+    public ObservableList<DeploymentRunRow> RunningRuns { get; } = [];
+    public ObservableList<DeploymentRunRow> RecentRuns { get; } = [];
+    public ObservableList<DeploymentCommitRow> UnpublishedCommits { get; } = [];
+    public ObservableList<WorkflowDto> RunnableWorkflows { get; } = [];
+    public ObservableList<WorkflowInputRow> WorkflowInputs { get; } = [];
+
+    /// <summary>Why the tab can't show anything (e.g. the server has no GitHub token), instead of a pop-up every poll.</summary>
+    [ObservableProperty] private string? deploymentsError;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(RepositoryText), nameof(VisibilityText), nameof(VisibilityColor))]
+    private RepositoryDto? repository;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(KeeperText), nameof(KeeperFailed))]
+    private KeeperStatus? keeper;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(UnpublishedCount), nameof(UnpublishedNote), nameof(FilesChanged), nameof(LinesChanged),
+        nameof(PublishedVersion), nameof(PublishedWhen), nameof(UnpublishedTitle), nameof(UnpublishedDetail), nameof(CompareUrl))]
+    private UnpublishedDto? unpublished;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(WorkflowDetail), nameof(RunWorkflowText))]
+    private WorkflowDto? selectedWorkflow;
+
+    public string RepositoryText => Repository is { } r ? $"{r.FullName} · {r.DefaultBranch}" : "";
+    public string VisibilityText => Repository is null ? "" : Repository.IsPrivate ? "Private" : "Public";
+    public Color VisibilityColor => Deploy.Color(Repository?.IsPrivate == false ? "Warning" : "Success");
+    public string KeeperText => Keeper is not { } k ? ""
+        : k.LastChange is { } change && k.LastChangeUtc is { } at ? $"{k.Message}\n{change} {Deploy.Ago(at, DateTimeOffset.UtcNow)}." : k.Message;
+    public bool KeeperFailed => Keeper?.State == "error";
+
+    public string UnpublishedCount => Unpublished is not { } u ? "" : u.VersionFound ? $"{u.Commits}" : $"{u.Commits}+";
+    public string UnpublishedNote => Unpublished is { Merges: > 0 } u ? $"commits (+{u.Merges} merges)" : "commits";
+    public string FilesChanged => Unpublished?.FilesChanged.ToString() ?? "";
+    public string LinesChanged => Unpublished is { FilesChanged: > 0 } u ? $"+{u.Additions:N0} −{u.Deletions:N0}" : "files changed";
+    public string PublishedVersion => Unpublished?.Version ?? "—";
+    public string PublishedWhen => Unpublished?.VersionCommit is { } c ? $"published {Deploy.Ago(c.DateUtc, DateTimeOffset.UtcNow)}" : "no version bump yet";
+    public string UnpublishedTitle => Unpublished is not { } u ? ""
+        : u.Commits == 0 && u.VersionFound ? $"Everything is published{(u.Version is { } v ? $" in {v}" : "")}"
+        : $"{UnpublishedCount} commit{(u.Commits == 1 ? "" : "s")} since {u.Version ?? "the last release"}";
+    public string UnpublishedDetail => Unpublished is not { } u ? ""
+        : (u.VersionFound ? "Counted from the last version bump commit." : $"No version bump commit in the last {u.Scanned ?? u.Commits} commits.")
+          + (u.Authors.Count > 0 ? $" By {string.Join(", ", u.Authors)}." : "");
+    public string? CompareUrl => Unpublished?.CompareUrl;
+
+    public string WorkflowDetail => SelectedWorkflow is not { } w ? ""
+        : string.Join("  ·  ", new[]
+        {
+            w.Path.Replace(".github/workflows/", ""),
+            w.LastRun is { } last ? $"last run {Deploy.Ago(last.CreatedUtc, DateTimeOffset.UtcNow)}" : null,
+            w.TypicalSeconds is { } t ? $"usually {Deploy.Duration(t)}" : null,
+        }.OfType<string>());
+    public string RunWorkflowText => SelectedWorkflow is { } w ? $"Run {w.Name}" : "Run";
+
+    // A new choice of workflow starts its form over; the same one coming back from a refresh keeps what was entered.
+    partial void OnSelectedWorkflowChanged(WorkflowDto? oldValue, WorkflowDto? newValue)
+    {
+        if (oldValue?.Id != newValue?.Id) WorkflowInputs.ReplaceAll(newValue?.Inputs.Select(i => new WorkflowInputRow(i)) ?? []);
+    }
+
+    private HashSet<long> _running = [];
+    private DateTime _startedAt;
+    private int _deploymentTicks;
+
+    private async Task LoadDeploymentsAsync()
+    {
+        try
+        {
+            ShowDeployments(await api.DeploymentsAsync());
+            ShowRuns(await api.DeploymentRunsAsync());
+            DeploymentsError = null;
+        }
+        catch (ApiException ex)
+        {
+            DeploymentsError = ex.Message;
+        }
+    }
+
+    private void ShowDeployments(DeploymentsOverviewDto overview)
+    {
+        Repository = overview.Repository;
+        Keeper = overview.Keeper;
+        Unpublished = overview.Unpublished;
+        var now = DateTimeOffset.UtcNow;
+        UnpublishedCommits.ReplaceAll([
+            .. overview.Unpublished.Recent.Take(12).Select(c => DeploymentCommitRow.From(c, false, now)),
+            .. overview.Unpublished.VersionCommit is { } release ? [DeploymentCommitRow.From(release, true, now)] : Array.Empty<DeploymentCommitRow>(),
+        ]);
+
+        // Publish first. The list is only replaced when the workflows themselves changed: replacing it clears the
+        // picker's choice.
+        var runnable = overview.Workflows.Where(w => w.CanRun).OrderByDescending(w => w.IsPublish).ToList();
+        if (!runnable.Select(w => w.Id).SequenceEqual(RunnableWorkflows.Select(w => w.Id)))
+            RunnableWorkflows.ReplaceAll(runnable);
+        var keep = SelectedWorkflow?.Id;
+        SelectedWorkflow = runnable.FirstOrDefault(w => w.Id == keep) ?? runnable.FirstOrDefault();
+    }
+
+    private void ShowRuns(RunsDto runs)
+    {
+        Repository = runs.Repository;
+        Keeper = runs.Keeper;
+        var now = DateTimeOffset.UtcNow;
+        var rows = runs.Runs.Select(r => DeploymentRunRow.From(r, now)).ToList();
+        RunningRuns.Sync(rows.Where(r => r.IsRunning).ToList(), key: r => r.Id);
+        RecentRuns.Sync(rows.Where(r => !r.IsRunning).ToList(), key: r => r.Id);
+
+        // A run that has just finished may have bumped the version: what's unpublished changes.
+        var running = rows.Where(r => r.IsRunning).Select(r => r.Id).ToHashSet();
+        var finished = _running.Except(running).Any();
+        _running = running;
+        if (finished) _ = RunAsync(async () => ShowDeployments(await api.DeploymentsAsync()), showBusy: false);
+    }
+
+    /// <summary>
+    /// Called every few seconds by the page while the Deployments tab is on screen: the runs on every tick while
+    /// something runs (or was just started), else about every 20 s; the rest about every minute.
+    /// </summary>
+    public async Task PollDeploymentsAsync()
+    {
+        if (DeploymentsError is not null) return;
+        var tick = ++_deploymentTicks;
+        var busy = RunningRuns.Count > 0 || DateTime.UtcNow - _startedAt < TimeSpan.FromMinutes(1);
+        try
+        {
+            if (tick % 20 == 0) ShowDeployments(await api.DeploymentsAsync());
+            if (busy || tick % 7 == 0) ShowRuns(await api.DeploymentRunsAsync());
+        }
+        catch (Exception ex) when (ex is HttpRequestException or ApiException or TaskCanceledException)
+        {
+            // Keep what's shown; the next tick tries again.
+        }
+    }
+
+    [RelayCommand]
+    private Task RefreshDeployments() => RunAsync(LoadDeploymentsAsync, showBusy: false);
+
+    [RelayCommand]
+    private Task RunWorkflow() => RunAsync(async () =>
+    {
+        if (SelectedWorkflow is not { } w) return;
+        var inputs = WorkflowInputs.Where(i => !i.IsSection).ToList();
+        if (inputs.FirstOrDefault(i => i.Required && string.IsNullOrWhiteSpace(i.Value)) is { } missing)
+        {
+            await Dialog.AlertAsync($"Run {w.Name}", $"Fill in {missing.Label.TrimEnd(' ', '*')} first.");
+            return;
+        }
+        if (!await Dialog.ConfirmAsync($"Run {w.Name}", "The repository is made public while it runs and private again when it's done.", "Run")) return;
+        await api.RunWorkflowAsync(w.Id, inputs.ToDictionary(i => i.Name, i => i.Value));
+        _startedAt = DateTime.UtcNow;
+        await ToastAsync($"{w.Name} started; it shows up here in a few seconds");
+        ShowRuns(await api.DeploymentRunsAsync());
+    }, showBusy: false);
+
+    [RelayCommand]
+    private Task CancelRun(DeploymentRunRow run) => RunAsync(async () =>
+    {
+        if (!await Dialog.ConfirmAsync("Cancel run", $"Cancel {run.Title}? Jobs still going stop where they are.", "Cancel run", "Keep running", destructive: true)) return;
+        await api.CancelRunAsync(run.Id);
+        await ToastAsync("Cancelling…");
+        ShowRuns(await api.DeploymentRunsAsync());
+    }, showBusy: false);
+
+    [RelayCommand]
+    private Task Rerun(DeploymentRunRow run) => RunAsync(async () =>
+    {
+        if (!await Dialog.ConfirmAsync("Run again", $"Run {run.Title} again? The repository is made public while it runs.", "Run again")) return;
+        await api.RerunAsync(run.Id);
+        _startedAt = DateTime.UtcNow;
+        await ToastAsync("Started again");
+        ShowRuns(await api.DeploymentRunsAsync());
+    }, showBusy: false);
+
+    /// <summary>A run, job or commit on GitHub, in the browser.</summary>
+    [RelayCommand]
+    private static Task OpenOnGitHub(string? url) =>
+        Uri.TryCreate(url, UriKind.Absolute, out var uri) ? Launcher.Default.OpenAsync(uri) : Task.CompletedTask;
 
     // ---------- Storage ----------
 
@@ -350,6 +536,7 @@ public partial class AdminViewModel(PhantomApi api) : BaseViewModel
         KeepServerDownloadsDays = s2.KeepServerDownloadsDays;
         MaxStreamCacheGb = s2.MaxStreamCacheGb;
         if (SelectedTab == StorageTab) await LoadStorageAsync();
+        if (SelectedTab == DeploymentsTab) await LoadDeploymentsAsync();
     });
 
     [RelayCommand]

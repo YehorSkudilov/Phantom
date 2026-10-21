@@ -8,6 +8,54 @@
              x:Class="Phantom.Views.AdminPage"
              x:DataType="vm:AdminViewModel"
              Title="Manage server">
+    <ContentPage.Resources>
+        <!-- A workflow run on the Deployments tab: running ones with their progress and jobs, finished ones with how they went -->
+        <DataTemplate x:Key="DeploymentRun" x:DataType="vm:DeploymentRunRow">
+            <Border Style="{StaticResource Card}">
+                <VerticalStackLayout Spacing="8">
+                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                        <VerticalStackLayout>
+                            <skeleton:CLabel Text="{Binding Title}" FontFamily="OpenSansSemibold" />
+                            <skeleton:CLabel Text="{Binding Detail}" Style="{StaticResource Muted}" FontSize="12" />
+                        </VerticalStackLayout>
+                        <skeleton:CLabel Grid.Column="1" Text="{Binding Status}" TextColor="{Binding StatusColor}" FontFamily="OpenSansSemibold" FontSize="12"
+                                         VerticalOptions="Center" />
+                    </Grid>
+                    <ProgressBar Progress="{Binding Progress}" IsVisible="{Binding IsRunning}" />
+                    <skeleton:CLabel Text="{Binding ProgressText}" Style="{StaticResource Muted}" FontSize="12" IsVisible="{Binding ProgressText, Converter={StaticResource HasValue}}" />
+                    <VerticalStackLayout BindableLayout.ItemsSource="{Binding Jobs}" Spacing="6" IsVisible="{Binding Jobs, Converter={StaticResource HasValue}}">
+                        <BindableLayout.ItemTemplate>
+                            <DataTemplate x:DataType="vm:DeploymentJobRow">
+                                <Grid ColumnDefinitions="22,*,Auto" ColumnSpacing="8">
+                                    <Grid.GestureRecognizers>
+                                        <TapGestureRecognizer Command="{Binding Source={RelativeSource AncestorType={x:Type vm:AdminViewModel}}, Path=OpenOnGitHubCommand, x:DataType=vm:AdminViewModel}"
+                                                              CommandParameter="{Binding Url}" />
+                                    </Grid.GestureRecognizers>
+                                    <skeleton:CLabel Text="{Binding Icon}" TextColor="{Binding IconColor}" FontSize="15" HorizontalOptions="Center" VerticalOptions="Center" />
+                                    <VerticalStackLayout Grid.Column="1" VerticalOptions="Center">
+                                        <skeleton:CLabel Text="{Binding Name}" FontSize="14" LineBreakMode="TailTruncation" />
+                                        <skeleton:CLabel Text="{Binding Detail}" Style="{StaticResource Muted}" FontSize="12" />
+                                    </VerticalStackLayout>
+                                    <ProgressBar Grid.Column="2" WidthRequest="70" VerticalOptions="Center" Progress="{Binding Progress}" IsVisible="{Binding IsRunning}" />
+                                </Grid>
+                            </DataTemplate>
+                        </BindableLayout.ItemTemplate>
+                    </VerticalStackLayout>
+                    <FlexLayout Wrap="Wrap" Margin="-4,0">
+                        <Button Text="Open on GitHub" Style="{StaticResource GhostButton}" Margin="4"
+                                Command="{Binding Source={RelativeSource AncestorType={x:Type vm:AdminViewModel}}, Path=OpenOnGitHubCommand, x:DataType=vm:AdminViewModel}"
+                                CommandParameter="{Binding Url}" />
+                        <Button Text="Cancel" Style="{StaticResource GhostButton}" TextColor="{StaticResource Danger}" Margin="4" IsVisible="{Binding IsRunning}"
+                                Command="{Binding Source={RelativeSource AncestorType={x:Type vm:AdminViewModel}}, Path=CancelRunCommand, x:DataType=vm:AdminViewModel}"
+                                CommandParameter="{Binding .}" />
+                        <Button Text="Run again" Style="{StaticResource GhostButton}" Margin="4" IsVisible="{Binding CanRerun}"
+                                Command="{Binding Source={RelativeSource AncestorType={x:Type vm:AdminViewModel}}, Path=RerunCommand, x:DataType=vm:AdminViewModel}"
+                                CommandParameter="{Binding .}" />
+                    </FlexLayout>
+                </VerticalStackLayout>
+            </Border>
+        </DataTemplate>
+    </ContentPage.Resources>
     <RefreshView IsRefreshing="{Binding IsRefreshing}" Command="{Binding LoadCommand}">
         <ScrollView>
             <VerticalStackLayout Padding="16" Spacing="14">
@@ -274,6 +322,120 @@
                             </Border>
                         </DataTemplate>
                     </BindableLayout.ItemTemplate>
+                </VerticalStackLayout>
+                </VerticalStackLayout>
+                <VerticalStackLayout Spacing="14" IsVisible="{Binding SelectedTab, Converter={StaticResource Equals}, ConverterParameter=5}">
+                <!-- Deployments: the repository's GitHub Actions. Running anything makes the repository public; the server makes
+                     it private again when the last run has finished. -->
+                <skeleton:CLabel Text="{Binding DeploymentsError}" Style="{StaticResource Muted}" IsVisible="{Binding DeploymentsError, Converter={StaticResource HasValue}}" />
+
+                <VerticalStackLayout Spacing="14" IsVisible="{Binding Repository, Converter={StaticResource HasValue}}">
+                <Border Style="{StaticResource Card}">
+                    <VerticalStackLayout Spacing="8">
+                        <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
+                            <VerticalStackLayout VerticalOptions="Center">
+                                <skeleton:CLabel Text="Repository" Style="{StaticResource H2}" />
+                                <skeleton:CLabel Text="{Binding RepositoryText}" Style="{StaticResource Muted}" FontSize="12" />
+                            </VerticalStackLayout>
+                            <Border Grid.Column="1" StrokeShape="RoundRectangle 12" StrokeThickness="1" Stroke="{Binding VisibilityColor}" Padding="10,3" VerticalOptions="Center">
+                                <skeleton:CLabel Text="{Binding VisibilityText}" TextColor="{Binding VisibilityColor}" FontFamily="OpenSansSemibold" FontSize="12" />
+                            </Border>
+                            <ImageButton Grid.Column="2" Style="{StaticResource IconButton}" Source="{controls:Icon refresh}" Command="{Binding RefreshDeploymentsCommand}"
+                                         SemanticProperties.Description="Refresh" ToolTipProperties.Text="Refresh" />
+                        </Grid>
+                        <skeleton:CLabel Text="{Binding KeeperText}" Style="{StaticResource Muted}" FontSize="12">
+                            <skeleton:CLabel.Triggers>
+                                <DataTrigger TargetType="skeleton:CLabel" Binding="{Binding KeeperFailed}" Value="True">
+                                    <Setter Property="TextColor" Value="{StaticResource Danger}" />
+                                </DataTrigger>
+                            </skeleton:CLabel.Triggers>
+                        </skeleton:CLabel>
+                    </VerticalStackLayout>
+                </Border>
+
+                <Border Style="{StaticResource Card}">
+                    <Grid ColumnDefinitions="*,*,*" RowDefinitions="Auto,Auto" RowSpacing="2">
+                        <skeleton:CLabel Text="{Binding UnpublishedCount}" Style="{StaticResource H1}" HorizontalOptions="Center" />
+                        <skeleton:CLabel Grid.Row="1" Text="{Binding UnpublishedNote}" Style="{StaticResource Muted}" HorizontalOptions="Center" HorizontalTextAlignment="Center" />
+                        <skeleton:CLabel Grid.Column="1" Text="{Binding FilesChanged}" Style="{StaticResource H1}" HorizontalOptions="Center" />
+                        <skeleton:CLabel Grid.Column="1" Grid.Row="1" Text="{Binding LinesChanged}" Style="{StaticResource Muted}" HorizontalOptions="Center" HorizontalTextAlignment="Center" />
+                        <skeleton:CLabel Grid.Column="2" Text="{Binding PublishedVersion}" Style="{StaticResource H2}" HorizontalOptions="Center" VerticalOptions="Center" />
+                        <skeleton:CLabel Grid.Column="2" Grid.Row="1" Text="{Binding PublishedWhen}" Style="{StaticResource Muted}" HorizontalOptions="Center" HorizontalTextAlignment="Center" />
+                    </Grid>
+                </Border>
+
+                <!-- Running now -->
+                <skeleton:CLabel Text="Running now" Style="{StaticResource H2}" IsVisible="{Binding RunningRuns.Count, Converter={StaticResource HasValue}}" />
+                <VerticalStackLayout BindableLayout.ItemsSource="{Binding RunningRuns}" BindableLayout.ItemTemplate="{StaticResource DeploymentRun}" Spacing="8" />
+
+                <!-- Waiting to be published -->
+                <skeleton:CLabel Text="Waiting to be published" Style="{StaticResource H2}" />
+                <VerticalStackLayout Spacing="2">
+                    <skeleton:CLabel Text="{Binding UnpublishedTitle}" FontFamily="OpenSansSemibold" />
+                    <skeleton:CLabel Text="{Binding UnpublishedDetail}" Style="{StaticResource Muted}" FontSize="12" />
+                </VerticalStackLayout>
+                <Border Style="{StaticResource Card}" Padding="0" IsVisible="{Binding UnpublishedCommits.Count, Converter={StaticResource HasValue}}">
+                    <VerticalStackLayout BindableLayout.ItemsSource="{Binding UnpublishedCommits}">
+                        <BindableLayout.ItemTemplate>
+                            <DataTemplate x:DataType="vm:DeploymentCommitRow">
+                                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8" Padding="14,8" Opacity="{Binding Opacity}">
+                                    <Grid.GestureRecognizers>
+                                        <TapGestureRecognizer Command="{Binding Source={RelativeSource AncestorType={x:Type vm:AdminViewModel}}, Path=OpenOnGitHubCommand, x:DataType=vm:AdminViewModel}"
+                                                              CommandParameter="{Binding Url}" />
+                                    </Grid.GestureRecognizers>
+                                    <VerticalStackLayout VerticalOptions="Center">
+                                        <skeleton:CLabel Text="{Binding Message}" FontSize="14" LineBreakMode="TailTruncation" MaxLines="2" />
+                                        <skeleton:CLabel Text="{Binding Detail}" Style="{StaticResource Muted}" FontSize="12" />
+                                    </VerticalStackLayout>
+                                    <skeleton:CLabel Grid.Column="1" Text="Published" TextColor="{StaticResource Success}" FontFamily="OpenSansSemibold" FontSize="12"
+                                                     VerticalOptions="Center" IsVisible="{Binding IsRelease}" />
+                                </Grid>
+                            </DataTemplate>
+                        </BindableLayout.ItemTemplate>
+                    </VerticalStackLayout>
+                </Border>
+                <Button Text="Compare on GitHub" Style="{StaticResource SecondaryButton}" HorizontalOptions="Start"
+                        Command="{Binding OpenOnGitHubCommand}" CommandParameter="{Binding CompareUrl}" IsVisible="{Binding CompareUrl, Converter={StaticResource HasValue}}" />
+
+                <!-- Run a workflow: Publish first, with its options as GitHub's Run workflow form has them -->
+                <skeleton:CLabel Text="Run a workflow" Style="{StaticResource H2}" />
+                <Border Style="{StaticResource Card}">
+                    <VerticalStackLayout Spacing="10">
+                        <Picker ItemsSource="{Binding RunnableWorkflows}" SelectedItem="{Binding SelectedWorkflow}" ItemDisplayBinding="{Binding Name, x:DataType=dto:WorkflowDto}"
+                                Title="Workflow" />
+                        <skeleton:CLabel Text="{Binding WorkflowDetail}" Style="{StaticResource Muted}" FontSize="12" />
+                        <VerticalStackLayout BindableLayout.ItemsSource="{Binding WorkflowInputs}" Spacing="10">
+                            <BindableLayout.ItemTemplate>
+                                <DataTemplate x:DataType="vm:WorkflowInputRow">
+                                    <VerticalStackLayout>
+                                        <VerticalStackLayout IsVisible="{Binding IsSection}" Margin="0,8,0,0">
+                                            <skeleton:CLabel Text="{Binding Label}" FontFamily="OpenSansSemibold" />
+                                            <skeleton:CLabel Text="{Binding Note}" Style="{StaticResource Muted}" FontSize="12" />
+                                        </VerticalStackLayout>
+                                        <Grid ColumnDefinitions="*,Auto" IsVisible="{Binding IsBoolean}">
+                                            <skeleton:CLabel Text="{Binding Label}" VerticalOptions="Center" />
+                                            <Switch Grid.Column="1" IsToggled="{Binding IsChecked}" />
+                                        </Grid>
+                                        <VerticalStackLayout IsVisible="{Binding IsChoice}" Spacing="2">
+                                            <skeleton:CLabel Text="{Binding Label}" Style="{StaticResource Muted}" />
+                                            <Picker ItemsSource="{Binding Options}" SelectedItem="{Binding Value}" />
+                                        </VerticalStackLayout>
+                                        <VerticalStackLayout IsVisible="{Binding IsText}" Spacing="2">
+                                            <skeleton:CLabel Text="{Binding Label}" Style="{StaticResource Muted}" />
+                                            <Entry Text="{Binding Value}" Keyboard="{Binding Keyboard}" />
+                                        </VerticalStackLayout>
+                                    </VerticalStackLayout>
+                                </DataTemplate>
+                            </BindableLayout.ItemTemplate>
+                        </VerticalStackLayout>
+                        <Button Text="{Binding RunWorkflowText}" Command="{Binding RunWorkflowCommand}" IsEnabled="{Binding SelectedWorkflow, Converter={StaticResource HasValue}}"
+                                ImageSource="{controls:Icon rocket_launch, Size=20}" ContentLayout="Left,6" />
+                    </VerticalStackLayout>
+                </Border>
+
+                <!-- Recent runs -->
+                <skeleton:CLabel Text="Recent runs" Style="{StaticResource H2}" IsVisible="{Binding RecentRuns.Count, Converter={StaticResource HasValue}}" />
+                <VerticalStackLayout BindableLayout.ItemsSource="{Binding RecentRuns}" BindableLayout.ItemTemplate="{StaticResource DeploymentRun}" Spacing="8" />
                 </VerticalStackLayout>
                 </VerticalStackLayout>
             </VerticalStackLayout>
