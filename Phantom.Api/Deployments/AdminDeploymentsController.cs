@@ -30,7 +30,8 @@ public class AdminDeploymentsController(DeploymentsService deployments, GitHubAc
     {
         var repo = await github.RepositoryAsync(ct);
         var branch = repo.GetProperty("default_branch").GetString() ?? "main";
-        await keeper.OpenAsync("start a run", () => github.DispatchAsync(id, branch, request.Inputs ?? [], ct), ct);
+        var inputs = await deployments.CurrentInputsAsync(id, branch, request.Inputs ?? [], ct);
+        await keeper.OpenAsync("start a run", () => github.DispatchAsync(id, branch, inputs, ct), ct);
         log.LogInformation("Admin {Admin} ran workflow {Workflow} on {Branch}", User.Identity?.Name, id, branch);
         return true;
     });

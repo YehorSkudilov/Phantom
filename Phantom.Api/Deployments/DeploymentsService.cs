@@ -85,6 +85,20 @@ public sealed class DeploymentsService(GitHubActions github, RepoVisibilityKeepe
         return Run(run, jobs, await TypicalSecondsAsync(run.GetProperty("workflow_id").GetInt64(), ct));
     }
 
+    /// <summary>
+    /// <paramref name="inputs"/> less any the workflow doesn't take any more, read afresh from its file: a form filled in
+    /// before the file changed would otherwise send them, and GitHub refuses the run ("Unexpected inputs provided").
+    /// </summary>
+    public async Task<Dictionary<string, string>> CurrentInputsAsync(long workflowId, string branch, IReadOnlyDictionary<string, string> inputs, CancellationToken ct)
+    {
+        var path = (await github.WorkflowAsync(workflowId, ct)).GetProperty("path").GetString() ?? "";
+        _inputs.TryRemove(path, out _);
+        if (await InputsAsync(path, branch, ct) is not { } known)
+            return new(inputs);
+        var names = known.Select(i => i.Name).ToHashSet();
+        return inputs.Where(i => names.Contains(i.Key)).ToDictionary();
+    }
+
     /// <summary>The commits on the default branch after the last version bump commit.</summary>
     private async Task<UnpublishedDto> UnpublishedAsync(string branch, CancellationToken ct)
     {

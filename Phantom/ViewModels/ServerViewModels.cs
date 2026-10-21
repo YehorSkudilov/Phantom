@@ -253,10 +253,12 @@ public partial class AdminViewModel(PhantomApi api) : BaseViewModel
         }.OfType<string>());
     public string RunWorkflowText => SelectedWorkflow is { } w ? $"Run {w.Name}" : "Run";
 
-    // A new choice of workflow starts its form over; the same one coming back from a refresh keeps what was entered.
+    // A new choice of workflow, or new options for it (its file was edited), starts the form over; the same one coming
+    // back from a refresh keeps what was entered.
     partial void OnSelectedWorkflowChanged(WorkflowDto? oldValue, WorkflowDto? newValue)
     {
-        if (oldValue?.Id != newValue?.Id) WorkflowInputs.ReplaceAll(newValue?.Inputs.Select(i => new WorkflowInputRow(i)) ?? []);
+        static string Form(WorkflowDto? w) => w is null ? "" : $"{w.Id}:{string.Join(',', w.Inputs.Select(i => i.Name))}";
+        if (Form(oldValue) != Form(newValue)) WorkflowInputs.ReplaceAll(newValue?.Inputs.Select(i => new WorkflowInputRow(i)) ?? []);
     }
 
     private HashSet<long> _running = [];

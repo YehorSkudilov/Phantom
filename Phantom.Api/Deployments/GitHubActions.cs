@@ -63,6 +63,8 @@ public sealed class GitHubActions(IHttpClientFactory http, IOptions<DeploymentsO
         return [.. body.GetProperty("workflows").EnumerateArray()];
     }
 
+    public Task<JsonElement> WorkflowAsync(long id, CancellationToken ct) => GetAsync($"{Repo}/actions/workflows/{id}", ct);
+
     /// <summary>The newest runs of every workflow, or of one.</summary>
     public async Task<List<JsonElement>> RunsAsync(int count, CancellationToken ct, long? workflowId = null, string? status = null)
     {
