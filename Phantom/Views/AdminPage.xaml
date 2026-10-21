@@ -338,7 +338,13 @@
                                 <skeleton:CLabel Text="{Binding RepositoryText}" Style="{StaticResource Muted}" FontSize="12" />
                             </VerticalStackLayout>
                             <Border Grid.Column="1" StrokeShape="RoundRectangle 12" StrokeThickness="1" Stroke="{Binding VisibilityColor}" Padding="10,3" VerticalOptions="Center">
-                                <skeleton:CLabel Text="{Binding VisibilityText}" TextColor="{Binding VisibilityColor}" FontFamily="OpenSansSemibold" FontSize="12" />
+                                <HorizontalStackLayout Spacing="4">
+                                    <Image Source="{controls:Icon lock, Color={StaticResource Success}, Size=14}" WidthRequest="14" HeightRequest="14" VerticalOptions="Center"
+                                           IsVisible="{Binding Repository.IsPrivate}" />
+                                    <Image Source="{controls:Icon public, Color={StaticResource Warning}, Size=14}" WidthRequest="14" HeightRequest="14" VerticalOptions="Center"
+                                           IsVisible="{Binding Repository.IsPrivate, Converter={StaticResource Not}}" />
+                                    <skeleton:CLabel Text="{Binding VisibilityText}" TextColor="{Binding VisibilityColor}" FontFamily="OpenSansSemibold" FontSize="12" VerticalOptions="Center" />
+                                </HorizontalStackLayout>
                             </Border>
                             <ImageButton Grid.Column="2" Style="{StaticResource IconButton}" Source="{controls:Icon refresh}" Command="{Binding RefreshDeploymentsCommand}"
                                          SemanticProperties.Description="Refresh" ToolTipProperties.Text="Refresh" />
