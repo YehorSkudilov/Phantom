@@ -562,7 +562,11 @@ public partial class PlayerPage : ContentPage
     /// <summary>The timeline, the times beside it and the up-next card, for <paramref name="position"/> of <paramref name="total"/>.</summary>
     private void ShowPosition(TimeSpan position, TimeSpan total)
     {
-        if (!_seeking && _skipTarget is null)
+        // Until a seek lands, the player goes on saying where it was: the timeline stays where it was sent instead of
+        // going back there and then jumping forward again once the movie has loaded (iOS does, for a while).
+        if (_landing is { } landing && (Math.Abs((position - landing).TotalSeconds) < 3 || DateTime.UtcNow - _landingSince > LandingWait))
+            _landing = null;
+        if (!_seeking && _skipTarget is null && _landing is null)
         {
             if (total > TimeSpan.Zero) Seek.Value = Math.Clamp(position / total, 0, 1);
             PositionLabel.Text = TimeSpanConverter.Format(position);
@@ -729,15 +733,31 @@ public partial class PlayerPage : ContentPage
         ShowControls();
     }
 
-    private Task SeekToAsync(TimeSpan target)
+    // Where the last seek was sent, until it has landed (see ShowPosition). A converted stream's or a TV's seek isn't
+    // awaited to the end: theirs lasts until the position gets there, or LandingWait.
+    private TimeSpan? _landing;
+    private DateTime _landingSince;
+    private static readonly TimeSpan LandingWait = TimeSpan.FromSeconds(15);
+
+    private async Task SeekToAsync(TimeSpan target)
     {
         var total = CurrentTotal;
         if (total > TimeSpan.Zero && target > total) target = total - TimeSpan.FromSeconds(1);
         if (target < TimeSpan.Zero) target = TimeSpan.Zero;
-        if (_cast is not null) return CastSeekAsync(target);
+        _landing = target;
+        _landingSince = DateTime.UtcNow;
+        if (total > TimeSpan.Zero) Seek.Value = Math.Clamp(target / total, 0, 1);
+        PositionLabel.Text = TimeSpanConverter.Format(target);
+        if (_cast is not null)
+        {
+            await CastSeekAsync(target);
+            return;
+        }
         // Transcodes restart server-side at the new offset; direct streams seek with HTTP ranges.
-        if (_vm.TrySeekTranscode(target)) return Task.CompletedTask;
-        return TrySeekAsync(target);
+        if (_vm.TrySeekTranscode(target)) return;
+        // Landed (near enough: iOS goes to a keyframe close by), or it didn't go: the player's own position from here.
+        await TrySeekAsync(target);
+        if (_landing == target) _landing = null;
     }
 
     private void OnSkipBack(object? sender, EventArgs e)
@@ -1327,16 +1347,19 @@ public partial class PlayerPage : ContentPage
         ShowControls();
     }
 
-    /// <summary>One kind of preview being fetched (the small one, the big one, the skip's): only its latest is.</summary>
+    /// <summary>
+    /// One kind of preview being fetched (the small one, the big one, the skip's): one at a time, each for wherever the
+    /// position has got to by the time the one before came.
+    /// </summary>
     private sealed class PreviewSlot
     {
         public CancellationTokenSource? Fetch;
-        public int? Step;
+        public TimeSpan Wanted;
 
         public void Cancel()
         {
             Fetch?.Cancel();
-            Step = null;
+            Fetch = null;
         }
     }
 
@@ -1388,8 +1411,9 @@ public partial class PlayerPage : ContentPage
     /// <summary>
     /// The preview at <paramref name="at"/>, given to <paramref name="show"/>. A small one straight from those already
     /// here (all of them, once the server has made them), the exact one or the nearest while the exact one is fetched; a
-    /// big one only once fetched, after <paramref name="wait"/> ms in the same place. <paramref name="none"/> when there's
-    /// none at all.
+    /// big one only once fetched, <paramref name="wait"/> ms on. <paramref name="none"/> when there's none at all.
+    /// A fetch on its way isn't dropped when the position moves on (that left nothing shown while dragging, until the
+    /// drag rested somewhere): it's shown, and the next is for wherever the position is by then.
     /// </summary>
     private async void PreviewAt(TimeSpan at, bool large, PreviewSlot slot, Action<byte[]> show, Action none, int wait = 80)
     {
@@ -1406,20 +1430,25 @@ public partial class PlayerPage : ContentPage
             if (frame is null) none();
             return;
         }
-        var step = PlayerViewModel.PreviewStep(at);
-        if (step == slot.Step) return; // same frame (they're 10 s apart), already on its way
-        slot.Fetch?.Cancel();
-        slot.Step = step;
+        slot.Wanted = at;
+        if (slot.Fetch is not null) return; // the one on its way goes on to this when it's done
         var cts = slot.Fetch = new CancellationTokenSource();
         try
         {
             await Task.Delay(wait, cts.Token);
-            var jpeg = await _vm.FetchPreviewFrameAsync(at, large, cts.Token);
-            if (cts.IsCancellationRequested) return;
-            if (slot.Step == step) slot.Step = null; // a miss is asked again next time
-            // The frame on show stays up while the next one loads; only hide it when there's none at all.
-            if (jpeg is not null) show(jpeg);
-            else if (frame is null) none();
+            int? fetched = null;
+            // Until the one fetched is the one wanted (they're 10 s apart); a miss is asked again next time.
+            while (PlayerViewModel.PreviewStep(slot.Wanted) is var step && step != fetched)
+            {
+                fetched = step;
+                var target = slot.Wanted;
+                var here = large ? _vm.LargePreviewFrame(target) : _vm.PreviewFrame(target, out var exact) is { } f && exact ? f : null;
+                var jpeg = here ?? await _vm.FetchPreviewFrameAsync(target, large, cts.Token);
+                if (cts.IsCancellationRequested) return;
+                // The frame on show stays up while the next one loads; only hide it when there's none at all.
+                if (jpeg is not null) show(jpeg);
+                else if (large || _vm.PreviewFrame(target, out _) is null) none();
+            }
         }
         catch (OperationCanceledException)
         {
@@ -1429,6 +1458,10 @@ public partial class PlayerPage : ContentPage
         {
             // A preview is a nicety: losing one must never take the player down.
             System.Diagnostics.Debug.WriteLine($"Seek preview: {ex}");
+        }
+        finally
+        {
+            if (slot.Fetch == cts) slot.Fetch = null;
         }
     }
 
